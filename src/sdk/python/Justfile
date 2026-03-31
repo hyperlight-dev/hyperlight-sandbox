@@ -17,26 +17,33 @@ python-sync-guest-resources:
     cp {{repo-root}}/src/wasm_sandbox/guests/javascript/js-sandbox.aot {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest/javascript_guest/resources/js-sandbox.aot
     cp {{repo-root}}/src/wasm_sandbox/guests/javascript/js-sandbox.wasm {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest/javascript_guest/resources/js-sandbox.wasm
 
+# Sync the venv (installs maturin, guest packages, etc.) but skip the
+# two maturin backend crates — they are built below via `maturin develop`.
+python-sync-env:
+    uv sync --frozen --inexact --no-install-package hyperlight-sandbox-backend-wasm --no-install-package hyperlight-sandbox-backend-hyperlight-js
+
 python-install-backend-wasm:
-    cd {{repo-root}}/src/sdk/python/wasm_backend && {{ wit-world }} uv run maturin develop
+    cd {{repo-root}}/src/sdk/python/wasm_backend && {{ wit-world }} uv run --no-sync maturin develop
 
 python-install-backend-wasm-release:
-    # Remove cached build-script output for hyperlight-wasm so that the
-    # wasm-runtime guest binary is rebuilt for the release profile.
-    # Without this, cargo may reuse a stale debug-mode cache entry and
-    # skip building the release binary (upstream missing rerun-if-env-changed=PROFILE).
-    rm -rf {{repo-root}}/src/sdk/python/wasm_backend/target/release/build/hyperlight-wasm-*
-    cd {{repo-root}}/src/sdk/python/wasm_backend && {{ wit-world }} uv run maturin develop --release
+    # Remove cached build-script output so the runtime binary is rebuilt
+    # for the release profile. The debug build may have left stale
+    # fingerprints that prevent the build script from re-running.
+    rm -rf {{repo-root}}/target/release/build/hyperlight-wasm-* \
+           {{repo-root}}/target/release/.fingerprint/hyperlight-wasm-*
+    cd {{repo-root}}/src/sdk/python/wasm_backend && {{ wit-world }} uv run --no-sync maturin develop --release
 
 python-install-backend-hyperlight-js:
-    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin develop
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run --no-sync maturin develop
 
 python-install-backend-hyperlight-js-release:
-    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin develop --release
+    rm -rf {{repo-root}}/target/release/build/hyperlight-js-* \
+           {{repo-root}}/target/release/.fingerprint/hyperlight-js-*
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run --no-sync maturin develop --release
 
-python-build: python-sync-guest-resources python-install-backend-wasm python-install-backend-hyperlight-js
+python-build: python-sync-guest-resources python-sync-env python-install-backend-wasm python-install-backend-hyperlight-js
 
-python-build-release: python-sync-guest-resources python-install-backend-wasm-release python-install-backend-hyperlight-js-release
+python-build-release: python-sync-guest-resources python-sync-env python-install-backend-wasm-release python-install-backend-hyperlight-js-release
 
 build: python-build
 

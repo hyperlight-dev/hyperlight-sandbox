@@ -1,6 +1,6 @@
 """Wasm backend implementation package for hyperlight_sandbox."""
 
-from hyperlight_sandbox_backend_wasm._native import (
+from hyperlight_sandbox_backend_wasm._native_wasm import (
     PyExecutionResult,
     PySnapshot,
     WasmSandbox,

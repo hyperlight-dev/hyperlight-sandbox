@@ -13,7 +13,6 @@
 //! - stdout capture from the guest console log
 
 use std::io::Write;
-use std::path::Path;
 
 use anyhow::{Context, Result};
 use hyperlight_nanvix::{RuntimeConfig, Sandbox as NanvixSandboxInner, WorkloadType};

@@ -2,10 +2,10 @@ repo-root := invocation_directory()
 wit-world := if os() == "windows" { "$env:WIT_WORLD=\"" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm\";" } else { "WIT_WORLD=" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm" }
 
 integration-copilot-sdk-deps:
-    uv sync --group copilot-sdk
+    uv sync --group copilot-sdk --inexact --no-install-package hyperlight-sandbox-backend-wasm --no-install-package hyperlight-sandbox-backend-hyperlight-js
 
 integration-agent-framework-deps:
-    uv sync --group agent-framework
+    uv sync --group agent-framework --inexact --no-install-package hyperlight-sandbox-backend-wasm --no-install-package hyperlight-sandbox-backend-hyperlight-js
 
 integration-agent-framework-devui-deps:
     uv sync --group agent-framework-devui

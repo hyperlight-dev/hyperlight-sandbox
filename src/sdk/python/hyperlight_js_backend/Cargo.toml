@@ -5,10 +5,8 @@ edition = "2024"
 description = "HyperlightJS backend bindings for hyperlight-sandbox"
 license = "Apache-2.0"
 
-[workspace]
-
 [lib]
-name = "_native"
+name = "_native_js"
 crate-type = ["cdylib"]
 
 [dependencies]

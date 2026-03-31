@@ -60,15 +60,9 @@ impl AnyPollable {
     }
 
     pub async fn block(&mut self) {
-        // Cap iterations to prevent infinite busy-wait if a pollable never becomes ready.
-        const MAX_BLOCK_ITERATIONS: usize = 100_000;
-        for _ in 0..MAX_BLOCK_ITERATIONS {
-            if self.ready().await {
-                return;
-            }
+        while !self.ready().await {
             tokio::task::yield_now().await;
         }
-        log::warn!("pollable::block() exceeded {MAX_BLOCK_ITERATIONS} iterations; giving up");
     }
 
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<bool> {

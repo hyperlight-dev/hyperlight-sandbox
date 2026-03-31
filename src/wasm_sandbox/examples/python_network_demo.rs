@@ -47,6 +47,10 @@ except Exception as e:
         )
         .expect("test 1 failed");
     print!("{}", result.stdout);
+    assert!(
+        result.stdout.contains("Network blocked"),
+        "test 1: expected network access to be blocked"
+    );
 
     separator("Test 2: Network access to allowed domain (WASI-HTTP)");
     let result = sandbox
@@ -60,12 +64,12 @@ print(resp['body'][:200])
         )
         .expect("test 2 failed");
     print!("{}", result.stdout);
-    if result.exit_code == 0 {
-        println!("Network access to allowed domain works via WASI-HTTP!");
-    } else {
-        eprintln!("Network access failed");
-        eprintln!("stderr: {}", &result.stderr[..result.stderr.len().min(300)]);
-    }
+    assert_eq!(
+        result.exit_code,
+        0,
+        "test 2: network access to allowed domain failed\nstderr: {}",
+        &result.stderr[..result.stderr.len().min(300)]
+    );
 
     separator("Test 3: Method filtering — GET allowed, POST blocked");
     let result = sandbox
@@ -87,7 +91,10 @@ except Exception as e:
         )
         .expect("test 3 failed");
     print!("{}", result.stdout);
-    println!("  (example.com is allowed for GET only)");
+    assert!(
+        result.stdout.contains("POST blocked"),
+        "test 3: expected POST to be blocked"
+    );
 
     separator("All tests passed!");
 }

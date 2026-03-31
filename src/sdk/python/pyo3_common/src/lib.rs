@@ -1,8 +1,7 @@
+use hyperlight_sandbox::{ArgType, Snapshot, ToolRegistry, ToolSchema};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyModule};
-
-use hyperlight_sandbox::{ArgType, Snapshot, ToolRegistry, ToolSchema};
 
 /// Convert a human-readable size string (e.g. `"200Mi"`) to bytes.
 pub fn parse_size(size: &str) -> PyResult<u64> {

@@ -86,9 +86,11 @@ Object.defineProperty(globalThis, "fetch", { value: function(url, init = {}) {
     });
 }, writable: false, configurable: false });
 
-function handler(event) {
+async function handler(event) {
     try {
-        (0, eval)(event);
+        const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+        const fn_ = new AsyncFunction(event);
+        await fn_();
         return { stderr: "", exit_code: 0 };
     } catch (error) {
         const msg = __stringify(error && error.stack ? error.stack : error);
@@ -304,13 +306,18 @@ impl JsGuestSandbox {
 
                     {
                         let Ok(network) = http_state.network.lock() else {
-                            return json_error("network mutex poisoned");
+                            return json_response(serde_json::json!({
+                                "status": 500,
+                                "headers": {},
+                                "body": "network mutex poisoned",
+                            }));
                         };
                         if !network.is_allowed(&parsed_url, &method) {
-                            return json_error(format!(
-                                "HTTP request denied for {} {}",
-                                method, parsed_url
-                            ));
+                            return json_response(serde_json::json!({
+                                "status": 403,
+                                "headers": {},
+                                "body": format!("HTTP request denied for {} {}", method, parsed_url),
+                            }));
                         }
                     }
 
@@ -329,7 +336,13 @@ impl JsGuestSandbox {
 
                     let resp = match sandbox_http::send_http_request(http_req).block_on() {
                         Ok(r) => r,
-                        Err(error) => return json_error(error),
+                        Err(error) => {
+                            return json_response(serde_json::json!({
+                                "status": 502,
+                                "headers": {},
+                                "body": format!("{error}"),
+                            }));
+                        }
                     };
 
                     let body = match String::from_utf8(resp.body) {

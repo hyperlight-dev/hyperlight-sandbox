@@ -28,6 +28,7 @@ try {
 }
 """)
 print(result.stdout)
+assert "Network blocked" in result.stdout, "test 1: expected network access to be blocked"
 
 # ═══════════════════════════════════════════════════════════════════
 # Test 2: Network access to allowed domain (WASI-HTTP)
@@ -44,11 +45,7 @@ console.log('Response body (first 200 chars):');
 console.log(body.slice(0, 200));
 """)
 print(result.stdout)
-if result.success:
-    print("✅ Network access to allowed domain works via WASI-HTTP!")
-else:
-    print("⚠️ Network access failed")
-    print(f"stderr: {result.stderr[:300]}")
+assert result.success, f"test 2: network access to allowed domain failed\nstderr: {result.stderr[:300]}"
 
 # ═══════════════════════════════════════════════════════════════════
 # Test 3: Method filtering — GET allowed, POST blocked
@@ -73,6 +70,7 @@ try {
 }
 """)
 print(result.stdout)
+assert "POST blocked" in result.stdout, "test 3: expected POST to be blocked"
 
 print("═" * 60)
 print("✅ All tests passed!")

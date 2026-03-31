@@ -1,14 +1,12 @@
 use std::collections::HashMap;
 
-use pyo3::exceptions::PyRuntimeError;
-use pyo3::prelude::*;
-
 use hyperlight_javascript_sandbox::HyperlightJs;
-use hyperlight_sandbox::{DirPerms, FilePerms, Sandbox, SandboxConfig, HttpMethod};
-
+use hyperlight_sandbox::{DirPerms, FilePerms, HttpMethod, Sandbox, SandboxConfig};
 use hyperlight_sandbox_pyo3_common::{
     PyExecutionResult, PySnapshot, build_tool_registry, parse_size, parse_tool_registration,
 };
+use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::*;
 
 #[pyclass(unsendable)]
 pub struct JSSandbox {
@@ -86,16 +84,22 @@ impl JSSandbox {
                 builder = builder.input_dir(dir);
             }
             if let Some(ref dir) = self.output_dir {
-                builder = builder.output_dir(dir, DirPerms::READ | DirPerms::MUTATE, FilePerms::READ | FilePerms::WRITE);
+                builder = builder.output_dir(
+                    dir,
+                    DirPerms::READ | DirPerms::MUTATE,
+                    FilePerms::READ | FilePerms::WRITE,
+                );
             } else if self.temp_output {
                 builder = builder.temp_output();
             }
-            let mut sandbox = builder.build()
+            let mut sandbox = builder
+                .build()
                 .map_err(|e| PyRuntimeError::new_err(format!("Failed to create sandbox: {e:#}")))?;
             for (target, methods) in std::mem::take(&mut self.pending_networks) {
                 let methods = HttpMethod::parse_list(methods)
                     .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-                sandbox.allow_domain(&target, methods)
+                sandbox
+                    .allow_domain(&target, methods)
                     .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
             }
             self.inner = Some(sandbox);
@@ -116,7 +120,8 @@ impl JSSandbox {
         if let Some(sandbox) = self.inner.as_mut() {
             let methods = HttpMethod::parse_list(methods)
                 .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-            sandbox.allow_domain(target, methods)
+            sandbox
+                .allow_domain(target, methods)
                 .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
         } else {
             self.pending_networks.push((target.to_string(), methods));
@@ -125,39 +130,51 @@ impl JSSandbox {
     }
 
     fn snapshot(&mut self) -> PyResult<PySnapshot> {
-        let sandbox = self.inner.as_mut()
+        let sandbox = self
+            .inner
+            .as_mut()
             .ok_or_else(|| PyRuntimeError::new_err("Sandbox not initialized"))?;
-        let snap = sandbox.snapshot()
+        let snap = sandbox
+            .snapshot()
             .map_err(|e| PyRuntimeError::new_err(format!("Snapshot failed: {e}")))?;
         Ok(PySnapshot { inner: snap })
     }
 
     fn restore(&mut self, snapshot: &PySnapshot) -> PyResult<()> {
-        let sandbox = self.inner.as_mut()
+        let sandbox = self
+            .inner
+            .as_mut()
             .ok_or_else(|| PyRuntimeError::new_err("Sandbox not initialized"))?;
-        sandbox.restore(&snapshot.inner)
+        sandbox
+            .restore(&snapshot.inner)
             .map_err(|e| PyRuntimeError::new_err(format!("Restore failed: {e}")))?;
         Ok(())
     }
 
     fn get_output_files(&self) -> PyResult<Vec<String>> {
-        let sandbox = self.inner.as_ref()
+        let sandbox = self
+            .inner
+            .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("Sandbox not initialized"))?;
-        sandbox.get_output_files()
+        sandbox
+            .get_output_files()
             .map_err(|e| PyRuntimeError::new_err(format!("Failed to get output files: {e}")))
     }
 
     fn output_path(&self) -> PyResult<Option<String>> {
-        let sandbox = self.inner.as_ref()
+        let sandbox = self
+            .inner
+            .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("Sandbox not initialized"))?;
-        let path = sandbox.output_path()
+        let path = sandbox
+            .output_path()
             .map_err(|e| PyRuntimeError::new_err(format!("Failed to get output path: {e}")))?;
         Ok(path.map(|p| p.display().to_string()))
     }
 }
 
 #[pymodule]
-fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _native_js(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<JSSandbox>()?;
     m.add_class::<PyExecutionResult>()?;
     m.add_class::<PySnapshot>()?;

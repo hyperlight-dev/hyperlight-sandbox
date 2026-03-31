@@ -22,15 +22,16 @@ print("═" * 60)
 print("Test 1: Network access denied without permissions")
 print("═" * 60)
 result = sandbox.run("""
-try {
-    const resp = await fetch('https://notallowed.example');
-    console.log('Got response: ' + resp.status);
-} catch (e) {
-    console.log('Network blocked: ' + e.message);
+const resp = await fetch('https://notallowed.example');
+if (resp.status === 403) {
+    console.log('Network blocked: status ' + resp.status);
     console.log('  (notallowed.example is not in the allowlist — correct!)');
+} else {
+    console.log('Got response: ' + resp.status);
 }
 """)
 print(result.stdout)
+assert "Network blocked" in result.stdout, "test 1: expected network access to be blocked"
 
 # ═══════════════════════════════════════════════════════════════════
 # Test 2: Network access — allowed domain
@@ -47,11 +48,7 @@ console.log('Response body (first 200 chars):');
 console.log(body.slice(0, 200));
 """)
 print(result.stdout)
-if result.success:
-    print("✅ Network access to allowed domain works!")
-else:
-    print("⚠️ Network access failed")
-    print(f"stderr: {result.stderr[:300]}")
+assert result.success, f"test 2: network access to allowed domain failed\nstderr: {result.stderr[:300]}"
 
 # ═══════════════════════════════════════════════════════════════════
 # Test 3: Method filtering — GET allowed, POST blocked
@@ -61,21 +58,24 @@ print("═" * 60)
 print("Test 3: Method filtering — GET allowed, POST blocked")
 print("═" * 60)
 result = sandbox.run("""
-try {
-    const resp = await fetch('https://httpbin.org/get');
-    console.log('GET allowed: status ' + resp.status);
-} catch (e) {
-    console.log('GET result: ' + e.message);
+const getResp = await fetch('https://httpbin.org/get');
+if (getResp.status === 200) {
+    const body = await getResp.text();
+    console.log('GET allowed: status ' + getResp.status);
+    console.log(body);
+} else {
+    console.log('GET failed: status ' + getResp.status);
 }
-try {
-    const resp = await fetch('https://httpbin.org/post', { method: 'POST' });
-    console.log('POST allowed: status ' + resp.status);
-} catch (e) {
-    console.log('POST blocked: ' + e.message);
-    console.log('  (httpbin.org only allows GET \u2014 correct!)');
+const postResp = await fetch('https://httpbin.org/post', { method: 'POST' });
+if (postResp.status === 403) {
+    console.log('POST blocked: status ' + postResp.status);
+    console.log('  (httpbin.org only allows GET — correct!)');
+} else {
+    console.log('POST allowed: status ' + postResp.status);
 }
 """)
 print(result.stdout)
+assert "POST blocked" in result.stdout, "test 3: expected POST to be blocked"
 
 print("═" * 60)
 print("✅ All tests passed!")

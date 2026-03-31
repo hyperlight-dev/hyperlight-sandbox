@@ -118,3 +118,24 @@ fn chunked_body_streams_correctly() {
     }
     .block_on();
 }
+
+#[test]
+fn send_https_get_request() {
+    async {
+        let req = HttpRequest {
+            url: url::Url::parse("https://httpbin.org/get").unwrap(),
+            method: "GET".to_string(),
+            headers: vec![],
+            body: HttpRequest::body_from_bytes(None),
+        };
+
+        let resp = http::send_http_request(req)
+            .await
+            .expect("HTTPS GET to httpbin.org failed — TLS or DNS issue");
+        assert_eq!(resp.status, 200);
+
+        let echo: serde_json::Value = serde_json::from_slice(&resp.body).unwrap();
+        assert!(echo["url"].as_str().unwrap().contains("httpbin.org"));
+    }
+    .block_on();
+}

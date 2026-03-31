@@ -27,8 +27,7 @@ except Exception as e:
     print("  (notallowed.example is not in the allowlist — correct!)")
 """)
 print(result.stdout)
-if not result.success:
-    print("(Network access correctly denied — sandbox terminated)")
+assert "Network blocked" in result.stdout, "test 1: expected network access to be blocked"
 
 # ═══════════════════════════════════════════════════════════════════
 # Test 2: Network access to allowed domain (WASI-HTTP)
@@ -44,11 +43,7 @@ print(f"Response body (first 200 chars):")
 print(resp['body'][:200])
 """)
 print(result.stdout)
-if result.success:
-    print("✅ Network access to allowed domain works via WASI-HTTP!")
-else:
-    print("⚠️ Network access failed")
-    print(f"stderr: {result.stderr[:300]}")
+assert result.success, f"test 2: network access to allowed domain failed\nstderr: {result.stderr[:300]}"
 
 # ═══════════════════════════════════════════════════════════════════
 # Test 3: Method filtering — GET allowed, POST blocked
@@ -72,6 +67,7 @@ except Exception as e:
     print("  (httpbin.org only allows GET \u2014 correct!)")
 """)
 print(result.stdout)
+assert "POST blocked" in result.stdout, "test 3: expected POST to be blocked"
 
 print("═" * 60)
 print("✅ All tests passed!")

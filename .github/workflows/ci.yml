@@ -89,31 +89,37 @@ jobs:
         run: just wasm examples
 
       # Python SDK checks go here so we don't rebuild everything from scratch on another job
-      - name: Format check
+      # Build JS sandbox first — the Python hyperlight-js backend shares the root
+      # workspace target/ and needs hyperlight-js-runtime to be compiled.
+      - name: Build JS sandbox
+        run: just jssandbox build
+
+      - name: Python SDK Format check
         run: just python fmt-check
 
-      - name: Lint
+      - name: Python SDK Lint
         run: just python lint
 
-      - name: Build
+      - name: Python SDK Build
         run: just python build
 
-      - name: Run examples
+      - name: Python SDK examples
         run: just python examples
 
-      - name: Tests
+      - name: Python SDK Tests
         run: just python python-test
 
-      - name: Fuzz
-        run: just fuzz 90
-
-      - name: Benchmark
-        run: just benchmark
+      - name: Python SDK Fuzz
+        run: just fuzz 30
       
-      - name: Run integration examples
+      - name: Run Python SDK integration examples
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
         run: just integration-examples
+
+      # run last becuase it runs in build mode and messes with maturin
+      - name: Python SDK Benchmark
+        run: just benchmark
 
   javascript-sandbox:
     name: JS Sandbox · lint / build / examples

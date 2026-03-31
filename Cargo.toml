@@ -3,6 +3,9 @@ members = [
 	"src/hyperlight_sandbox",
 	"src/javascript_sandbox",
 	"src/wasm_sandbox",
+	"src/sdk/python/pyo3_common",
+	"src/sdk/python/wasm_backend",
+	"src/sdk/python/hyperlight_js_backend",
 ]
 # nanvix_sandbox requires nightly Rust (nanvix uses #![feature(never_type)])
 exclude = [

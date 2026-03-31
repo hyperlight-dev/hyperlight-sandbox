@@ -1,6 +1,6 @@
 """HyperlightJS backend implementation package for hyperlight_sandbox."""
 
-from hyperlight_sandbox_backend_hyperlight_js._native import (
+from hyperlight_sandbox_backend_hyperlight_js._native_js import (
     JSSandbox,
     PyExecutionResult,
     PySnapshot,

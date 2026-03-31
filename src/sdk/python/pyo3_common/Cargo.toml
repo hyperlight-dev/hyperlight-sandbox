@@ -5,8 +5,6 @@ edition = "2024"
 description = "Shared PyO3 helpers for hyperlight-sandbox backend crates"
 license = "Apache-2.0"
 
-[workspace]
-
 [dependencies]
 pyo3 = { version = "0.28", features = ["extension-module"] }
 hyperlight-sandbox = { path = "../../../hyperlight_sandbox" }

@@ -24,9 +24,13 @@ guest-compile-wit: ensure-tools
     rm -rf {{repo-root}}/target/hyperlight-wasm-runtime \
            {{repo-root}}/target/debug/build/hyperlight-wasm-* \
            {{repo-root}}/target/debug/.fingerprint/hyperlight-wasm-* \
+           {{repo-root}}/target/release/build/hyperlight-wasm-* \
+           {{repo-root}}/target/release/.fingerprint/hyperlight-wasm-* \
            {{repo-root}}/src/sdk/python/wasm_backend/target/hyperlight-wasm-runtime \
            {{repo-root}}/src/sdk/python/wasm_backend/target/debug/build/hyperlight-wasm-* \
            {{repo-root}}/src/sdk/python/wasm_backend/target/debug/.fingerprint/hyperlight-wasm-* \
+           {{repo-root}}/src/sdk/python/wasm_backend/target/release/build/hyperlight-wasm-* \
+           {{repo-root}}/src/sdk/python/wasm_backend/target/release/.fingerprint/hyperlight-wasm-* \
            2>/dev/null || true
 
 guest-build-aot target=default-target: guest-build-wasm ensure-tools

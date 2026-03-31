@@ -123,6 +123,12 @@ jobs:
       - name: Python SDK Benchmark
         run: just benchmark
 
+      # Build release wheels and verify they install + work correctly
+      - name: Python SDK Wheelhouse test
+        run: |
+          just python-dist
+          just python python-wheelhouse-test
+
   javascript-sandbox:
     name: JS Sandbox · lint / build / examples
     runs-on: ubuntu-latest

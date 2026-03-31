@@ -41,6 +41,8 @@ test-rust:
 
 benchmark: python::python-sandbox-benchmark
 
+python-dist: (wasm::build "release") python::python-dist
+
 examples target=default-target: (wasm::examples target) (jssandbox::examples target) python::examples
 
 integration-examples target=default-target: (wasm::guest-build target) wasm::js-guest-build python::build examples_mod::integration-examples

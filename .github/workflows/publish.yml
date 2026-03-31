@@ -43,11 +43,8 @@ jobs:
       - name: Install JS guest dependencies
         run: just wasm js-guest-install
 
-      - name: Build guests
-        run: |
-          just wasm guest-build
-          just wasm js-guest-build
-
       - name: Build & Publish
         if: ${{ !env.ACT }}
-        run: just python python-publish
+        run: |
+          just python-dist
+          just python python-publish

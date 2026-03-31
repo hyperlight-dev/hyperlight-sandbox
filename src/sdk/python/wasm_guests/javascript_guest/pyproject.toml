@@ -7,11 +7,11 @@ name = "hyperlight-sandbox-javascript-guest"
 version = "0.1.0"
 description = "Packaged Hyperlight Wasm JavaScript guest exposed as javascript_guest.path"
 readme = "README.md"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
 requires-python = ">=3.10"
 
 [tool.setuptools]
-packages = ["javascript_guest"]
+packages = ["javascript_guest", "javascript_guest.resources"]
 
 [tool.setuptools.package-data]
 javascript_guest = ["resources/*.aot", "resources/*.wasm"]

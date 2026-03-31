@@ -1,0 +1,25 @@
+repo-root := invocation_directory()
+wit-world := if os() == "windows" { "$env:WIT_WORLD=\"" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm\";" } else { "WIT_WORLD=" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm" }
+
+integration-copilot-sdk-deps:
+    uv sync --group copilot-sdk
+
+integration-agent-framework-deps:
+    uv sync --group agent-framework
+
+integration-agent-framework-devui-deps:
+    uv sync --group agent-framework-devui
+
+copilot-sdk-example: integration-copilot-sdk-deps
+    {{ wit-world }} uv run python {{repo-root}}/examples/copilot-sdk/copilot_sdk_tools.py
+
+agent-framework-example: integration-agent-framework-deps
+    {{ wit-world }} uv run python {{repo-root}}/examples/agent-framework/copilot_agent.py --no-wait
+
+agent-framework-example-interactive: integration-agent-framework-deps
+    {{ wit-world }} uv run python {{repo-root}}/examples/agent-framework/copilot_agent.py --interactive
+
+agent-framework-example-devui: integration-agent-framework-deps integration-agent-framework-devui-deps
+    {{ wit-world }} uv run python {{repo-root}}/examples/agent-framework/copilot_agent.py --devui
+
+integration-examples: copilot-sdk-example agent-framework-example

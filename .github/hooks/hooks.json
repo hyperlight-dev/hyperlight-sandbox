@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "bash .vscode/run-just-post-session.sh",
+        "timeout": 1800
+      }
+    ]
+  }
+}

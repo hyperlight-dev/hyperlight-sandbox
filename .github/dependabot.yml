@@ -1,0 +1,43 @@
+version: 2
+updates:
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Rust (root workspace)
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Rust (Python wasm backend — separate workspace)
+  - package-ecosystem: "cargo"
+    directory: "/src/sdk/python/wasm_backend"
+    schedule:
+      interval: "weekly"
+
+  # Rust (Python hyperlight-js backend — separate workspace)
+  - package-ecosystem: "cargo"
+    directory: "/src/sdk/python/hyperlight_js_backend"
+    schedule:
+      interval: "weekly"
+
+  # Rust (Python pyo3 common — separate workspace)
+  - package-ecosystem: "cargo"
+    directory: "/src/sdk/python/pyo3_common"
+    schedule:
+      interval: "weekly"
+
+  # Python (uv/pip)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # npm (JavaScript guest)
+  - package-ecosystem: "npm"
+    directory: "/src/wasm_sandbox/guests/javascript"
+    schedule:
+      interval: "weekly"

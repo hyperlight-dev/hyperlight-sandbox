@@ -1,0 +1,18 @@
+[package]
+name = "hyperlight-sandbox-backend-hyperlight-js"
+version = "0.1.0"
+edition = "2024"
+description = "HyperlightJS backend bindings for hyperlight-sandbox"
+license = "Apache-2.0"
+
+[workspace]
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.28", features = ["extension-module"] }
+hyperlight-sandbox = { path = "../../../hyperlight_sandbox" }
+hyperlight-javascript-sandbox = { path = "../../../javascript_sandbox" }
+hyperlight-sandbox-pyo3-common = { path = "../pyo3_common" }

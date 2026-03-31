@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hyperlight-sandbox-python-guest"
+version = "0.1.0"
+description = "Packaged Hyperlight Wasm Python guest exposed as python_guest.path"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["python_guest"]
+
+[tool.setuptools.package-data]
+python_guest = ["resources/*.aot", "resources/*.wasm"]

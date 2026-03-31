@@ -1,0 +1,32 @@
+default-target := "debug"
+repo-root := invocation_directory()
+wit-world := if os() == "windows" { "$env:WIT_WORLD=\"" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm\";" } else { "WIT_WORLD=" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm" }
+
+build target=default-target:
+    #!/usr/bin/env bash
+    # If cargo fingerprints exist but the runtime binary is missing, clean stale state
+    # to force hyperlight-js's build script to re-run. This can happen when rust-cache
+    # restores partial artifacts.
+    if compgen -G "{{repo-root}}/target/debug/build/hyperlight-js-*" > /dev/null && \
+       [ ! -f "{{repo-root}}/target/hyperlight-js-runtime/x86_64-hyperlight-none/debug/hyperlight-js-runtime" ]; then
+        echo "Cleaning stale hyperlight-js build artifacts..."
+        rm -rf {{repo-root}}/target/hyperlight-js-runtime \
+               {{repo-root}}/target/debug/build/hyperlight-js-* \
+               {{repo-root}}/target/debug/.fingerprint/hyperlight-js-*
+    fi
+    {{ wit-world }} cargo build --manifest-path {{repo-root}}/src/javascript_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }}
+
+#### EXAMPLES ####
+
+examples target=default-target:
+    {{ wit-world }} cargo run --manifest-path {{repo-root}}/src/javascript_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example basics
+    {{ wit-world }} cargo run --manifest-path {{repo-root}}/src/javascript_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example network_demo
+    {{ wit-world }} cargo run --manifest-path {{repo-root}}/src/javascript_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example filesystem_demo
+
+#### TESTS ####
+
+lint:
+    {{ wit-world }} cargo clippy -p hyperlight-javascript-sandbox --all-targets -- -D warnings
+
+test:
+    {{ wit-world }} cargo test -p hyperlight-javascript-sandbox

@@ -1,0 +1,37 @@
+[workspace]
+members = [
+	"src/hyperlight_sandbox",
+	"src/javascript_sandbox",
+	"src/wasm_sandbox",
+]
+# nanvix_sandbox requires nightly Rust (nanvix uses #![feature(never_type)])
+exclude = [
+	"src/nanvix_sandbox",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+hyperlight-sandbox = { path = "src/hyperlight_sandbox" }
+hyperlight-javascript-sandbox = { path = "src/javascript_sandbox" }
+hyperlight-wasm-sandbox = { path = "src/wasm_sandbox" }
+hyperlight-common = { version = "0.13.1", default-features = false }
+hyperlight-component-macro = { version = "0.13.1" }
+hyperlight-host = { version = "0.13.1", default-features = false, features = ["executable_heap"] }
+hyperlight-wasm = { git = "https://github.com/jsturtevant/hyperlight-wasm", rev = "09b5e8297d827518847c08c8506bf83e85eb89b1" }
+
+# Patched component-util (name collision fix, flags fix, empty-ns fix)
+[patch."https://github.com/hyperlight-dev/hyperlight"]
+hyperlight-common = { version = "=0.13.1" }
+hyperlight-guest = { version = "=0.13.1" }
+hyperlight-guest-bin = { version = "=0.13.1" }
+hyperlight-host = { version = "=0.13.1" }
+hyperlight-component-util = { git = "https://github.com/jsturtevant/hyperlight-1", branch = "wasm-component-fixes", package = "hyperlight-component-util" }
+
+[patch.crates-io]
+hyperlight-component-util = { git = "https://github.com/jsturtevant/hyperlight-1", branch = "wasm-component-fixes", package = "hyperlight-component-util" }

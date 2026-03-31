@@ -1,0 +1,129 @@
+repo-root := invocation_directory()
+wit-world := if os() == "windows" { "$env:WIT_WORLD=\"" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm\";" } else { "WIT_WORLD=" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm" }
+
+core-dist := repo-root + "/src/sdk/python/core/dist"
+wasm-wheels := repo-root + "/src/sdk/python/wasm_backend/target/wheels"
+hyperlight-js-wheels := repo-root + "/src/sdk/python/hyperlight_js_backend/target/wheels"
+python-guest-dist := repo-root + "/src/sdk/python/wasm_guests/python_guest/dist"
+javascript-guest-dist := repo-root + "/src/sdk/python/wasm_guests/javascript_guest/dist"
+
+#### BUILD ####
+
+python-sync-guest-resources:
+    mkdir -p {{repo-root}}/src/sdk/python/wasm_guests/python_guest/python_guest/resources
+    mkdir -p {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest/javascript_guest/resources
+    cp {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.aot {{repo-root}}/src/sdk/python/wasm_guests/python_guest/python_guest/resources/python-sandbox.aot
+    cp {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.wasm {{repo-root}}/src/sdk/python/wasm_guests/python_guest/python_guest/resources/python-sandbox.wasm
+    cp {{repo-root}}/src/wasm_sandbox/guests/javascript/js-sandbox.aot {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest/javascript_guest/resources/js-sandbox.aot
+    cp {{repo-root}}/src/wasm_sandbox/guests/javascript/js-sandbox.wasm {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest/javascript_guest/resources/js-sandbox.wasm
+
+python-install-backend-wasm:
+    cd {{repo-root}}/src/sdk/python/wasm_backend && {{ wit-world }} uv run maturin develop
+
+python-install-backend-wasm-release:
+    # Remove cached build-script output for hyperlight-wasm so that the
+    # wasm-runtime guest binary is rebuilt for the release profile.
+    # Without this, cargo may reuse a stale debug-mode cache entry and
+    # skip building the release binary (upstream missing rerun-if-env-changed=PROFILE).
+    rm -rf {{repo-root}}/src/sdk/python/wasm_backend/target/release/build/hyperlight-wasm-*
+    cd {{repo-root}}/src/sdk/python/wasm_backend && {{ wit-world }} uv run maturin develop --release
+
+python-install-backend-hyperlight-js:
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin develop
+
+python-install-backend-hyperlight-js-release:
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin develop --release
+
+python-build: python-sync-guest-resources python-install-backend-wasm python-install-backend-hyperlight-js
+
+python-build-release: python-sync-guest-resources python-install-backend-wasm-release python-install-backend-hyperlight-js-release
+
+build: python-build
+
+#### DIST / PUBLISH ####
+
+python-dist: python-sync-guest-resources
+    rm -rf {{core-dist}} {{wasm-wheels}} {{hyperlight-js-wheels}} {{python-guest-dist}} {{javascript-guest-dist}}
+    cd {{repo-root}}/src/sdk/python/core && uv run python -m build
+    cd {{repo-root}}/src/sdk/python/wasm_backend && {{ wit-world }} uv run maturin build --release
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release
+    cd {{repo-root}}/src/sdk/python/wasm_guests/python_guest && uv run python -m build
+    cd {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest && uv run python -m build
+
+python-publish repository="pypi": python-dist
+    #!/usr/bin/env bash
+    set -e
+    publish_url=()
+    if [ "{{ repository }}" != "pypi" ]; then
+        publish_url=(--publish-url "https://test.pypi.org/legacy/")
+    fi
+    uv publish "${publish_url[@]}" {{wasm-wheels}}/*
+    uv publish "${publish_url[@]}" {{hyperlight-js-wheels}}/*
+    uv publish "${publish_url[@]}" {{python-guest-dist}}/*
+    uv publish "${publish_url[@]}" {{javascript-guest-dist}}/*
+    uv publish "${publish_url[@]}" {{core-dist}}/*
+
+python-wheelhouse-test: python-sync-guest-resources
+    #!/usr/bin/env bash
+    set -e
+    wheelhouse=$(mktemp -d)
+    root={{repo-root}}
+
+    uv build --wheel --out-dir "$wheelhouse" "$root/src/sdk/python/core"
+    {{ wit-world }} uv build --wheel --out-dir "$wheelhouse" "$root/src/sdk/python/wasm_backend"
+    uv build --wheel --out-dir "$wheelhouse" "$root/src/sdk/python/hyperlight_js_backend"
+    uv build --wheel --out-dir "$wheelhouse" "$root/src/sdk/python/wasm_guests/python_guest"
+    uv build --wheel --out-dir "$wheelhouse" "$root/src/sdk/python/wasm_guests/javascript_guest"
+
+    # Test wasm + python guest
+    uv run --no-project --no-index --find-links="$wheelhouse" \
+        --with "hyperlight-sandbox[wasm,python_guest]" \
+        python "$root/src/sdk/python/tests/wheelhouse_wasm.py"
+
+    # Test hyperlight-js + javascript guest
+    uv run --no-project --no-index --find-links="$wheelhouse" \
+        --with "hyperlight-sandbox[hyperlight_js,javascript_guest]" \
+        python "$root/src/sdk/python/tests/wheelhouse_js.py"
+
+#### EXAMPLES ####
+
+examples: python-build
+    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/python_basics.py
+    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/python_network_demo.py
+    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/python_filesystem_demo.py
+    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/javascript_basics.py
+    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/javascript_network_demo.py
+    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/javascript_filesystem_demo.py
+    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/jswasm_basics.py
+    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/jswasm_network_demo.py
+    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/jswasm_filesystem_demo.py
+
+python-sandbox-benchmark: python-build-release
+    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/benchmark.py
+
+#### CLEAN ####
+
+clean:
+    rm -rf {{repo-root}}/src/sdk/python/wasm_backend/target
+    rm -rf {{repo-root}}/src/sdk/python/hyperlight_js_backend/target
+
+#### LINT / FORMAT ####
+
+lint:
+    uv run ruff check {{repo-root}}/src/sdk/python {{repo-root}}/examples
+
+fmt:
+    uv run ruff format {{repo-root}}/src/sdk/python {{repo-root}}/examples
+    uv run ruff check --fix {{repo-root}}/src/sdk/python {{repo-root}}/examples
+
+fmt-check:
+    uv run ruff format --check {{repo-root}}/src/sdk/python {{repo-root}}/examples
+    uv run ruff check {{repo-root}}/src/sdk/python {{repo-root}}/examples
+
+#### TESTS ####
+
+python-test: python-build
+    uv run python -m unittest discover -s {{repo-root}}/src/sdk/python/core/tests -p 'test_*.py' -v
+
+python-fuzz seconds="60": python-build
+    uv run --package hyperlight-sandbox --extra dev python {{repo-root}}/src/sdk/python/core/tests/fuzz_tool_dispatch.py -max_total_time={{seconds}}

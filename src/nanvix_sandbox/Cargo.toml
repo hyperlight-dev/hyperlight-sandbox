@@ -1,0 +1,13 @@
+[package]
+name = "hyperlight-nanvix-sandbox"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Nanvix microkernel sandbox backend for hyperlight-sandbox"
+
+[dependencies]
+hyperlight-sandbox = { path = "../hyperlight_sandbox" }
+hyperlight-nanvix = { git = "https://github.com/hyperlight-dev/hyperlight-nanvix", rev = "f4bc205a40ed072cbb5f26b141498477985782f7" }
+anyhow = "1"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+tempfile = "3"

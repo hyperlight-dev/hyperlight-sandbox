@@ -1,0 +1,28 @@
+[package]
+name = "hyperlight-sandbox-backend-wasm"
+version = "0.1.0"
+edition = "2024"
+description = "Wasm backend bindings for hyperlight-sandbox"
+license = "Apache-2.0"
+
+[workspace]
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.28", features = ["extension-module"] }
+hyperlight-sandbox = { path = "../../../hyperlight_sandbox" }
+hyperlight-wasm-sandbox = { path = "../../../wasm_sandbox" }
+hyperlight-sandbox-pyo3-common = { path = "../pyo3_common" }
+
+[patch."https://github.com/hyperlight-dev/hyperlight"]
+hyperlight-common = { version = "=0.13.1" }
+hyperlight-guest = { version = "=0.13.1" }
+hyperlight-guest-bin = { version = "=0.13.1" }
+hyperlight-host = { version = "=0.13.1" }
+hyperlight-component-util = { git = "https://github.com/jsturtevant/hyperlight-1", branch = "wasm-component-fixes", package = "hyperlight-component-util" }
+
+[patch.crates-io]
+hyperlight-component-util = { git = "https://github.com/jsturtevant/hyperlight-1", branch = "wasm-component-fixes", package = "hyperlight-component-util" }

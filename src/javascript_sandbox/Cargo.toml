@@ -1,0 +1,18 @@
+[package]
+name = "hyperlight-javascript-sandbox"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Hyperlight JS guest for hyperlight-sandbox"
+
+[dependencies]
+hyperlight-sandbox.workspace = true
+anyhow = "1"
+url = "2"
+hyperlight-js = { git = "https://github.com/hyperlight-dev/hyperlight-js.git", rev = "eeca10c9574ecb3eb03955350e91b6f58d562792" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

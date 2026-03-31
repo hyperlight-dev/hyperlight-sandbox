@@ -1,0 +1,179 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust · fmt / lint / test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606  # v1.15.4
+        with:
+          toolchain: nightly, 1.94
+          components: rustfmt, clippy
+          rustflags: ""
+
+      - name: Install just
+        run: cargo install --locked just
+
+      - name: Format check
+        run: just fmt-check-rust
+
+      - name: Lint
+        run: just lint-rust
+
+      - name: Tests
+        run: just test-rust
+
+  wasm-sandbox:
+    name: WASM Sandbox · lint / build / examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606  # v1.15.4
+        with:
+          components: clippy
+          rustflags: ""
+
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        with:
+          node-version: "latest"
+          cache: npm
+          cache-dependency-path: src/wasm_sandbox/guests/javascript/package-lock.json
+
+      - name: Install just
+        run: cargo install --locked just
+
+      - name: Install clang
+        run: sudo apt-get update && sudo apt-get install -y clang
+
+      - name: Enable KVM
+        if: ${{ !env.ACT }}
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 666 /dev/kvm
+
+      - name: Build
+        run: just wasm build
+
+      - name: Lint
+        run: just wasm lint
+
+      - name: Integration tests
+        run: just wasm test
+
+      - name: Run examples
+        run: just wasm examples
+
+      # Python SDK checks go here so we don't rebuild everything from scratch on another job
+      - name: Format check
+        run: just python fmt-check
+
+      - name: Lint
+        run: just python lint
+
+      - name: Build
+        run: just python build
+
+      - name: Run examples
+        run: just python examples
+
+      - name: Tests
+        run: just python python-test
+
+      - name: Fuzz
+        run: just fuzz 90
+
+      - name: Benchmark
+        run: just benchmark
+      
+      - name: Run integration examples
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+        run: just integration-examples
+
+  javascript-sandbox:
+    name: JS Sandbox · lint / build / examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606  # v1.15.4
+        with:
+          components: clippy
+          rustflags: ""
+
+      - name: Install just
+        run: cargo install --locked just
+
+      - name: Install clang
+        run: sudo apt-get update && sudo apt-get install -y clang
+
+      - name: Enable KVM
+        if: ${{ !env.ACT }}
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 666 /dev/kvm
+
+      - name: Compile WIT world
+        run: just wasm guest-compile-wit
+
+      - name: Build
+        run: just jssandbox build
+
+      - name: Lint
+        run: just jssandbox lint
+
+      - name: Tests
+        run: just jssandbox test
+
+      - name: Run examples
+        run: just jssandbox examples
+
+  nanvix-sandbox:
+    name: Nanvix Sandbox · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606  # v1.15.4
+        with:
+          toolchain: nightly
+          rustflags: ""
+
+      - name: Install just
+        run: cargo install --locked just
+
+      - name: Build
+        run: just nanvix build
+
+      # NOTE: nanvix examples are skipped until hyperlight-nanvix updates to
+      # the new nanvix registry API (qjs/python3 are now separate packages).
+      # See: https://github.com/hyperlight-dev/hyperlight-nanvix
+      # - name: Run examples
+      #   run: just nanvix examples

@@ -1,0 +1,2 @@
+[env]
+WIT_WORLD = { value = "../../../../wasm_sandbox/wit/sandbox-world.wasm", relative = true }

@@ -1,0 +1,17 @@
+target/
+.venv/
+*.aot
+*.wasm
+__pycache__/
+*.so
+*.pyc
+node_modules/
+build/
+dist/
+wheels/
+*.whl
+*.egg-info/
+pip-wheel-metadata/
+src/sdk/python/wasm_backend/Cargo.lock
+src/sdk/python/hyperlight_js_backend/Cargo.lock
+docs/end-user-overview-slides.html

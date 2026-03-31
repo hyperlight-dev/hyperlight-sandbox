@@ -112,10 +112,12 @@ jobs:
       - name: Python SDK Fuzz
         run: just fuzz 30
       
-      - name: Run Python SDK integration examples
-        env:
-          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
-        run: just integration-examples
+      # this is too flaky in github actions to run on PRs
+      # copilot fails to repsond in a timely fashion
+      # - name: Run Python SDK integration examples
+      #   env:
+      #     COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+      #   run: just integration-examples
 
       # run last becuase it runs in build mode and messes with maturin
       - name: Python SDK Benchmark

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use hyperlight_sandbox::{DirPerms, FilePerms, HttpMethod, Sandbox, SandboxConfig};
+use hyperlight_sandbox::{DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, HttpMethod, Sandbox, SandboxConfig};
 use hyperlight_sandbox_pyo3_common::{
     PyExecutionResult, PySnapshot, build_tool_registry, parse_size, parse_tool_registration,
 };
@@ -22,14 +22,14 @@ pub struct WasmSandbox {
 #[pymethods]
 impl WasmSandbox {
     #[new]
-    #[pyo3(signature = (module_path, input_dir=None, output_dir=None, temp_output=false, heap_size="200Mi", stack_size="100Mi"))]
+    #[pyo3(signature = (module_path, input_dir=None, output_dir=None, temp_output=false, heap_size=None, stack_size=None))]
     fn new(
         module_path: &str,
         input_dir: Option<&str>,
         output_dir: Option<&str>,
         temp_output: bool,
-        heap_size: &str,
-        stack_size: &str,
+        heap_size: Option<&str>,
+        stack_size: Option<&str>,
     ) -> PyResult<Self> {
         Ok(WasmSandbox {
             inner: None,
@@ -37,8 +37,14 @@ impl WasmSandbox {
             pending_networks: Vec::new(),
             config: SandboxConfig {
                 module_path: module_path.to_string(),
-                heap_size: parse_size(heap_size)?,
-                stack_size: parse_size(stack_size)?,
+                heap_size: match heap_size {
+                    Some(s) => parse_size(s)?,
+                    None => DEFAULT_HEAP_SIZE,
+                },
+                stack_size: match stack_size {
+                    Some(s) => parse_size(s)?,
+                    None => DEFAULT_STACK_SIZE,
+                },
             },
             input_dir: input_dir.map(|s| s.to_string()),
             output_dir: output_dir.map(|s| s.to_string()),

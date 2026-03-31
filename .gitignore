@@ -4,6 +4,8 @@ target/
 *.wasm
 __pycache__/
 *.so
+*.pyd
+*.pdb
 *.pyc
 node_modules/
 build/

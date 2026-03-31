@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use hyperlight_sandbox::Sandbox;
+use hyperlight_sandbox::{Sandbox, DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE};
 use hyperlight_wasm_sandbox::Wasm;
 
 fn javascript_guest_path() -> String {
@@ -22,8 +22,8 @@ fn main() {
     let mut sandbox = Sandbox::builder()
         .guest(Wasm)
         .module_path(javascript_guest_path())
-        .heap_size(200 * 1024 * 1024)
-        .stack_size(100 * 1024 * 1024)
+        .heap_size(DEFAULT_HEAP_SIZE)
+        .stack_size(DEFAULT_STACK_SIZE)
         .build()
         .expect("failed to create JS sandbox");
     sandbox

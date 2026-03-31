@@ -66,7 +66,7 @@ ci job="":
         echo "act is not installed. Install it from: https://nektosact.com/installation/index.html"
         exit 1
     fi
-    args=(-e {{ justfile_directory() }}/.github/act-event.json)
+    args=(-e {{ replace(justfile_directory(), "\\", "/") }}/.github/act-event.json)
     if [ -e /dev/kvm ]; then
         args+=(--container-options "--device /dev/kvm")
     fi

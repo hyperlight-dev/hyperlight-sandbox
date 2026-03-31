@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use hyperlight_sandbox::test_utils::EchoServer;
-use hyperlight_sandbox::{HttpMethod, Sandbox};
+use hyperlight_sandbox::{HttpMethod, Sandbox, DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE};
 use hyperlight_wasm_sandbox::Wasm;
 
 fn python_guest_path() -> String {
@@ -25,8 +25,8 @@ async fn wasm_python_post_with_body() {
         let mut sandbox = Sandbox::builder()
             .guest(Wasm)
             .module_path(python_guest_path())
-            .heap_size(200 * 1024 * 1024)
-            .stack_size(100 * 1024 * 1024)
+            .heap_size(DEFAULT_HEAP_SIZE)
+            .stack_size(DEFAULT_STACK_SIZE)
             .build()
             .expect("failed to create sandbox");
 
@@ -62,8 +62,8 @@ async fn wasm_python_get_request() {
         let mut sandbox = Sandbox::builder()
             .guest(Wasm)
             .module_path(python_guest_path())
-            .heap_size(200 * 1024 * 1024)
-            .stack_size(100 * 1024 * 1024)
+            .heap_size(DEFAULT_HEAP_SIZE)
+            .stack_size(DEFAULT_STACK_SIZE)
             .build()
             .expect("failed to create sandbox");
 
@@ -100,8 +100,8 @@ async fn wasm_python_post_large_body_streams_in_chunks() {
         let mut sandbox = Sandbox::builder()
             .guest(Wasm)
             .module_path(python_guest_path())
-            .heap_size(200 * 1024 * 1024)
-            .stack_size(100 * 1024 * 1024)
+            .heap_size(DEFAULT_HEAP_SIZE)
+            .stack_size(DEFAULT_STACK_SIZE)
             .build()
             .expect("failed to create sandbox");
 

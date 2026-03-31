@@ -1,17 +1,16 @@
-repo-root := invocation_directory()
+repo-root := replace(invocation_directory(), "\\", "/")
 nanvix-rev := "f4bc205a40ed072cbb5f26b141498477985782f7"
+skip-msg := "echo 'Skipping nanvix (not supported on Windows)'"
 
 build:
-    cd {{repo-root}}/src/nanvix_sandbox && cargo +nightly build
+    {{ if os() == "windows" { skip-msg } else { "cd " + repo-root + "/src/nanvix_sandbox && cargo +nightly build" } }}
 
 setup-registry:
-    @command -v hyperlight-nanvix >/dev/null 2>&1 || \
-        cargo +nightly install --git https://github.com/hyperlight-dev/hyperlight-nanvix --rev {{nanvix-rev}}
-    hyperlight-nanvix setup-registry
+    {{ if os() == "windows" { skip-msg } else { "@command -v hyperlight-nanvix >/dev/null 2>&1 || cargo +nightly install --git https://github.com/hyperlight-dev/hyperlight-nanvix --rev " + nanvix-rev + "\n    hyperlight-nanvix setup-registry" } }}
 
 #### EXAMPLES ####
 
 nanvix-sandbox-example: setup-registry
-    cd {{repo-root}}/src/nanvix_sandbox && cargo +nightly run --example hello
+    {{ if os() == "windows" { skip-msg } else { "cd " + repo-root + "/src/nanvix_sandbox && cargo +nightly run --example hello" } }}
 
 examples: nanvix-sandbox-example

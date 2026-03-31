@@ -1,5 +1,5 @@
-repo-root := invocation_directory()
-wit-world := if os() == "windows" { "$env:WIT_WORLD=\"" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm\";" } else { "WIT_WORLD=" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm" }
+repo-root := replace(invocation_directory(), "\\", "/")
+wit-world := "WIT_WORLD=" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm"
 
 dist-root := repo-root + "/dist/pythonsdk"
 core-dist := dist-root + "/core"
@@ -139,4 +139,4 @@ python-test: python-build
     uv run python -m unittest discover -s {{repo-root}}/src/sdk/python/core/tests -p 'test_*.py' -v
 
 python-fuzz seconds="60": python-build
-    uv run --package hyperlight-sandbox --extra dev python {{repo-root}}/src/sdk/python/core/tests/fuzz_tool_dispatch.py -max_total_time={{seconds}}
+    {{ if os() == "windows" { "echo 'Skipping python fuzz (atheris not available on Windows)'" } else { "uv run --package hyperlight-sandbox --extra dev python " + repo-root + "/src/sdk/python/core/tests/fuzz_tool_dispatch.py -max_total_time=" + seconds } }}

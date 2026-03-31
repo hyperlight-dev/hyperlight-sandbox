@@ -53,6 +53,12 @@ flowchart TD
 
 Python SDK:
 
+```shell
+uv pip install "hyperlight-sandbox[wasm,python_guest]"
+```
+
+And to use it:
+
 ```python
 from hyperlight_sandbox import Sandbox
 
@@ -183,6 +189,11 @@ fn main() {
 
 ## Building
 
+Tool requirements:
+
+- just
+- uv
+- npm
 
 ```bash
 # Build everything (Rust backends, Wasm guests, Python SDK)

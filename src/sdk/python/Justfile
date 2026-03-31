@@ -1,11 +1,12 @@
 repo-root := invocation_directory()
 wit-world := if os() == "windows" { "$env:WIT_WORLD=\"" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm\";" } else { "WIT_WORLD=" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm" }
 
-core-dist := repo-root + "/src/sdk/python/core/dist"
-wasm-wheels := repo-root + "/src/sdk/python/wasm_backend/target/wheels"
-hyperlight-js-wheels := repo-root + "/src/sdk/python/hyperlight_js_backend/target/wheels"
-python-guest-dist := repo-root + "/src/sdk/python/wasm_guests/python_guest/dist"
-javascript-guest-dist := repo-root + "/src/sdk/python/wasm_guests/javascript_guest/dist"
+dist-root := repo-root + "/dist/pythonsdk"
+core-dist := dist-root + "/core"
+wasm-wheels := dist-root + "/wasm_backend"
+hyperlight-js-wheels := dist-root + "/hyperlight_js_backend"
+python-guest-dist := dist-root + "/python_guest"
+javascript-guest-dist := dist-root + "/javascript_guest"
 
 #### BUILD ####
 
@@ -50,12 +51,12 @@ build: python-build
 #### DIST / PUBLISH ####
 
 python-dist: python-sync-guest-resources
-    rm -rf {{core-dist}} {{wasm-wheels}} {{hyperlight-js-wheels}} {{python-guest-dist}} {{javascript-guest-dist}}
-    cd {{repo-root}}/src/sdk/python/core && uv run python -m build
-    cd {{repo-root}}/src/sdk/python/wasm_backend && {{ wit-world }} uv run maturin build --release
-    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release
-    cd {{repo-root}}/src/sdk/python/wasm_guests/python_guest && uv run python -m build
-    cd {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest && uv run python -m build
+    rm -rf {{dist-root}}
+    cd {{repo-root}}/src/sdk/python/core && uv run python -m build --outdir {{core-dist}}
+    cd {{repo-root}}/src/sdk/python/wasm_backend && {{ wit-world }} uv run maturin build --release --out {{wasm-wheels}}
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}}
+    cd {{repo-root}}/src/sdk/python/wasm_guests/python_guest && uv run python -m build --outdir {{python-guest-dist}}
+    cd {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest && uv run python -m build --outdir {{javascript-guest-dist}}
 
 python-publish repository="pypi": python-dist
     #!/usr/bin/env bash

@@ -360,7 +360,19 @@ async def run_copilot_demo(prompt: str, module_path: str | None = None):
 
         print(f"User: {prompt}\n")
 
-        response = await session.send_and_wait({"prompt": prompt}, timeout=60.0)
+        response = None
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                timeout_secs = 60.0 * attempt  # 60s, 120s, 180s
+                response = await session.send_and_wait({"prompt": prompt}, timeout=timeout_secs)
+                break
+            except TimeoutError:
+                if attempt < max_retries:
+                    print(f"⏱️  Attempt {attempt}/{max_retries} timed out after {timeout_secs}s, retrying...")
+                else:
+                    print(f"⏱️  All {max_retries} attempts timed out")
+                    raise
 
         if response and hasattr(response, "data") and hasattr(response.data, "content"):
             print(f"\nCopilot: {response.data.content}")

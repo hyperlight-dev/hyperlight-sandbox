@@ -115,7 +115,7 @@ pub async fn send_http_request(req: HttpRequest) -> Result<HttpResponse> {
     let (hyper_request, use_tls) = build_hyper_request(req)?;
 
     let timeout = Duration::from_secs(REQUEST_TIMEOUT_SECS);
-    let config = wasmtime_wasi_http::types::OutgoingRequestConfig {
+    let config = wasmtime_wasi_http::p2::types::OutgoingRequestConfig {
         use_tls,
         connect_timeout: timeout,
         first_byte_timeout: timeout,
@@ -124,18 +124,20 @@ pub async fn send_http_request(req: HttpRequest) -> Result<HttpResponse> {
 
     // Convert our body error type to wasmtime's ErrorCode at the boundary.
     let (parts, body) = hyper_request.into_parts();
-    let wasi_body: wasmtime_wasi_http::body::HyperOutgoingBody = body
+    let wasi_body: wasmtime_wasi_http::p2::body::HyperOutgoingBody = body
         .map_err(|e| {
-            wasmtime_wasi_http::bindings::http::types::ErrorCode::InternalError(Some(e.to_string()))
+            wasmtime_wasi_http::p2::bindings::http::types::ErrorCode::InternalError(Some(
+                e.to_string(),
+            ))
         })
         .boxed_unsync();
     let hyper_request = hyper::Request::from_parts(parts, wasi_body);
 
-    let incoming = wasmtime_wasi_http::types::default_send_request_handler(hyper_request, config)
+    let incoming = wasmtime_wasi_http::p2::default_send_request_handler(hyper_request, config)
         .await
         .map_err(|e| anyhow::anyhow!("HTTP request failed: {e:?}"))?;
 
-    let wasmtime_wasi_http::types::IncomingResponse {
+    let wasmtime_wasi_http::p2::types::IncomingResponse {
         resp,
         worker: _worker,
         between_bytes_timeout,
@@ -211,7 +213,7 @@ fn cap_response_headers(raw: &http::HeaderMap) -> HashMap<String, String> {
 
 /// Collect a hyper response body up to [`MAX_RESPONSE_BYTES`].
 async fn collect_response_body(
-    mut body: wasmtime_wasi_http::body::HyperIncomingBody,
+    mut body: wasmtime_wasi_http::p2::body::HyperIncomingBody,
     between_bytes_timeout: Duration,
 ) -> Result<Vec<u8>> {
     let mut body_bytes = Vec::new();

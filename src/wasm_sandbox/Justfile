@@ -28,12 +28,11 @@ guest-build-wasm: ensure-tools
 
 guest-compile-wit: ensure-tools
     wasm-tools component wit {{repo-root}}/src/wasm_sandbox/wit/hyperlight-sandbox.wit -w -o {{repo-root}}/src/wasm_sandbox/wit/sandbox-world.wasm
-    just _invalidate-wit-caches
 
 # Invalidate cargo caches that embed the WIT signature.
 # Without this, cargo won't detect that sandbox-world.wasm changed
 # and SDKs will fail at runtime with "vector parameter missing length".
-_invalidate-wit-caches:
+invalidate-wit-caches:
     -{{rmrf}} {{repo-root}}/target/hyperlight-wasm-runtime
     -{{rmrf}} {{repo-root}}/target/hyperlight-js-runtime
     -{{rmrf}} {{repo-root}}/target/debug/build/hyperlight-wasm-*
@@ -54,7 +53,7 @@ guest-build-aot target=default-target: guest-build-wasm ensure-tools
     hyperlight-wasm-aot compile --component \
         {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.wasm {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.aot
 
-guest-build target=default-target: (guest-build-wasm) (guest-compile-wit) (guest-build-aot target)
+guest-build target=default-target: (guest-build-wasm) (guest-compile-wit) invalidate-wit-caches (guest-build-aot target)
 
 js-guest-build-wasm: (js-guest-install)
     cd {{repo-root}}/src/wasm_sandbox/guests/javascript && npm run build

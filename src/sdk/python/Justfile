@@ -73,7 +73,10 @@ python-publish repository="pypi":
     uv publish "${publish_url[@]}" {{javascript-guest-dist}}/*
     uv publish "${publish_url[@]}" {{core-dist}}/*
 
-python-wheelhouse-test: python-dist
+# Smoke-test the wheels in dist/pythonsdk/ by installing them into
+# isolated environments and running basic tests.
+# Requires `just python-dist` (root) to have been run first.
+python-wheelhouse-test:
     #!/usr/bin/env bash
     set -e
     root={{repo-root}}

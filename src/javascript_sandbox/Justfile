@@ -7,13 +7,15 @@ build target=default-target:
     # If cargo fingerprints exist but the runtime binary is missing, clean stale state
     # to force hyperlight-js's build script to re-run. This can happen when rust-cache
     # restores partial artifacts.
-    if compgen -G "{{repo-root}}/target/debug/build/hyperlight-js-*" > /dev/null && \
-       [ ! -f "{{repo-root}}/target/hyperlight-js-runtime/x86_64-hyperlight-none/debug/hyperlight-js-runtime" ]; then
-        echo "Cleaning stale hyperlight-js build artifacts..."
-        rm -rf {{repo-root}}/target/hyperlight-js-runtime \
-               {{repo-root}}/target/debug/build/hyperlight-js-* \
-               {{repo-root}}/target/debug/.fingerprint/hyperlight-js-*
-    fi
+    for profile in debug release; do
+        if compgen -G "{{repo-root}}/target/$profile/build/hyperlight-js-*" > /dev/null && \
+           [ ! -f "{{repo-root}}/target/hyperlight-js-runtime/x86_64-hyperlight-none/$profile/hyperlight-js-runtime" ]; then
+            echo "Cleaning stale hyperlight-js $profile build artifacts..."
+            rm -rf {{repo-root}}/target/hyperlight-js-runtime \
+                   {{repo-root}}/target/$profile/build/hyperlight-js-* \
+                   {{repo-root}}/target/$profile/.fingerprint/hyperlight-js-*
+        fi
+    done
     {{ wit-world }} cargo build --manifest-path {{repo-root}}/src/javascript_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }}
 
 #### EXAMPLES ####

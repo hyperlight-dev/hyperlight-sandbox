@@ -41,7 +41,9 @@ test-rust:
 
 benchmark: python::python-sandbox-benchmark
 
-python-dist: (wasm::build "release") python::python-dist
+python-dist: (wasm::build "release") (jssandbox::build "release") python::python-dist
+
+python-wheelhouse-test: python-dist python::python-wheelhouse-test
 
 examples target=default-target: (wasm::examples target) (jssandbox::examples target) python::examples
 

@@ -103,7 +103,7 @@ jobs:
       # Build JS sandbox first — the Python hyperlight-js backend shares the root
       # workspace target/ and needs hyperlight-js-runtime to be compiled.
       - name: Build JS sandbox
-        run: just jssandbox build
+        run: just js build
 
       - name: Python SDK Format check
         run: just python fmt-check
@@ -137,6 +137,9 @@ jobs:
   python-wheelhouse:
     name: Python SDK wheelhouse test  (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
@@ -215,16 +218,16 @@ jobs:
         run: just wasm guest-compile-wit
 
       - name: Build
-        run: just jssandbox build
+        run: just js build
 
       - name: Lint
-        run: just jssandbox lint
+        run: just js lint
 
       - name: Tests
-        run: just jssandbox test
+        run: just js test
 
       - name: Run examples
-        run: just jssandbox examples
+        run: just js examples
 
   nanvix-sandbox:
     name: Nanvix Sandbox · build

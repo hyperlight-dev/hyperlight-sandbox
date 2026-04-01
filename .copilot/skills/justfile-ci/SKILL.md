@@ -19,7 +19,7 @@ This repo uses a **hierarchical Justfile** structure with a matching **GitHub Ac
 ```
 Justfile (root)                    ← orchestrates everything
 ├── mod wasm 'src/wasm_sandbox/Justfile'
-├── mod jssandbox 'src/javascript_sandbox/Justfile'
+├── mod js 'src/javascript_sandbox/Justfile'
 ├── mod nanvix 'src/nanvix_sandbox/Justfile'
 ├── mod python 'src/sdk/python/Justfile'
 └── mod examples_mod 'examples/Justfile'
@@ -99,3 +99,47 @@ test-rust:
 lint-rust:
     cargo clippy -p hyperlight-sandbox --all-targets --features test-utils -- -D warnings
 ```
+
+## Cross-Platform (Windows/Linux) Patterns
+
+### Windows Shell
+- Add `set windows-shell := ["pwsh", "-NoLogo", "-Command"]` at the top of subproject Justfiles that need Windows support
+- Each recipe line is passed as a `-Command` argument; use `\` line continuations for multi-line PowerShell
+- Do NOT use `#!/usr/bin/env pwsh` shebangs — `just` writes temp files without `.ps1` extension and PowerShell refuses to run them
+
+### Paths on Windows
+- `invocation_directory()` returns MSYS-style paths (`/c/Users/...`) when `just` is invoked with `set windows-shell` it breaks
+- Use `invocation_directory_native()` instead — always returns native OS paths (`C:\Users\...` on Windows, `/home/...` on Linux)
+- No `replace()` needed — PowerShell and cargo handle both `\` and `/`
+- Standard pattern: `repo-root := invocation_directory_native()`
+
+### Environment Variables
+- Use `export WIT_WORLD := ...` instead of `WIT_WORLD=... command` prefix (bash-only syntax)
+- `export` is cross-platform and sets the env var for all recipes automatically
+
+### Platform-Specific Recipes
+- Use `[unix]` and `[windows]` attributes for platform-specific recipe variants
+- Both variants must have the same recipe name; `just` picks the right one automatically
+- Prefix with `_` to hide helper recipes from `just --list`
+
+```just
+[unix]
+_clean-stale:
+    #!/usr/bin/env bash
+    rm -rf some/path
+
+[windows]
+_clean-stale:
+    Remove-Item -Recurse -Force 'some/path' -ErrorAction SilentlyContinue
+```
+
+### Bash → PowerShell Equivalents
+
+| Bash | PowerShell |
+|------|------------|
+| `compgen -G "pattern"` | `Get-ChildItem -Path $dir -Filter 'pattern' -ErrorAction SilentlyContinue` |
+| `[ ! -f path ]` | `-not (Test-Path path)` |
+| `rm -rf path` | `Remove-Item -Recurse -Force path -ErrorAction SilentlyContinue` |
+| `echo "msg"` | `Write-Host 'msg'` |
+| `for x in a b; do ... done` | `foreach ($x in @('a','b')) { ... }` |
+| `command -v tool` | `Get-Command tool -ErrorAction SilentlyContinue` |

@@ -1,7 +1,11 @@
-default-target := "debug"
-repo-root := replace(invocation_directory(), "\\", "/")
-wit-world := "WIT_WORLD=" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm"
+set windows-shell := ["pwsh", "-NoLogo", "-Command"]
 
+default-target := "debug"
+repo-root := invocation_directory_native()
+export WIT_WORLD := repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm"
+rmrf := if os() == "windows" { "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" } else { "rm -rf" }
+
+[unix]
 ensure-tools:
     @command -v clang >/dev/null 2>&1 || { echo "clang not found — install with: apt install clang or brew install llvm"; exit 1; }
     @command -v wasm-tools >/dev/null 2>&1 || cargo install wasm-tools --locked
@@ -9,6 +13,12 @@ ensure-tools:
         cargo install hyperlight-wasm-aot \
             --git https://github.com/jsturtevant/hyperlight-wasm \
             --rev 09b5e8297d827518847c08c8506bf83e85eb89b1
+
+[windows]
+ensure-tools:
+    if (-not (Get-Command clang -ErrorAction SilentlyContinue)) { Write-Error 'clang not found — install with: winget install LLVM.LLVM'; exit 1 }; \
+    if (-not (Get-Command wasm-tools -ErrorAction SilentlyContinue)) { cargo install wasm-tools --locked }; \
+    if (-not (Get-Command hyperlight-wasm-aot -ErrorAction SilentlyContinue)) { cargo install hyperlight-wasm-aot --git https://github.com/jsturtevant/hyperlight-wasm --rev 09b5e8297d827518847c08c8506bf83e85eb89b1 }
 
 guest-build-wasm: ensure-tools
     cd {{repo-root}}/src/wasm_sandbox/guests/python && uv run componentize-py \
@@ -18,25 +28,27 @@ guest-build-wasm: ensure-tools
 
 guest-compile-wit: ensure-tools
     wasm-tools component wit {{repo-root}}/src/wasm_sandbox/wit/hyperlight-sandbox.wit -w -o {{repo-root}}/src/wasm_sandbox/wit/sandbox-world.wasm
-    @# Invalidate cargo caches that embed the WIT signature.
-    @# Without this, cargo won't detect that sandbox-world.wasm changed
-    @# and SDKs will fail at runtime with "vector parameter missing length".
-    rm -rf {{repo-root}}/target/hyperlight-wasm-runtime \
-           {{repo-root}}/target/hyperlight-js-runtime \
-           {{repo-root}}/target/debug/build/hyperlight-wasm-* \
-           {{repo-root}}/target/debug/.fingerprint/hyperlight-wasm-* \
-           {{repo-root}}/target/release/build/hyperlight-wasm-* \
-           {{repo-root}}/target/release/.fingerprint/hyperlight-wasm-* \
-           {{repo-root}}/target/debug/build/hyperlight-js-* \
-           {{repo-root}}/target/debug/.fingerprint/hyperlight-js-* \
-           {{repo-root}}/target/release/build/hyperlight-js-* \
-           {{repo-root}}/target/release/.fingerprint/hyperlight-js-* \
-           {{repo-root}}/src/sdk/python/wasm_backend/target/hyperlight-wasm-runtime \
-           {{repo-root}}/src/sdk/python/wasm_backend/target/debug/build/hyperlight-wasm-* \
-           {{repo-root}}/src/sdk/python/wasm_backend/target/debug/.fingerprint/hyperlight-wasm-* \
-           {{repo-root}}/src/sdk/python/wasm_backend/target/release/build/hyperlight-wasm-* \
-           {{repo-root}}/src/sdk/python/wasm_backend/target/release/.fingerprint/hyperlight-wasm-* \
-           2>/dev/null || true
+    just _invalidate-wit-caches
+
+# Invalidate cargo caches that embed the WIT signature.
+# Without this, cargo won't detect that sandbox-world.wasm changed
+# and SDKs will fail at runtime with "vector parameter missing length".
+_invalidate-wit-caches:
+    -{{rmrf}} {{repo-root}}/target/hyperlight-wasm-runtime
+    -{{rmrf}} {{repo-root}}/target/hyperlight-js-runtime
+    -{{rmrf}} {{repo-root}}/target/debug/build/hyperlight-wasm-*
+    -{{rmrf}} {{repo-root}}/target/debug/.fingerprint/hyperlight-wasm-*
+    -{{rmrf}} {{repo-root}}/target/release/build/hyperlight-wasm-*
+    -{{rmrf}} {{repo-root}}/target/release/.fingerprint/hyperlight-wasm-*
+    -{{rmrf}} {{repo-root}}/target/debug/build/hyperlight-js-*
+    -{{rmrf}} {{repo-root}}/target/debug/.fingerprint/hyperlight-js-*
+    -{{rmrf}} {{repo-root}}/target/release/build/hyperlight-js-*
+    -{{rmrf}} {{repo-root}}/target/release/.fingerprint/hyperlight-js-*
+    -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/hyperlight-wasm-runtime
+    -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/debug/build/hyperlight-wasm-*
+    -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/debug/.fingerprint/hyperlight-wasm-*
+    -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/release/build/hyperlight-wasm-*
+    -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/release/.fingerprint/hyperlight-wasm-*
 
 guest-build-aot target=default-target: guest-build-wasm ensure-tools
     hyperlight-wasm-aot compile --component \
@@ -57,31 +69,34 @@ js-guest-install:
     cd {{repo-root}}/src/wasm_sandbox/guests/javascript && npm install
 
 build target=default-target: (guest-build target) (js-guest-build)
-    {{ wit-world }} cargo build --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }}
+    cargo build --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }}
 
 #### EXAMPLES ####
 
 examples target=default-target:
-    {{ wit-world }} cargo run --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example python_basics
-    {{ wit-world }} cargo run --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example python_network_demo
-    {{ wit-world }} cargo run --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example python_filesystem_demo
-    {{ wit-world }} cargo run --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example js_basics
-    {{ wit-world }} cargo run --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example js_network_demo
-    {{ wit-world }} cargo run --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example js_filesystem_demo
+    cargo run --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example python_basics
+    cargo run --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example python_network_demo
+    cargo run --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example python_filesystem_demo
+    cargo run --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example js_basics
+    cargo run --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example js_network_demo
+    cargo run --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example js_filesystem_demo
 
 #### TESTS ####
 
 test target=default-target:
-    {{ wit-world }} cargo test --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --test http_wasm_integration -- --nocapture
+    cargo test --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --test http_wasm_integration -- --nocapture
 
 lint:
-    {{ wit-world }} cargo clippy -p hyperlight-wasm-sandbox --all-targets -- -D warnings
+    cargo clippy -p hyperlight-wasm-sandbox --all-targets -- -D warnings
 
 #### CLEAN ####
 
 guest-clean:
-    rm -f {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.wasm {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.aot
-    rm -f {{repo-root}}/src/wasm_sandbox/guests/javascript/js-sandbox.wasm {{repo-root}}/src/wasm_sandbox/guests/javascript/js-sandbox.aot
+    -{{rmrf}} {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.wasm
+    -{{rmrf}} {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.aot
+    -{{rmrf}} {{repo-root}}/src/wasm_sandbox/guests/javascript/js-sandbox.wasm
+    -{{rmrf}} {{repo-root}}/src/wasm_sandbox/guests/javascript/js-sandbox.aot
 
 clean: guest-clean
-    rm -rf {{repo-root}}/target/hyperlight-wasm-runtime {{repo-root}}/target/hyperlight-js-runtime
+    -{{rmrf}} {{repo-root}}/target/hyperlight-wasm-runtime
+    -{{rmrf}} {{repo-root}}/target/hyperlight-js-runtime

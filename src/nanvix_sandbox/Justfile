@@ -1,4 +1,4 @@
-repo-root := replace(invocation_directory(), "\\", "/")
+repo-root := invocation_directory_native()
 nanvix-rev := "f4bc205a40ed072cbb5f26b141498477985782f7"
 skip-msg := "echo 'Skipping nanvix (not supported on Windows)'"
 

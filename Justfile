@@ -1,7 +1,7 @@
 set unstable := true
 
 mod wasm 'src/wasm_sandbox/Justfile'
-mod jssandbox 'src/javascript_sandbox/Justfile'
+mod js 'src/javascript_sandbox/Justfile'
 mod nanvix 'src/nanvix_sandbox/Justfile'
 mod python 'src/sdk/python/Justfile'
 mod examples_mod 'examples/Justfile'
@@ -13,9 +13,9 @@ clean: wasm::clean python::clean
 
 #### BUILD TARGETS ####
 
-build-all target=default-target: (wasm::build target) (jssandbox::build target) nanvix::build python::build
+build-all target=default-target: (wasm::build target) (js::build target) nanvix::build python::build
 
-lint: lint-rust wasm::lint jssandbox::lint python::lint
+lint: lint-rust wasm::lint js::lint python::lint
 
 lint-rust:
     cargo clippy -p hyperlight-sandbox --all-targets --features test-utils -- -D warnings
@@ -41,11 +41,11 @@ test-rust:
 
 benchmark: python::python-sandbox-benchmark
 
-python-dist: (wasm::build "release") (jssandbox::build "release") python::python-dist
+python-dist: (wasm::build "release") (js::build "release") python::python-dist
 
 python-wheelhouse-test: python-dist python::python-wheelhouse-test
 
-examples target=default-target: (wasm::examples target) (jssandbox::examples target) python::examples
+examples target=default-target: (wasm::examples target) (js::examples target) python::examples
 
 integration-examples target=default-target: (wasm::guest-build target) wasm::js-guest-build python::build examples_mod::integration-examples
 
@@ -60,6 +60,7 @@ slides:
 
 ##### Run GitHub Actions CI locally using act (https://nektosact.com) #######
 
+[unix]
 ci job="":
     #!/usr/bin/env bash
     if ! command -v act &>/dev/null; then

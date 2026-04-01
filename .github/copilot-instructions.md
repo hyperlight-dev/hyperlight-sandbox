@@ -2,7 +2,7 @@
 
 - When running examples in this repository, use the `Justfile` recipes instead of invoking `cargo run` or `python` directly.
 - Use `just examples` from the repository root to run the full example suite.
-- To run examples for a specific sandbox, use module-scoped recipes: `just wasm examples`, `just jssandbox examples`, `just python examples`.
+- To run examples for a specific sandbox, use module-scoped recipes: `just wasm examples`, `just js examples`, `just python examples`.
 - Use `just build-all` from the repository root to build all subprojects and SDKs.
 - Reason: the example commands depend on `WIT_WORLD` being set to `src/wasm_sandbox/wit/sandbox-world.wasm`; the `Justfile` handles that setup.
 

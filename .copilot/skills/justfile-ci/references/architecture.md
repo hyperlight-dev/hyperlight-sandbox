@@ -4,13 +4,13 @@
 
 | Recipe | Delegates to | Purpose |
 |--------|-------------|---------|
-| `build-all` | `wasm::build`, `jssandbox::build`, `nanvix::build`, `python::build` | Build everything |
+| `build-all` | `wasm::build`, `jss::build`, `nanvix::build`, `python::build` | Build everything |
 | `test` | `test-rust`, `wasm::test`, `python::python-test` | All tests |
 | `test-rust` | (direct cargo) | Core crate unit + integration tests |
-| `lint` | `lint-rust`, `wasm::lint`, `jssandbox::lint`, `python::lint` | All linters |
+| `lint` | `lint-rust`, `wasm::lint`, `js::lint`, `python::lint` | All linters |
 | `fmt` | `fmt-rust`, `python::fmt` | Format all code |
 | `fmt-check` | `fmt-check-rust`, `python::fmt-check` | Check formatting |
-| `examples` | `wasm::examples`, `jssandbox::examples`, `python::examples` | Run all examples |
+| `examples` | `wasm::examples`, `js::examples`, `python::examples` | Run all examples |
 | `fuzz` | `python::python-fuzz` | Python fuzz tests |
 | `benchmark` | `python::python-sandbox-benchmark` | Python benchmark |
 | `clean` | `wasm::clean`, `python::clean` | Clean build artifacts |
@@ -21,7 +21,7 @@
 ci.yml
 ├── rust           — fmt-check-rust, lint-rust, test-rust
 ├── wasm-sandbox   — wasm build, lint, test, examples + python fmt-check/lint/build/examples/python-test/fuzz/benchmark/integration-examples
-├── javascript-sandbox — jssandbox build, lint, test, examples
+├── javascript-sandbox — js build, lint, test, examples
 └── nanvix-sandbox — nanvix build (examples skipped pending upstream)
 ```
 
@@ -34,7 +34,7 @@ ci.yml
 - Recipes: `guest-build`, `js-guest-build`, `build`, `test`, `examples`, `lint`, `clean`
 - `examples` is a flat recipe listing all `cargo run` commands (no per-example sub-recipes)
 
-### jssandbox (`src/javascript_sandbox/Justfile`)
+### js (`src/javascript_sandbox/Justfile`)
 - Needs WIT world from wasm for compilation
 - Recipes: `build`, `test`, `examples`, `lint`
 - `examples` is a flat recipe listing all `cargo run` commands

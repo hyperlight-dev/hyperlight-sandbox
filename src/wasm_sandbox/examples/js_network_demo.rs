@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use hyperlight_sandbox::{Sandbox, DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE};
+use hyperlight_sandbox::{DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, Sandbox};
 use hyperlight_wasm_sandbox::Wasm;
 
 fn javascript_guest_path() -> String {

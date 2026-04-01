@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use hyperlight_sandbox::test_utils::EchoServer;
-use hyperlight_sandbox::{HttpMethod, Sandbox, DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE};
+use hyperlight_sandbox::{DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, HttpMethod, Sandbox};
 use hyperlight_wasm_sandbox::Wasm;
 
 fn python_guest_path() -> String {

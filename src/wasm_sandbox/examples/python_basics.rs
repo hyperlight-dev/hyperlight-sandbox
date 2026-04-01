@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use hyperlight_sandbox::{Sandbox, ToolRegistry, DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE};
+use hyperlight_sandbox::{DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, Sandbox, ToolRegistry};
 use hyperlight_wasm_sandbox::Wasm;
 use serde::Deserialize;
 

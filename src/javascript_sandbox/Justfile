@@ -2,7 +2,7 @@ default-target := "debug"
 repo-root := replace(invocation_directory(), "\\", "/")
 wit-world := "WIT_WORLD=" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm"
 
-clean-stale-js-artifacts:
+build target=default-target:
     #!/usr/bin/env bash
     # If cargo fingerprints exist but the runtime binary is missing, clean stale state
     # to force hyperlight-js's build script to re-run. This can happen when rust-cache

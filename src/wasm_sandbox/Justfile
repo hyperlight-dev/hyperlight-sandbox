@@ -22,10 +22,15 @@ guest-compile-wit: ensure-tools
     @# Without this, cargo won't detect that sandbox-world.wasm changed
     @# and SDKs will fail at runtime with "vector parameter missing length".
     rm -rf {{repo-root}}/target/hyperlight-wasm-runtime \
+           {{repo-root}}/target/hyperlight-js-runtime \
            {{repo-root}}/target/debug/build/hyperlight-wasm-* \
            {{repo-root}}/target/debug/.fingerprint/hyperlight-wasm-* \
            {{repo-root}}/target/release/build/hyperlight-wasm-* \
            {{repo-root}}/target/release/.fingerprint/hyperlight-wasm-* \
+           {{repo-root}}/target/debug/build/hyperlight-js-* \
+           {{repo-root}}/target/debug/.fingerprint/hyperlight-js-* \
+           {{repo-root}}/target/release/build/hyperlight-js-* \
+           {{repo-root}}/target/release/.fingerprint/hyperlight-js-* \
            {{repo-root}}/src/sdk/python/wasm_backend/target/hyperlight-wasm-runtime \
            {{repo-root}}/src/sdk/python/wasm_backend/target/debug/build/hyperlight-wasm-* \
            {{repo-root}}/src/sdk/python/wasm_backend/target/debug/.fingerprint/hyperlight-wasm-* \

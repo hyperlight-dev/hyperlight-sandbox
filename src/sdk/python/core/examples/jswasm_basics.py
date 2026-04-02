@@ -1,4 +1,4 @@
-"""Hyperlight Sandbox — JS Wasm component basics example (Python SDK).
+"""Hyperlight Sandbox -- JS Wasm component basics example (Python SDK).
 
 Exercises: basic execution, tool dispatch, snapshot/restore, complex
 computation, and nested tool calls.

@@ -1,4 +1,4 @@
-"""Hyperlight Sandbox — Python basics example.
+"""Hyperlight Sandbox -- Python basics example.
 
 Exercises: basic execution, tool dispatch (sync + async), sandbox reuse,
 snapshot/restore, complex computation, and nested tool calls.
@@ -40,7 +40,7 @@ sandbox.register_tool("greet", lambda name="world": f"Hello, {name}!")
 sandbox.register_tool("lookup", lambda key="": {"api_key": "sk-demo", "model": "gpt-4"}.get(key, "not found"))
 
 
-# Async functions work too — no wrapping needed
+# Async functions work too -- no wrapping needed
 async def async_multiply(a: float, b: float):
     await asyncio.sleep(0.5)  # simulate async I/O
     return a * b
@@ -54,7 +54,7 @@ result = timed_run(sandbox, 'print("hello from python SDK!")', "first run (cold)
 print(f"stdout: {result.stdout!r}")
 print(f"success: {result.success}")
 
-# Test 2: Tool dispatch via call_tool() — sync and async
+# Test 2: Tool dispatch via call_tool() -- sync and async
 print("\n--- Test 2: Tool dispatch (sync + async) ---")
 result = timed_run(
     sandbox,

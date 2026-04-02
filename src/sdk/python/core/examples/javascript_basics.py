@@ -1,4 +1,4 @@
-"""Hyperlight Sandbox — JavaScript basics example (HyperlightJS backend).
+"""Hyperlight Sandbox -- JavaScript basics example (HyperlightJS backend).
 
 Exercises: basic execution, tool dispatch, snapshot/restore, complex
 computation, and nested tool calls.

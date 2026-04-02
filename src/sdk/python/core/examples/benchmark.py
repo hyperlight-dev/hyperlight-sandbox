@@ -16,7 +16,7 @@ import time
 COLD_ROUNDS = 5  # tests that create a new sandbox each time
 WARM_ROUNDS = 10  # tests that reuse an existing sandbox
 
-# ── Helpers ──────────────────────────────────────────────────────────
+# -- Helpers ----------------------------------------------------------
 
 
 def measure_n(fn, n):
@@ -32,7 +32,7 @@ def measure_n(fn, n):
 
 
 def fmt(stats):
-    """Format stats as 'avg ms  (min=…, max=…)'."""
+    """Format stats as 'avg ms  (min=..., max=...)'."""
     return f"{stats['avg']:>7.1f} ms  (min={stats['min']:.1f}, max={stats['max']:.1f})"
 
 
@@ -45,9 +45,9 @@ def run_suite(name, backend, module=None, lang="python"):
     """Run all benchmarks for one backend configuration."""
     from hyperlight_sandbox import Sandbox
 
-    print(f"\n{'═' * 70}")
+    print(f"\n{'=' * 70}")
     print(f"  {name}  ({COLD_ROUNDS} cold / {WARM_ROUNDS} warm rounds)")
-    print(f"{'═' * 70}")
+    print(f"{'=' * 70}")
 
     hello = 'print("hello")' if lang == "python" else 'console.log("hello")'
     tool_code = (
@@ -67,7 +67,7 @@ def run_suite(name, backend, module=None, lang="python"):
 
     results = {}
 
-    # ── 1. Cold start: create + first run ────────────────────────
+    # -- 1. Cold start: create + first run ------------------------
     def cold_start():
         s = Sandbox(**kwargs)
         r = s.run(hello)
@@ -78,12 +78,12 @@ def run_suite(name, backend, module=None, lang="python"):
     results["Cold start (create + first run)"] = stats
     print(f"  Cold start (create + first run): {fmt(stats)}")
 
-    # ── 2. Warm run (no restore) ───────────────────────────────
+    # -- 2. Warm run (no restore) -------------------------------
     _, stats = measure_n(lambda: sandbox.run(hello), WARM_ROUNDS)
     results["Warm run (no restore)"] = stats
     print(f"  Warm run (no restore):           {fmt(stats)}")
 
-    # ── 3. Cold start + tool dispatch ────────────────────────────
+    # -- 3. Cold start + tool dispatch ----------------------------
     def with_tools():
         s = Sandbox(**kwargs)
         s.register_tool("add", lambda a=0, b=0: a + b)
@@ -95,7 +95,7 @@ def run_suite(name, backend, module=None, lang="python"):
     results["Cold start + tool dispatch"] = stats
     print(f"  Cold start + tool dispatch:      {fmt(stats)}")
 
-    # ── 4. Warm tool dispatch (no restore) ────────────────────────
+    # -- 4. Warm tool dispatch (no restore) ------------------------
     warm_tool_sandbox = Sandbox(**kwargs)
     warm_tool_sandbox.register_tool("add", lambda a=0, b=0: a + b)
     warm_tool_sandbox.run(hello)  # warm up
@@ -103,7 +103,7 @@ def run_suite(name, backend, module=None, lang="python"):
     results["Warm tool dispatch (no restore)"] = stats
     print(f"  Warm tool dispatch (no restore): {fmt(stats)}")
 
-    # ── 5. File I/O ──────────────────────────────────────────────
+    # -- 5. File I/O ----------------------------------------------
     if file_code:
 
         def with_files():
@@ -127,7 +127,7 @@ def run_suite(name, backend, module=None, lang="python"):
         results["Warm file I/O (no restore)"] = None
         print("  File I/O:                        n/a (not supported)")
 
-    # ── 6. Snapshot (create sandbox, run, then time just the snapshot) ──
+    # -- 6. Snapshot (create sandbox, run, then time just the snapshot) --
     def one_snapshot():
         s = Sandbox(**kwargs)
         s.register_tool("add", lambda a=0, b=0: a + b)
@@ -145,7 +145,7 @@ def run_suite(name, backend, module=None, lang="python"):
     results["Snapshot"] = stats
     print(f"  Snapshot:                        {fmt(stats)}")
 
-    # ── 7. Restore (create sandbox, snapshot, then time just the restore) ──
+    # -- 7. Restore (create sandbox, snapshot, then time just the restore) --
     def one_restore():
         s = Sandbox(**kwargs)
         s.register_tool("add", lambda a=0, b=0: a + b)
@@ -164,7 +164,7 @@ def run_suite(name, backend, module=None, lang="python"):
     results["Restore"] = stats
     print(f"  Restore:                         {fmt(stats)}")
 
-    # ── 8. Restore + run ─────────────────────────────────────────
+    # -- 8. Restore + run -----------------------------------------
     snap_sandbox = Sandbox(**kwargs)
     snap_sandbox.register_tool("add", lambda a=0, b=0: a + b)
     snap_sandbox.run(hello)
@@ -179,7 +179,7 @@ def run_suite(name, backend, module=None, lang="python"):
     results["Restore + run"] = stats
     print(f"  Restore + run:                   {fmt(stats)}")
 
-    # ── 9. Restore + tool dispatch ───────────────────────────────
+    # -- 9. Restore + tool dispatch -------------------------------
     def restore_and_tool():
         snap_sandbox.restore(snap)
         return snap_sandbox.run(tool_code)
@@ -191,7 +191,7 @@ def run_suite(name, backend, module=None, lang="python"):
     return results
 
 
-# ── Main ─────────────────────────────────────────────────────────────
+# -- Main -------------------------------------------------------------
 
 
 def main():
@@ -218,18 +218,18 @@ def main():
     except Exception as e:
         print(f"  [warn]  Skipped: {e}")
 
-    # ── Summary table (averages) ─────────────────────────────────
+    # -- Summary table (averages) ---------------------------------
     if all_results:
-        print(f"\n{'═' * 90}")
+        print(f"\n{'=' * 90}")
         print("  Summary (avg ms)")
-        print(f"{'═' * 90}")
+        print(f"{'=' * 90}")
 
         backends = list(all_results.keys())
         steps = list(next(iter(all_results.values())).keys())
 
         header = f"{'Step':<35}" + "".join(f"{b:>18}" for b in backends)
         print(header)
-        print("─" * len(header))
+        print("-" * len(header))
         for step in steps:
             row = f"{step:<35}"
             for b in backends:
@@ -237,9 +237,9 @@ def main():
                 row += f"{fmt_short(s) if s else 'n/a':>18}"
             print(row)
 
-    print(f"\n{'═' * 90}")
+    print(f"\n{'=' * 90}")
     print(f"  Done!  ({COLD_ROUNDS} cold / {WARM_ROUNDS} warm rounds per test)")
-    print(f"{'═' * 90}")
+    print(f"{'=' * 90}")
 
 
 if __name__ == "__main__":

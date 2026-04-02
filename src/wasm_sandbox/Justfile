@@ -32,23 +32,56 @@ guest-compile-wit: ensure-tools
 # Invalidate cargo caches that embed the WIT signature.
 # Without this, cargo won't detect that sandbox-world.wasm changed
 # and SDKs will fail at runtime with "vector parameter missing length".
+# Also cleans hyperlight-host artifacts + hls/ surrogate dir to avoid
+# inconsistent state on Windows after partial cache restore.
 invalidate-wit-caches:
     -{{rmrf}} {{repo-root}}/target/hyperlight-wasm-runtime
+    -{{rmrf}} {{repo-root}}/target/hls
     -{{rmrf}} {{repo-root}}/target/debug/build/hyperlight-wasm-*
     -{{rmrf}} {{repo-root}}/target/debug/.fingerprint/hyperlight-wasm-*
+    -{{rmrf}} {{repo-root}}/target/debug/build/hyperlight-host-*
+    -{{rmrf}} {{repo-root}}/target/debug/.fingerprint/hyperlight-host-*
     -{{rmrf}} {{repo-root}}/target/release/build/hyperlight-wasm-*
     -{{rmrf}} {{repo-root}}/target/release/.fingerprint/hyperlight-wasm-*
+    -{{rmrf}} {{repo-root}}/target/release/build/hyperlight-host-*
+    -{{rmrf}} {{repo-root}}/target/release/.fingerprint/hyperlight-host-*
     -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/hyperlight-wasm-runtime
     -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/debug/build/hyperlight-wasm-*
     -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/debug/.fingerprint/hyperlight-wasm-*
     -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/release/build/hyperlight-wasm-*
     -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/release/.fingerprint/hyperlight-wasm-*
 
+# Only clean when rust-cache left stale state (fingerprints exist but runtime binary missing).
+[unix]
+_clean-stale-wasm:
+    #!/usr/bin/env bash
+    for profile in debug release; do
+        if compgen -G "{{repo-root}}/target/$profile/build/hyperlight-wasm-*" > /dev/null && \
+           [ ! -f "{{repo-root}}/target/hyperlight-wasm-runtime/x86_64-hyperlight-none/$profile/hyperlight-wasm-runtime" ]; then
+            echo "Cleaning stale hyperlight-wasm $profile build artifacts..."
+            just wasm invalidate-wit-caches
+            break
+        fi
+    done
+
+[windows]
+_clean-stale-wasm:
+    foreach ($profile in @('debug', 'release')) { \
+        $bp = '{{repo-root}}/target/' + $profile + '/build'; \
+        $rp = '{{repo-root}}/target/hyperlight-wasm-runtime/x86_64-hyperlight-none/' + $profile + '/hyperlight-wasm-runtime'; \
+        if ((Get-ChildItem -Path $bp -Filter 'hyperlight-wasm-*' -ErrorAction SilentlyContinue) -and \
+            -not (Test-Path $rp)) { \
+            Write-Host ('Cleaning stale hyperlight-wasm ' + $profile + ' build artifacts...'); \
+            just wasm invalidate-wit-caches; \
+            break; \
+        } \
+    }
+
 guest-build-aot target=default-target: guest-build-wasm ensure-tools
     hyperlight-wasm-aot compile --component \
         {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.wasm {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.aot
 
-guest-build target=default-target: (guest-build-wasm) (guest-compile-wit) invalidate-wit-caches (guest-build-aot target)
+guest-build target=default-target: (guest-build-wasm) (guest-compile-wit) (guest-build-aot target)
 
 js-guest-build-wasm: (js-guest-install)
     cd {{repo-root}}/src/wasm_sandbox/guests/javascript && npm run build
@@ -62,7 +95,7 @@ js-guest-build: js-guest-build-wasm js-guest-build-aot
 js-guest-install:
     cd {{repo-root}}/src/wasm_sandbox/guests/javascript && npm install
 
-build target=default-target: (guest-build target) (js-guest-build)
+build target=default-target: _clean-stale-wasm (guest-build target) (js-guest-build)
     cargo build --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }}
 
 #### EXAMPLES ####

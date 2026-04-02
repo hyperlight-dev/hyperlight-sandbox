@@ -37,10 +37,10 @@ python-sync-env:
 # For distributable wheels, use `python-dist` (maturin build) instead.
 # Use `just python python-build` for debug, `just python python-build release` for release.
 python-install-backends profile="debug":
-    {{ if profile == "release" { rmrf + " " + repo-root + "/target/release/build/hyperlight-wasm-*" } else { "" } }}
-    {{ if profile == "release" { rmrf + " " + repo-root + "/target/release/.fingerprint/hyperlight-wasm-*" } else { "" } }}
-    {{ if profile == "release" { rmrf + " " + repo-root + "/target/release/build/hyperlight-js-*" } else { "" } }}
-    {{ if profile == "release" { rmrf + " " + repo-root + "/target/release/.fingerprint/hyperlight-js-*" } else { "" } }}
+    -{{ if profile == "release" { rmrf + " " + repo-root + "/target/release/build/hyperlight-wasm-*" } else { "" } }}
+    -{{ if profile == "release" { rmrf + " " + repo-root + "/target/release/.fingerprint/hyperlight-wasm-*" } else { "" } }}
+    -{{ if profile == "release" { rmrf + " " + repo-root + "/target/release/build/hyperlight-js-*" } else { "" } }}
+    -{{ if profile == "release" { rmrf + " " + repo-root + "/target/release/.fingerprint/hyperlight-js-*" } else { "" } }}
     cd {{repo-root}}/src/sdk/python/wasm_backend && uv run --no-sync maturin develop {{ if profile == "release" { "--release" } else { "" } }}
     cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run --no-sync maturin develop {{ if profile == "release" { "--release" } else { "" } }}
 

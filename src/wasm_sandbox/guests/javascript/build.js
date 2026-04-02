@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // We bypass ComponentizeJS's stubWasi step which strips WASI filesystem methods
 // (openAt, readViaStream, etc.) from the output component. ComponentizeJS has
@@ -22,7 +22,7 @@ src = src.replace(
   "const finalBin = bin; // PATCHED: skip stubWasi to keep all WASI filesystem methods"
 );
 await writeFile(patchedPath, src);
-const { componentize } = await import(patchedPath);
+const { componentize } = await import(pathToFileURL(patchedPath));
 
 // Use the shared WIT from the wasm_sandbox crate
 const witPath = "../../wit/hyperlight-sandbox.wit";

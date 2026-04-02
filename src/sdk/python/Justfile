@@ -1,5 +1,9 @@
-repo-root := invocation_directory()
-wit-world := if os() == "windows" { "$env:WIT_WORLD=\"" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm\";" } else { "WIT_WORLD=" + repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm" }
+set windows-shell := ["pwsh", "-NoLogo", "-Command"]
+
+repo-root := invocation_directory_native()
+export WIT_WORLD := repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm"
+rmrf := if os() == "windows" { "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" } else { "rm -rf" }
+mkdirp := if os() == "windows" { "New-Item -ItemType Directory -Force" } else { "mkdir -p" }
 
 dist-root := repo-root + "/dist/pythonsdk"
 core-dist := dist-root + "/core"
@@ -14,8 +18,8 @@ javascript-guest-dist := dist-root + "/javascript_guest"
 # into the Python guest packages so they can be bundled into wheels.
 # Requires `just wasm build` to have run first.
 python-sync-guest-resources:
-    mkdir -p {{repo-root}}/src/sdk/python/wasm_guests/python_guest/python_guest/resources
-    mkdir -p {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest/javascript_guest/resources
+    {{mkdirp}} {{repo-root}}/src/sdk/python/wasm_guests/python_guest/python_guest/resources
+    {{mkdirp}} {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest/javascript_guest/resources
     cp {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.aot {{repo-root}}/src/sdk/python/wasm_guests/python_guest/python_guest/resources/python-sandbox.aot
     cp {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.wasm {{repo-root}}/src/sdk/python/wasm_guests/python_guest/python_guest/resources/python-sandbox.wasm
     cp {{repo-root}}/src/wasm_sandbox/guests/javascript/js-sandbox.aot {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest/javascript_guest/resources/js-sandbox.aot
@@ -33,18 +37,12 @@ python-sync-env:
 # For distributable wheels, use `python-dist` (maturin build) instead.
 # Use `just python python-build` for debug, `just python python-build release` for release.
 python-install-backends profile="debug":
-    #!/usr/bin/env bash
-    set -e
-    release_flag=""
-    if [ "{{ profile }}" = "release" ]; then
-        release_flag="--release"
-        rm -rf {{repo-root}}/target/release/build/hyperlight-wasm-* \
-               {{repo-root}}/target/release/.fingerprint/hyperlight-wasm-* \
-               {{repo-root}}/target/release/build/hyperlight-js-* \
-               {{repo-root}}/target/release/.fingerprint/hyperlight-js-*
-    fi
-    cd {{repo-root}}/src/sdk/python/wasm_backend && {{ wit-world }} uv run --no-sync maturin develop $release_flag
-    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run --no-sync maturin develop $release_flag
+    -{{ if profile == "release" { rmrf + " " + repo-root + "/target/release/build/hyperlight-wasm-*" } else { "" } }}
+    -{{ if profile == "release" { rmrf + " " + repo-root + "/target/release/.fingerprint/hyperlight-wasm-*" } else { "" } }}
+    -{{ if profile == "release" { rmrf + " " + repo-root + "/target/release/build/hyperlight-js-*" } else { "" } }}
+    -{{ if profile == "release" { rmrf + " " + repo-root + "/target/release/.fingerprint/hyperlight-js-*" } else { "" } }}
+    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run --no-sync maturin develop {{ if profile == "release" { "--release" } else { "" } }}
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run --no-sync maturin develop {{ if profile == "release" { "--release" } else { "" } }}
 
 python-build profile="debug": python-sync-guest-resources python-sync-env (python-install-backends profile)
 
@@ -53,72 +51,58 @@ build: python-build
 #### DIST / PUBLISH ####
 
 python-dist: python-sync-guest-resources
-    rm -rf {{dist-root}}
+    -{{rmrf}} {{dist-root}}
     cd {{repo-root}}/src/sdk/python/core && uv run python -m build --outdir {{core-dist}}
-    cd {{repo-root}}/src/sdk/python/wasm_backend && {{ wit-world }} uv run maturin build --release --out {{wasm-wheels}}
+    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}}
     cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}}
     cd {{repo-root}}/src/sdk/python/wasm_guests/python_guest && uv run python -m build --outdir {{python-guest-dist}}
     cd {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest && uv run python -m build --outdir {{javascript-guest-dist}}
 
 python-publish repository="pypi":
-    #!/usr/bin/env bash
-    set -e
-    publish_url=()
-    if [ "{{ repository }}" != "pypi" ]; then
-        publish_url=(--publish-url "https://test.pypi.org/legacy/")
-    fi
-    uv publish "${publish_url[@]}" {{wasm-wheels}}/*
-    uv publish "${publish_url[@]}" {{hyperlight-js-wheels}}/*
-    uv publish "${publish_url[@]}" {{python-guest-dist}}/*
-    uv publish "${publish_url[@]}" {{javascript-guest-dist}}/*
-    uv publish "${publish_url[@]}" {{core-dist}}/*
+    uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{wasm-wheels}}/*
+    uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{hyperlight-js-wheels}}/*
+    uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{python-guest-dist}}/*
+    uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{javascript-guest-dist}}/*
+    uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{core-dist}}/*
 
 # Smoke-test the wheels in dist/pythonsdk/ by installing them into
 # isolated environments and running basic tests.
 # Requires `just python-dist` (root) to have been run first.
 python-wheelhouse-test:
-    #!/usr/bin/env bash
-    set -e
-    root={{repo-root}}
-    dist={{dist-root}}
-
-    # Test wasm + python guest
     uv run --no-project --no-index \
-        --find-links="$dist/core" \
-        --find-links="$dist/wasm_backend" \
-        --find-links="$dist/python_guest" \
+        --find-links={{core-dist}} \
+        --find-links={{wasm-wheels}} \
+        --find-links={{python-guest-dist}} \
         --with "hyperlight-sandbox[wasm,python_guest]" \
-        python "$root/src/sdk/python/tests/wheelhouse_wasm.py"
-
-    # Test hyperlight-js + javascript guest
+        python {{repo-root}}/src/sdk/python/tests/wheelhouse_wasm.py
     uv run --no-project --no-index \
-        --find-links="$dist/core" \
-        --find-links="$dist/hyperlight_js_backend" \
-        --find-links="$dist/javascript_guest" \
+        --find-links={{core-dist}} \
+        --find-links={{hyperlight-js-wheels}} \
+        --find-links={{javascript-guest-dist}} \
         --with "hyperlight-sandbox[hyperlight_js,javascript_guest]" \
-        python "$root/src/sdk/python/tests/wheelhouse_js.py"
+        python {{repo-root}}/src/sdk/python/tests/wheelhouse_js.py
 
 #### EXAMPLES ####
 
 examples: python-build
-    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/python_basics.py
-    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/python_network_demo.py
-    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/python_filesystem_demo.py
-    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/javascript_basics.py
-    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/javascript_network_demo.py
-    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/javascript_filesystem_demo.py
-    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/jswasm_basics.py
-    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/jswasm_network_demo.py
-    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/jswasm_filesystem_demo.py
+    uv run python {{repo-root}}/src/sdk/python/core/examples/python_basics.py
+    uv run python {{repo-root}}/src/sdk/python/core/examples/python_network_demo.py
+    uv run python {{repo-root}}/src/sdk/python/core/examples/python_filesystem_demo.py
+    uv run python {{repo-root}}/src/sdk/python/core/examples/javascript_basics.py
+    uv run python {{repo-root}}/src/sdk/python/core/examples/javascript_network_demo.py
+    uv run python {{repo-root}}/src/sdk/python/core/examples/javascript_filesystem_demo.py
+    uv run python {{repo-root}}/src/sdk/python/core/examples/jswasm_basics.py
+    uv run python {{repo-root}}/src/sdk/python/core/examples/jswasm_network_demo.py
+    uv run python {{repo-root}}/src/sdk/python/core/examples/jswasm_filesystem_demo.py
 
 python-sandbox-benchmark: (python-build "release")
-    {{ wit-world }} uv run python {{repo-root}}/src/sdk/python/core/examples/benchmark.py
+    uv run python {{repo-root}}/src/sdk/python/core/examples/benchmark.py
 
 #### CLEAN ####
 
 clean:
-    rm -rf {{repo-root}}/src/sdk/python/wasm_backend/target
-    rm -rf {{repo-root}}/src/sdk/python/hyperlight_js_backend/target
+    -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target
+    -{{rmrf}} {{repo-root}}/src/sdk/python/hyperlight_js_backend/target
 
 #### LINT / FORMAT ####
 
@@ -139,4 +123,4 @@ python-test: python-build
     uv run python -m unittest discover -s {{repo-root}}/src/sdk/python/core/tests -p 'test_*.py' -v
 
 python-fuzz seconds="60": python-build
-    uv run --package hyperlight-sandbox --extra dev python {{repo-root}}/src/sdk/python/core/tests/fuzz_tool_dispatch.py -max_total_time={{seconds}}
+    {{ if os() == "windows" { "echo 'Skipping python fuzz (atheris not available on Windows)'" } else { "uv run --package hyperlight-sandbox --extra dev python " + repo-root + "/src/sdk/python/core/tests/fuzz_tool_dispatch.py -max_total_time=" + seconds } }}

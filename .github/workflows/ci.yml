@@ -17,8 +17,11 @@ env:
 
 jobs:
   rust:
-    name: Rust · fmt / lint / test
-    runs-on: ubuntu-latest
+    name: Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
@@ -41,8 +44,11 @@ jobs:
         run: just test-rust
 
   wasm-sandbox:
-    name: WASM Sandbox · lint / build / examples
-    runs-on: ubuntu-latest
+    name: WASM Sandbox (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
@@ -65,11 +71,16 @@ jobs:
       - name: Install just
         run: cargo install --locked just
 
-      - name: Install clang
+      - name: Install clang (Linux)
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y clang
 
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        run: choco install llvm -y
+
       - name: Enable KVM
-        if: ${{ !env.ACT }}
+        if: runner.os == 'Linux' && !env.ACT
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
@@ -92,7 +103,7 @@ jobs:
       # Build JS sandbox first — the Python hyperlight-js backend shares the root
       # workspace target/ and needs hyperlight-js-runtime to be compiled.
       - name: Build JS sandbox
-        run: just jssandbox build
+        run: just js build
 
       - name: Python SDK Format check
         run: just python fmt-check
@@ -111,7 +122,7 @@ jobs:
 
       - name: Python SDK Fuzz
         run: just fuzz 30
-      
+
       # this is too flaky in github actions to run on PRs
       # copilot fails to repsond in a timely fashion
       # - name: Run Python SDK integration examples
@@ -124,8 +135,11 @@ jobs:
         run: just benchmark
 
   python-wheelhouse:
-    name: Python SDK · wheelhouse test
-    runs-on: ubuntu-latest
+    name: Python SDK wheelhouse test  (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
@@ -148,11 +162,16 @@ jobs:
       - name: Install just
         run: cargo install --locked just
 
-      - name: Install clang
+      - name: Install clang (Linux)
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y clang
 
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        run: choco install llvm -y
+
       - name: Enable KVM
-        if: ${{ !env.ACT }}
+        if: runner.os == 'Linux' && !env.ACT
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
@@ -163,8 +182,11 @@ jobs:
         run: just python-wheelhouse-test
 
   javascript-sandbox:
-    name: JS Sandbox · lint / build / examples
-    runs-on: ubuntu-latest
+    name: JS Sandbox (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
@@ -176,11 +198,16 @@ jobs:
       - name: Install just
         run: cargo install --locked just
 
-      - name: Install clang
+      - name: Install clang (Linux)
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y clang
 
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        run: choco install llvm -y
+
       - name: Enable KVM
-        if: ${{ !env.ACT }}
+        if: runner.os == 'Linux' && !env.ACT
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
@@ -191,20 +218,20 @@ jobs:
         run: just wasm guest-compile-wit
 
       - name: Build
-        run: just jssandbox build
+        run: just js build
 
       - name: Lint
-        run: just jssandbox lint
+        run: just js lint
 
       - name: Tests
-        run: just jssandbox test
+        run: just js test
 
       - name: Run examples
-        run: just jssandbox examples
+        run: just js examples
 
   nanvix-sandbox:
     name: Nanvix Sandbox · build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest #current linux only
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 

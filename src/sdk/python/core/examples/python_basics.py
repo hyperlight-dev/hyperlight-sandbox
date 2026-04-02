@@ -1,4 +1,4 @@
-"""Hyperlight Sandbox — Python basics example.
+"""Hyperlight Sandbox -- Python basics example.
 
 Exercises: basic execution, tool dispatch (sync + async), sandbox reuse,
 snapshot/restore, complex computation, and nested tool calls.
@@ -18,7 +18,7 @@ def timed_run(sandbox, code, label="run"):
     start = time.perf_counter()
     result = sandbox.run(code)
     elapsed_ms = (time.perf_counter() - start) * 1000
-    print(f"⏱️  {label}: {elapsed_ms:.1f}ms")
+    print(f"[timer]  {label}: {elapsed_ms:.1f}ms")
     return result
 
 
@@ -31,7 +31,7 @@ except ImportError as exc:
         "This example requires the Wasm backend and packaged Python guest package. "
         "Install hyperlight-sandbox[wasm,python_guest] or run `just python-build`."
     ) from exc
-print(f"⏱️  Sandbox created (lazy): {(time.perf_counter() - t0) * 1000:.1f}ms")
+print(f"[timer]  Sandbox created (lazy): {(time.perf_counter() - t0) * 1000:.1f}ms")
 
 # Register host tools before first run()
 sandbox.register_tool("add", lambda a=0, b=0: a + b)
@@ -40,7 +40,7 @@ sandbox.register_tool("greet", lambda name="world": f"Hello, {name}!")
 sandbox.register_tool("lookup", lambda key="": {"api_key": "sk-demo", "model": "gpt-4"}.get(key, "not found"))
 
 
-# Async functions work too — no wrapping needed
+# Async functions work too -- no wrapping needed
 async def async_multiply(a: float, b: float):
     await asyncio.sleep(0.5)  # simulate async I/O
     return a * b
@@ -54,7 +54,7 @@ result = timed_run(sandbox, 'print("hello from python SDK!")', "first run (cold)
 print(f"stdout: {result.stdout!r}")
 print(f"success: {result.success}")
 
-# Test 2: Tool dispatch via call_tool() — sync and async
+# Test 2: Tool dispatch via call_tool() -- sync and async
 print("\n--- Test 2: Tool dispatch (sync + async) ---")
 result = timed_run(
     sandbox,
@@ -89,14 +89,14 @@ print(f"success: {result.success}")
 print("\n--- Test 4: Snapshot/restore ---")
 t0 = time.perf_counter()
 snap = sandbox.snapshot()
-print(f"⏱️  snapshot: {(time.perf_counter() - t0) * 1000:.1f}ms")
+print(f"[timer]  snapshot: {(time.perf_counter() - t0) * 1000:.1f}ms")
 
 result1 = timed_run(sandbox, 'x = 42; print(f"x = {x}")', "pre-restore run")
 print(f"Before restore: {result1.stdout!r}")
 
 t0 = time.perf_counter()
 sandbox.restore(snap)
-print(f"⏱️  restore: {(time.perf_counter() - t0) * 1000:.1f}ms")
+print(f"[timer]  restore: {(time.perf_counter() - t0) * 1000:.1f}ms")
 
 result2 = timed_run(
     sandbox,
@@ -156,4 +156,4 @@ assert "35" in lines[0], f"Expected 35, got: {lines[0]}"
 assert "26" in lines[1], f"Expected 26, got: {lines[1]}"
 assert "gpt-4" in lines[2], f"Expected gpt-4 in greeting, got: {lines[2]}"
 
-print("\n✅ All tests passed!")
+print("\n[ok] All tests passed!")

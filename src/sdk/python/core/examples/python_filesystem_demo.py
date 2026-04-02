@@ -1,4 +1,4 @@
-"""Filesystem capabilities demo — exercises all input/output combinations."""
+"""Filesystem capabilities demo -- exercises all input/output combinations."""
 
 import os
 import tempfile
@@ -7,10 +7,10 @@ from hyperlight_sandbox import Sandbox
 
 
 def separator(label: str) -> None:
-    print(f"\n── {label} ──")
+    print(f"\n-- {label} --")
 
 
-# ── Test 1: No filesystem ────────────────────────────────────────────
+# -- Test 1: No filesystem --------------------------------------------
 separator("Test 1: No filesystem")
 sandbox = Sandbox()
 result = sandbox.run("print('no filesystem needed')")
@@ -20,7 +20,7 @@ outputs = sandbox.get_output_files()
 assert len(outputs) == 0
 print("OK: sandbox runs without any filesystem")
 
-# ── Test 2: Input only ───────────────────────────────────────────────
+# -- Test 2: Input only -----------------------------------------------
 separator("Test 2: Input only")
 input_dir = tempfile.mkdtemp(prefix="sandbox-input-")
 with open(os.path.join(input_dir, "greeting.txt"), "w") as f:
@@ -37,7 +37,7 @@ outputs = sandbox.get_output_files()
 assert len(outputs) == 0
 print("OK: guest reads host-provided input")
 
-# ── Test 3: Temp output only ─────────────────────────────────────────
+# -- Test 3: Temp output only -----------------------------------------
 separator("Test 3: Temp output only")
 sandbox = Sandbox(temp_output=True)
 result = sandbox.run("""
@@ -53,7 +53,7 @@ with open(os.path.join(output_dir, "result.txt"), "rb") as f:
     assert f.read() == b"computed result"
 print("OK: guest writes to temp output, host collects files")
 
-# ── Test 4: Input + temp output ──────────────────────────────────────
+# -- Test 4: Input + temp output --------------------------------------
 separator("Test 4: Input + temp output")
 input_dir = tempfile.mkdtemp(prefix="sandbox-input-")
 with open(os.path.join(input_dir, "data.json"), "w") as f:
@@ -78,7 +78,7 @@ with open(os.path.join(output_dir, "doubled.txt"), "rb") as f:
     assert f.read() == b"84"
 print("OK: guest reads input, writes output, host collects")
 
-# ── Test 5: Explicit output dir ──────────────────────────────────────
+# -- Test 5: Explicit output dir --------------------------------------
 separator("Test 5: Explicit output dir")
 input_dir = tempfile.mkdtemp(prefix="sandbox-input-")
 output_dir = tempfile.mkdtemp(prefix="sandbox-output-")
@@ -100,7 +100,7 @@ with open(os.path.join(output_dir, "upper.txt")) as f:
     assert f.read() == "TRANSFORM ME"
 print("OK: output written to explicit dir, visible on host")
 
-# ── Test 6: Output is ephemeral ──────────────────────────────────────
+# -- Test 6: Output is ephemeral --------------------------------------
 separator("Test 6: Output is ephemeral (wiped between runs)")
 sandbox = Sandbox(temp_output=True)
 
@@ -121,7 +121,7 @@ assert "run1.txt" not in outputs, "run1.txt should be wiped"
 assert "run2.txt" in outputs
 print("OK: output wiped between runs")
 
-# ── Test 7: Input is read-only ───────────────────────────────────────
+# -- Test 7: Input is read-only ---------------------------------------
 separator("Test 7: Input is read-only")
 input_dir = tempfile.mkdtemp(prefix="sandbox-input-")
 with open(os.path.join(input_dir, "readonly.txt"), "w") as f:
@@ -142,4 +142,4 @@ with open(os.path.join(input_dir, "readonly.txt")) as f:
     assert f.read() == "do not modify"
 print("OK: guest cannot write to input")
 
-print("\n✅ All filesystem tests passed!")
+print("\n[ok] All filesystem tests passed!")

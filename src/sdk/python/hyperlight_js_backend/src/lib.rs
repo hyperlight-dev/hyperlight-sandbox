@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use hyperlight_javascript_sandbox::HyperlightJs;
-use hyperlight_sandbox::{DirPerms, FilePerms, HttpMethod, Sandbox, SandboxConfig};
+use hyperlight_sandbox::{
+    DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, HttpMethod, Sandbox, SandboxConfig,
+};
 use hyperlight_sandbox_pyo3_common::{
     PyExecutionResult, PySnapshot, build_tool_registry, parse_size, parse_tool_registration,
 };
@@ -22,14 +24,14 @@ pub struct JSSandbox {
 #[pymethods]
 impl JSSandbox {
     #[new]
-    #[pyo3(signature = (input_dir=None, output_dir=None, temp_output=false, module_path="", heap_size="200Mi", stack_size="100Mi"))]
+    #[pyo3(signature = (input_dir=None, output_dir=None, temp_output=false, module_path="", heap_size=None, stack_size=None))]
     fn new(
         input_dir: Option<&str>,
         output_dir: Option<&str>,
         temp_output: bool,
         module_path: &str,
-        heap_size: &str,
-        stack_size: &str,
+        heap_size: Option<&str>,
+        stack_size: Option<&str>,
     ) -> PyResult<Self> {
         if !module_path.is_empty() {
             return Err(PyRuntimeError::new_err(
@@ -43,8 +45,14 @@ impl JSSandbox {
             pending_networks: Vec::new(),
             config: SandboxConfig {
                 module_path: String::new(),
-                heap_size: parse_size(heap_size)?,
-                stack_size: parse_size(stack_size)?,
+                heap_size: match heap_size {
+                    Some(s) => parse_size(s)?,
+                    None => DEFAULT_HEAP_SIZE,
+                },
+                stack_size: match stack_size {
+                    Some(s) => parse_size(s)?,
+                    None => DEFAULT_STACK_SIZE,
+                },
             },
             input_dir: input_dir.map(|s| s.to_string()),
             output_dir: output_dir.map(|s| s.to_string()),

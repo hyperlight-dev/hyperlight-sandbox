@@ -26,6 +26,18 @@ pub use tools::{ArgType, ToolRegistry, ToolSchema};
 // Configuration
 // ---------------------------------------------------------------------------
 
+/// Default guest heap size in bytes (platform-dependent).
+#[cfg(windows)]
+pub const DEFAULT_HEAP_SIZE: u64 = 400 * 1024 * 1024;
+#[cfg(not(windows))]
+pub const DEFAULT_HEAP_SIZE: u64 = 200 * 1024 * 1024;
+
+/// Default guest stack / scratch size in bytes (platform-dependent).
+#[cfg(windows)]
+pub const DEFAULT_STACK_SIZE: u64 = 200 * 1024 * 1024;
+#[cfg(not(windows))]
+pub const DEFAULT_STACK_SIZE: u64 = 100 * 1024 * 1024;
+
 /// Configuration for building a sandbox guest.
 #[derive(Debug, Clone)]
 pub struct SandboxConfig {
@@ -41,8 +53,8 @@ impl Default for SandboxConfig {
     fn default() -> Self {
         Self {
             module_path: String::new(),
-            heap_size: 200 * 1024 * 1024,
-            stack_size: 100 * 1024 * 1024,
+            heap_size: DEFAULT_HEAP_SIZE,
+            stack_size: DEFAULT_STACK_SIZE,
         }
     }
 }

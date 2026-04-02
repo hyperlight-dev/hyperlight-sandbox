@@ -7,10 +7,10 @@ from hyperlight_sandbox import Sandbox
 
 
 def separator(label: str) -> None:
-    print(f"\n── {label} ──")
+    print(f"\n-- {label} --")
 
 
-# ── Test 1: No filesystem ────────────────────────────────────────────
+# -- Test 1: No filesystem --------------------------------------------
 separator("Test 1: No filesystem")
 sandbox = Sandbox(backend="hyperlight-js")
 result = sandbox.run("console.log('no filesystem needed');")
@@ -20,7 +20,7 @@ outputs = sandbox.get_output_files()
 assert len(outputs) == 0
 print("OK: runs without filesystem")
 
-# ── Test 2: Input only ───────────────────────────────────────────────
+# -- Test 2: Input only -----------------------------------------------
 separator("Test 2: Input only")
 input_dir = tempfile.mkdtemp(prefix="sandbox-input-")
 with open(os.path.join(input_dir, "greeting.txt"), "w") as f:
@@ -32,7 +32,7 @@ assert result.exit_code == 0, f"stderr: {result.stderr}"
 assert "hello from host" in result.stdout
 print("OK: guest reads input")
 
-# ── Test 3: Temp output only ─────────────────────────────────────────
+# -- Test 3: Temp output only -----------------------------------------
 separator("Test 3: Temp output only")
 sandbox = Sandbox(backend="hyperlight-js", temp_output=True)
 result = sandbox.run("write_file('/output/result.txt', 'js output'); console.log('wrote');")
@@ -44,7 +44,7 @@ with open(os.path.join(output_dir, "result.txt"), "rb") as f:
     assert f.read() == b"js output"
 print("OK: guest writes to temp output")
 
-# ── Test 4: Input + temp output ──────────────────────────────────────
+# -- Test 4: Input + temp output --------------------------------------
 separator("Test 4: Input + temp output")
 input_dir = tempfile.mkdtemp(prefix="sandbox-input-")
 with open(os.path.join(input_dir, "data.json"), "w") as f:
@@ -65,7 +65,7 @@ with open(os.path.join(output_dir, "doubled.txt"), "rb") as f:
     assert f.read() == b"42"
 print("OK: reads input, writes output")
 
-# ── Test 5: Explicit output dir ──────────────────────────────────────
+# -- Test 5: Explicit output dir --------------------------------------
 separator("Test 5: Explicit output dir")
 input_dir = tempfile.mkdtemp(prefix="sandbox-input-")
 output_dir = tempfile.mkdtemp(prefix="sandbox-output-")
@@ -83,7 +83,7 @@ with open(os.path.join(output_dir, "upper.txt")) as f:
     assert f.read() == "SHOUT"
 print("OK: output visible on host filesystem")
 
-# ── Test 6: Output wiped between runs ────────────────────────────────
+# -- Test 6: Output wiped between runs --------------------------------
 separator("Test 6: Output is ephemeral")
 sandbox = Sandbox(backend="hyperlight-js", temp_output=True)
 result = sandbox.run("write_file('/output/run1.txt', 'first');")
@@ -96,7 +96,7 @@ assert "run1.txt" not in outputs, "run1 should be wiped"
 assert "run2.txt" in outputs
 print("OK: output wiped between runs")
 
-# ── Test 7: Input is read-only ───────────────────────────────────────
+# -- Test 7: Input is read-only ---------------------------------------
 separator("Test 7: Input is read-only")
 input_dir = tempfile.mkdtemp(prefix="sandbox-input-")
 with open(os.path.join(input_dir, "readonly.txt"), "w") as f:
@@ -117,4 +117,4 @@ with open(os.path.join(input_dir, "readonly.txt")) as f:
     assert f.read() == "do not modify"
 print("OK: guest cannot write to input")
 
-print("\n✅ All JS filesystem tests passed!")
+print("\n[ok] All JS filesystem tests passed!")

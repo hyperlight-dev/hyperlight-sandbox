@@ -6,6 +6,7 @@ modules are installed separately.
 
 from __future__ import annotations
 
+import platform
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from importlib import metadata
@@ -17,6 +18,14 @@ try:
     __version__ = metadata.version("hyperlight-sandbox")
 except metadata.PackageNotFoundError:
     __version__ = "0.1.0"
+
+# Platform-dependent memory defaults: Windows Hyper-V needs larger allocations.
+if platform.system() == "Windows":
+    _DEFAULT_HEAP_SIZE = "400Mi"
+    _DEFAULT_STACK_SIZE = "200Mi"
+else:
+    _DEFAULT_HEAP_SIZE = "200Mi"
+    _DEFAULT_STACK_SIZE = "100Mi"
 
 
 def _normalize_backend(backend: str) -> str:
@@ -82,8 +91,8 @@ class SandboxEnvironment:
     backend: str = "wasm"
     module: str | None = DEFAULT_MODULE_REF
     module_path: str | None = None
-    heap_size: str = "200Mi"
-    stack_size: str = "100Mi"
+    heap_size: str = field(default_factory=lambda: _DEFAULT_HEAP_SIZE)
+    stack_size: str = field(default_factory=lambda: _DEFAULT_STACK_SIZE)
 
 
 class Sandbox:
@@ -98,9 +107,13 @@ class Sandbox:
         backend: str = "wasm",
         module: str | None = DEFAULT_MODULE_REF,
         module_path: str | None = None,
-        heap_size: str = "200Mi",
-        stack_size: str = "100Mi",
+        heap_size: str | None = None,
+        stack_size: str | None = None,
     ) -> None:
+        if heap_size is None:
+            heap_size = _DEFAULT_HEAP_SIZE
+        if stack_size is None:
+            stack_size = _DEFAULT_STACK_SIZE
         normalized_backend, native_cls = _load_backend(backend)
         effective_module = module
         if module_path is not None and module == DEFAULT_MODULE_REF:

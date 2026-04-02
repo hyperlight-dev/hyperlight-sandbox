@@ -59,7 +59,12 @@ _clean-stale-wasm:
         if compgen -G "{{repo-root}}/target/$profile/build/hyperlight-wasm-*" > /dev/null && \
            [ ! -f "{{repo-root}}/target/hyperlight-wasm-runtime/x86_64-hyperlight-none/$profile/hyperlight-wasm-runtime" ]; then
             echo "Cleaning stale hyperlight-wasm $profile build artifacts..."
-            just wasm invalidate-wit-caches
+            rm -rf {{repo-root}}/target/hyperlight-wasm-runtime {{repo-root}}/target/hls \
+                   {{repo-root}}/target/*/build/hyperlight-wasm-* {{repo-root}}/target/*/.fingerprint/hyperlight-wasm-* \
+                   {{repo-root}}/target/*/build/hyperlight-host-* {{repo-root}}/target/*/.fingerprint/hyperlight-host-* \
+                   {{repo-root}}/src/sdk/python/wasm_backend/target/hyperlight-wasm-runtime \
+                   {{repo-root}}/src/sdk/python/wasm_backend/target/*/build/hyperlight-wasm-* \
+                   {{repo-root}}/src/sdk/python/wasm_backend/target/*/.fingerprint/hyperlight-wasm-*
             break
         fi
     done
@@ -72,7 +77,16 @@ _clean-stale-wasm:
         if ((Get-ChildItem -Path $bp -Filter 'hyperlight-wasm-*' -ErrorAction SilentlyContinue) -and \
             -not (Test-Path $rp)) { \
             Write-Host ('Cleaning stale hyperlight-wasm ' + $profile + ' build artifacts...'); \
-            just wasm invalidate-wit-caches; \
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '{{repo-root}}/target/hyperlight-wasm-runtime','{{repo-root}}/target/hls'; \
+            foreach ($t in @('{{repo-root}}/target', '{{repo-root}}/src/sdk/python/wasm_backend/target')) { \
+                foreach ($p in @('debug', 'release')) { \
+                    $bd = "$t/$p/build"; $fd = "$t/$p/.fingerprint"; \
+                    if (Test-Path $bd) { Get-ChildItem -Path $bd -Filter 'hyperlight-wasm-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force; \
+                                         Get-ChildItem -Path $bd -Filter 'hyperlight-host-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force }; \
+                    if (Test-Path $fd) { Get-ChildItem -Path $fd -Filter 'hyperlight-wasm-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force; \
+                                         Get-ChildItem -Path $fd -Filter 'hyperlight-host-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force }; \
+                }; \
+            }; \
             break; \
         } \
     }

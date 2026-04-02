@@ -43,6 +43,8 @@ benchmark: python::python-sandbox-benchmark
 
 python-dist: (wasm::build "release") (js::build "release") python::python-dist
 
+python-dist-backends: wasm::guest-compile-wit python::python-dist-backends
+
 python-wheelhouse-test: python-dist python::python-wheelhouse-test
 
 examples target=default-target: (wasm::examples target) (js::examples target) python::examples

@@ -58,6 +58,15 @@ python-dist: python-sync-guest-resources
     cd {{repo-root}}/src/sdk/python/wasm_guests/python_guest && uv run python -m build --outdir {{python-guest-dist}}
     cd {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest && uv run python -m build --outdir {{javascript-guest-dist}}
 
+# Build only the platform-specific maturin backend wheels.
+# Used by CI to produce Windows wheels without needing guest binaries.
+# Requires sandbox-world.wasm to exist (run `just wasm guest-compile-wit` first).
+python-dist-backends:
+    -{{rmrf}} {{wasm-wheels}}
+    -{{rmrf}} {{hyperlight-js-wheels}}
+    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}}
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}}
+
 python-publish repository="pypi":
     uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{wasm-wheels}}/*
     uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{hyperlight-js-wheels}}/*

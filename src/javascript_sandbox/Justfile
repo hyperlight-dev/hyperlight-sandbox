@@ -1,39 +1,16 @@
 set windows-shell := ["pwsh", "-NoLogo", "-Command"]
 default-target := "debug"
 repo-root := invocation_directory_native()
+rmrf := if os() == "windows" { "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" } else { "rm -rf" }
 
-# If cargo fingerprints exist but the runtime binary is missing, clean stale state
-# to force hyperlight-js's build script to re-run. This can happen when rust-cache
-# restores partial artifacts.
-[unix]
+# Clean stale hyperlight-js build artifacts (e.g. rust-cache restores
+# fingerprints but not the runtime binary).
 _clean-stale:
-    #!/usr/bin/env bash
-    for profile in debug release; do
-        if compgen -G "{{repo-root}}/target/$profile/build/hyperlight-js-*" > /dev/null && \
-           [ ! -f "{{repo-root}}/target/hyperlight-js-runtime/x86_64-hyperlight-none/$profile/hyperlight-js-runtime" ]; then
-            echo "Cleaning stale hyperlight-js $profile build artifacts..."
-            rm -rf {{repo-root}}/target/hyperlight-js-runtime \
-                   {{repo-root}}/target/$profile/build/hyperlight-js-* \
-                   {{repo-root}}/target/$profile/.fingerprint/hyperlight-js-*
-        fi
-    done
-
-[windows]
-_clean-stale:
-    foreach ($profile in @('debug', 'release')) { \
-        $bp = '{{repo-root}}/target/' + $profile + '/build'; \
-        $rp = '{{repo-root}}/target/hyperlight-js-runtime/x86_64-hyperlight-none/' + $profile + '/hyperlight-js-runtime'; \
-        if ((Get-ChildItem -Path $bp -Filter 'hyperlight-js-*' -ErrorAction SilentlyContinue) -and \
-            -not (Test-Path $rp)) { \
-            Write-Host ('Cleaning stale hyperlight-js ' + $profile + ' build artifacts...'); \
-            Remove-Item -Recurse -Force '{{repo-root}}/target/hyperlight-js-runtime' -ErrorAction SilentlyContinue; \
-            Get-ChildItem -Path $bp -Filter 'hyperlight-js-*' | Remove-Item -Recurse -Force; \
-            $fp = '{{repo-root}}/target/' + $profile + '/.fingerprint'; \
-            if (Test-Path $fp) { \
-                Get-ChildItem -Path $fp -Filter 'hyperlight-js-*' | Remove-Item -Recurse -Force \
-            } \
-        } \
-    }
+    -{{rmrf}} {{repo-root}}/target/hyperlight-js-runtime
+    -{{rmrf}} {{repo-root}}/target/debug/build/hyperlight-js-*
+    -{{rmrf}} {{repo-root}}/target/debug/.fingerprint/hyperlight-js-*
+    -{{rmrf}} {{repo-root}}/target/release/build/hyperlight-js-*
+    -{{rmrf}} {{repo-root}}/target/release/.fingerprint/hyperlight-js-*
 
 build target=default-target: _clean-stale
     cargo build --manifest-path {{repo-root}}/src/javascript_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }}

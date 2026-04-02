@@ -34,15 +34,10 @@ guest-compile-wit: ensure-tools
 # and SDKs will fail at runtime with "vector parameter missing length".
 invalidate-wit-caches:
     -{{rmrf}} {{repo-root}}/target/hyperlight-wasm-runtime
-    -{{rmrf}} {{repo-root}}/target/hyperlight-js-runtime
     -{{rmrf}} {{repo-root}}/target/debug/build/hyperlight-wasm-*
     -{{rmrf}} {{repo-root}}/target/debug/.fingerprint/hyperlight-wasm-*
     -{{rmrf}} {{repo-root}}/target/release/build/hyperlight-wasm-*
     -{{rmrf}} {{repo-root}}/target/release/.fingerprint/hyperlight-wasm-*
-    -{{rmrf}} {{repo-root}}/target/debug/build/hyperlight-js-*
-    -{{rmrf}} {{repo-root}}/target/debug/.fingerprint/hyperlight-js-*
-    -{{rmrf}} {{repo-root}}/target/release/build/hyperlight-js-*
-    -{{rmrf}} {{repo-root}}/target/release/.fingerprint/hyperlight-js-*
     -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/hyperlight-wasm-runtime
     -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/debug/build/hyperlight-wasm-*
     -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/debug/.fingerprint/hyperlight-wasm-*

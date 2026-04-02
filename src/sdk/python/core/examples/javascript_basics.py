@@ -16,7 +16,7 @@ def timed_run(sandbox, code, label="run"):
     start = time.perf_counter()
     result = sandbox.run(code)
     elapsed_ms = (time.perf_counter() - start) * 1000
-    print(f"⏱️  {label}: {elapsed_ms:.1f}ms")
+    print(f"[timer]  {label}: {elapsed_ms:.1f}ms")
     return result
 
 
@@ -28,7 +28,7 @@ except ImportError as exc:
         "This example requires the HyperlightJS backend. "
         "Install hyperlight-sandbox[hyperlight_js] or run `just python-build`."
     ) from exc
-print(f"⏱️  Sandbox created (lazy): {(time.perf_counter() - t0) * 1000:.1f}ms")
+print(f"[timer]  Sandbox created (lazy): {(time.perf_counter() - t0) * 1000:.1f}ms")
 
 sandbox.register_tool("add", lambda a=0, b=0: a + b)
 sandbox.register_tool("multiply", lambda a=0, b=0: a * b)
@@ -128,4 +128,4 @@ assert "35" in lines[0], f"Expected 35, got: {lines[0]}"
 assert "26" in lines[1], f"Expected 26, got: {lines[1]}"
 assert "gpt-4" in lines[2], f"Expected gpt-4, got: {lines[2]}"
 
-print("\n✅ JavaScript basics example passed!")
+print("\n[ok] JavaScript basics example passed!")

@@ -70,5 +70,5 @@ print(result.stdout)
 assert "POST blocked" in result.stdout, "test 3: expected POST to be blocked"
 
 print("═" * 60)
-print("✅ All tests passed!")
+print("[ok] All tests passed!")
 print("═" * 60)

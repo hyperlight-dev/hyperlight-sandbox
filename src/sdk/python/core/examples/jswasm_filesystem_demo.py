@@ -117,4 +117,4 @@ with open(os.path.join(input_dir, "readonly.txt")) as f:
     assert f.read() == "do not modify"
 print("OK: guest cannot write to input")
 
-print("\n✅ All JS Wasm filesystem tests passed!")
+print("\n[ok] All JS Wasm filesystem tests passed!")

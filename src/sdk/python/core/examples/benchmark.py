@@ -202,21 +202,21 @@ def main():
         r = run_suite("Wasm + Python", backend="wasm", module="python_guest.path", lang="python")
         all_results["Wasm + Python"] = r
     except Exception as e:
-        print(f"  ⚠️  Skipped: {e}")
+        print(f"  [warn]  Skipped: {e}")
 
     # JavaScript in Wasm
     try:
         r = run_suite("Wasm + JavaScript", backend="wasm", module="javascript_guest.path", lang="javascript")
         all_results["Wasm + JavaScript"] = r
     except Exception as e:
-        print(f"  ⚠️  Skipped: {e}")
+        print(f"  [warn]  Skipped: {e}")
 
     # HyperlightJS
     try:
         r = run_suite("HyperlightJS", backend="hyperlight-js", lang="javascript")
         all_results["HyperlightJS"] = r
     except Exception as e:
-        print(f"  ⚠️  Skipped: {e}")
+        print(f"  [warn]  Skipped: {e}")
 
     # ── Summary table (averages) ─────────────────────────────────
     if all_results:

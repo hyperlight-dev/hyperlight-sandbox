@@ -6,23 +6,34 @@ rmrf := if os() == "windows" { "Remove-Item -Recurse -Force -ErrorAction Silentl
 # Only clean when rust-cache left stale state (fingerprints exist but runtime binary missing).
 [unix]
 _clean-stale:
-    @if compgen -G "{{repo-root}}/target/*/build/hyperlight-js-*" > /dev/null 2>&1 && \
-       ! ls {{repo-root}}/target/hyperlight-js-runtime/x86_64-hyperlight-none/*/hyperlight-js-runtime > /dev/null 2>&1; then \
-        echo "Cleaning stale hyperlight-js build artifacts..."; \
-        rm -rf {{repo-root}}/target/hyperlight-js-runtime {{repo-root}}/target/hls \
-               {{repo-root}}/target/*/build/hyperlight-js-* {{repo-root}}/target/*/.fingerprint/hyperlight-js-* \
-               {{repo-root}}/target/*/build/hyperlight-host-* {{repo-root}}/target/*/.fingerprint/hyperlight-host-*; \
-    fi
+    #!/usr/bin/env bash
+    for profile in debug release; do
+        if compgen -G "{{repo-root}}/target/$profile/build/hyperlight-js-*" > /dev/null && \
+           [ ! -f "{{repo-root}}/target/hyperlight-js-runtime/x86_64-hyperlight-none/$profile/hyperlight-js-runtime" ]; then
+            echo "Cleaning stale hyperlight-js $profile build artifacts..."
+            rm -rf {{repo-root}}/target/hyperlight-js-runtime {{repo-root}}/target/hls \
+                   {{repo-root}}/target/$profile/build/hyperlight-js-* {{repo-root}}/target/$profile/.fingerprint/hyperlight-js-* \
+                   {{repo-root}}/target/$profile/build/hyperlight-host-* {{repo-root}}/target/$profile/.fingerprint/hyperlight-host-*
+        fi
+    done
 
 [windows]
 _clean-stale:
-    $found = (Get-ChildItem -Path '{{repo-root}}/target/*/build' -Filter 'hyperlight-js-*' -ErrorAction SilentlyContinue); \
-    $missing = -not (Get-ChildItem -Path '{{repo-root}}/target/hyperlight-js-runtime/x86_64-hyperlight-none/*/hyperlight-js-runtime' -ErrorAction SilentlyContinue); \
-    if ($found -and $missing) { \
-        Write-Host 'Cleaning stale hyperlight-js build artifacts...'; \
-        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '{{repo-root}}/target/hyperlight-js-runtime','{{repo-root}}/target/hls'; \
-        Get-ChildItem -Path '{{repo-root}}/target/*/build','{{repo-root}}/target/*/.fingerprint' -Filter 'hyperlight-js-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force; \
-        Get-ChildItem -Path '{{repo-root}}/target/*/build','{{repo-root}}/target/*/.fingerprint' -Filter 'hyperlight-host-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force; \
+    foreach ($profile in @('debug', 'release')) { \
+        $bp = '{{repo-root}}/target/' + $profile + '/build'; \
+        $rp = '{{repo-root}}/target/hyperlight-js-runtime/x86_64-hyperlight-none/' + $profile + '/hyperlight-js-runtime'; \
+        if ((Get-ChildItem -Path $bp -Filter 'hyperlight-js-*' -ErrorAction SilentlyContinue) -and \
+            -not (Test-Path $rp)) { \
+            Write-Host ('Cleaning stale hyperlight-js ' + $profile + ' build artifacts...'); \
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '{{repo-root}}/target/hyperlight-js-runtime','{{repo-root}}/target/hls'; \
+            Get-ChildItem -Path $bp -Filter 'hyperlight-js-*' | Remove-Item -Recurse -Force; \
+            Get-ChildItem -Path $bp -Filter 'hyperlight-host-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force; \
+            $fp = '{{repo-root}}/target/' + $profile + '/.fingerprint'; \
+            if (Test-Path $fp) { \
+                Get-ChildItem -Path $fp -Filter 'hyperlight-js-*' | Remove-Item -Recurse -Force; \
+                Get-ChildItem -Path $fp -Filter 'hyperlight-host-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force; \
+            } \
+        } \
     }
 
 build target=default-target: _clean-stale

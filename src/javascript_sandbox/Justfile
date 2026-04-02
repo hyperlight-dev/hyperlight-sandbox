@@ -3,14 +3,27 @@ default-target := "debug"
 repo-root := invocation_directory_native()
 rmrf := if os() == "windows" { "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" } else { "rm -rf" }
 
-# Clean stale hyperlight-js build artifacts (e.g. rust-cache restores
-# fingerprints but not the runtime binary).
+# Only clean when rust-cache left stale state (fingerprints exist but runtime binary missing).
+[unix]
 _clean-stale:
-    -{{rmrf}} {{repo-root}}/target/hyperlight-js-runtime
-    -{{rmrf}} {{repo-root}}/target/debug/build/hyperlight-js-*
-    -{{rmrf}} {{repo-root}}/target/debug/.fingerprint/hyperlight-js-*
-    -{{rmrf}} {{repo-root}}/target/release/build/hyperlight-js-*
-    -{{rmrf}} {{repo-root}}/target/release/.fingerprint/hyperlight-js-*
+    @if compgen -G "{{repo-root}}/target/*/build/hyperlight-js-*" > /dev/null 2>&1 && \
+       ! ls {{repo-root}}/target/hyperlight-js-runtime/x86_64-hyperlight-none/*/hyperlight-js-runtime > /dev/null 2>&1; then \
+        echo "Cleaning stale hyperlight-js build artifacts..."; \
+        rm -rf {{repo-root}}/target/hyperlight-js-runtime {{repo-root}}/target/hls \
+               {{repo-root}}/target/*/build/hyperlight-js-* {{repo-root}}/target/*/.fingerprint/hyperlight-js-* \
+               {{repo-root}}/target/*/build/hyperlight-host-* {{repo-root}}/target/*/.fingerprint/hyperlight-host-*; \
+    fi
+
+[windows]
+_clean-stale:
+    $found = (Get-ChildItem -Path '{{repo-root}}/target/*/build' -Filter 'hyperlight-js-*' -ErrorAction SilentlyContinue); \
+    $missing = -not (Get-ChildItem -Path '{{repo-root}}/target/hyperlight-js-runtime/x86_64-hyperlight-none/*/hyperlight-js-runtime' -ErrorAction SilentlyContinue); \
+    if ($found -and $missing) { \
+        Write-Host 'Cleaning stale hyperlight-js build artifacts...'; \
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '{{repo-root}}/target/hyperlight-js-runtime','{{repo-root}}/target/hls'; \
+        Get-ChildItem -Path '{{repo-root}}/target/*/build','{{repo-root}}/target/*/.fingerprint' -Filter 'hyperlight-js-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force; \
+        Get-ChildItem -Path '{{repo-root}}/target/*/build','{{repo-root}}/target/*/.fingerprint' -Filter 'hyperlight-host-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force; \
+    }
 
 build target=default-target: _clean-stale
     cargo build --manifest-path {{repo-root}}/src/javascript_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }}

@@ -51,7 +51,7 @@ build: python-build
 #### DIST / PUBLISH ####
 
 python-dist: python-sync-guest-resources
-    {{rmrf}} {{dist-root}}
+    -{{rmrf}} {{dist-root}}
     cd {{repo-root}}/src/sdk/python/core && uv run python -m build --outdir {{core-dist}}
     cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}}
     cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}}

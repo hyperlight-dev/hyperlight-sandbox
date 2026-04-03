@@ -4,30 +4,33 @@
     <p><strong>Hyperlight is a lightweight Virtual Machine Manager (VMM) designed to be embedded within applications. It enables safe execution of untrusted code within <i>micro virtual machines</i> with very low latency and minimal overhead.</strong> <br> We are a <a href="https://cncf.io/">Cloud Native Computing Foundation</a> sandbox project. </p>
 </div>
 
-> Note: Hyperlight is a nascent project with an evolving API and no guaranteed support. Assistance is provided on a
-> best-effort basis by the developers.
-
 # Hyperlight Sandbox
 
 A multi-backend sandboxing framework for running untrusted code with controlled host capabilities. Built on [Hyperlight](https://github.com/hyperlight-dev/hyperlight).
 
+Supported backends:
+
+- [Wasm Component Sandbox](#wasm-component-sandbox) (Python/Javascript or provide your own)
+- [HyperlightJS Sandbox](#hyperlightjs-sandbox)
+- [Nanvix Sandbox](#nanvix-sandbox)
+
 ## Overview
 
-hyperlight-sandbox provides a unified API across multiple isolation backends. All backends share a common capability model.  A python SDK is provided.
+hyperlight-sandbox provides a unified API across multiple isolation backends. All backends share a common capability model.  A python and rust SDK is provided.
 
-- **Secure code execution** -- Run untrusted code in isolated sandboxes
+- **Secure code execution** -- Run untrusted code in hardware isolated sandboxes (KVM, MSHV, Hyper-v)
 - **Host tool dispatch** -- Register callables as tools; guest code invokes them by name with schema-validated arguments
-- **Capability-based file I/O** -- Read-only `/input` directory, writable `/output` directory, strict path isolation
-- **Snapshot / restore** -- Capture and rewind sandbox runtime state
-- **Network allowlisting** -- Outbound HTTP is deny-by-default; allow specific domains and methods with `allow_domain()`
+- **Capability-based file access** -- Read-only `/input` directory, writable `/output` directory, strict path isolation
+- **Snapshot / restore** -- Capture and rewind sandbox runtime state making it re-useable
+- **Network allow listing** -- Network traffic is off by default; allow specific domains and HTTP verbs with `allow_domain()`
 
 For a more in depth walkthrough, see the overview slide deck in `docs/end-user-overview-slides.md` (or run `just slides` to view in the browser).
 
 ### Use Cases
 
-- **File Processing**: Process provided files in Python and return a summarized report
+- **File Processing**: Process provided files and return a summarized report
 - **Code Mode**: Let an agent write a script that calls your tools directly, reducing token usage
-- **Sandboxed Execution** as a library: drop into an existing app or library without building a custom runtime
+- **Sandboxed Execution as a library**: drop into an existing app or library to provide plugins 
 - **Agent Skills** combine scripts into multi-step workflows that run in isolation (future work)
 
 #### Agent Use Case
@@ -50,6 +53,8 @@ flowchart TD
 ```
 
 ## Quick Start
+
+Requires [KVM](https://help.ubuntu.com/community/KVM/Installation), [MSHV](https://github.com/rust-vmm/mshv) or [Hyper-v](https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/get-started/Install-Hyper-V?tabs=powershell&pivots=windows-server)
 
 Python SDK:
 
@@ -78,7 +83,9 @@ print(result.stdout)
 
 ### Wasm Component Sandbox
 
-Loads a Wasm component via [hyperlight-wasm](https://github.com/jsturtevant/hyperlight-wasm) and exposes the full capability surface through WIT-generated bindings. Supports the packaged Python guest and JavaScript guest. Use this for general-purpose workloads that need tools, file I/O, networking, and snapshots.
+Loads a Wasm component via [hyperlight-wasm](https://github.com/hyperlight-dev/hyperlight-wasm) and exposes the full capability surface through WIT-generated bindings. Supports the packaged Python guest and JavaScript guest. Use this for general-purpose workloads that need tools, file I/O, networking, and snapshots.
+
+Build your own using the provided [WIT interface](src/wasm_sandbox/wit/hyperlight-sandbox.wit). See the [python](./src/wasm_sandbox/guests/python/) and [javascript](./src/wasm_sandbox/guests/javascript/) guests for examples.
 
 ```rust
 use hyperlight_sandbox::{Sandbox, ToolRegistry};
@@ -116,11 +123,11 @@ print(f"3 + 4 = {result}")
 }
 ```
 
-See `src/wasm_sandbox/examples/` for file I/O and network demos.
+See [examples](./src/wasm_sandbox/examples/) for file I/O and network demos.
 
 ### HyperlightJS Sandbox
 
-Runs JavaScript directly on the [HyperlightJS](https://github.com/hyperlight-dev/hyperlight-js) runtime without going through the Wasm component model. Injects `call_tool`, `read_file`, `write_file`, and `fetch` as globals. Supports snapshots, file I/O, and network allowlists. A simpler runtime path when the workload is JavaScript-only.
+Runs JavaScript directly on the [HyperlightJS](https://github.com/hyperlight-dev/hyperlight-js) runtime without going through the Wasm component model. Injects `call_tool`, `read_file`, `write_file`, and `fetch` as globals. Supports snapshots, file I/O, and network allowlists. A simpler runtime path when the workload is JavaScript-only and need a smaller footprint.
 
 ```rust
 use hyperlight_javascript_sandbox::HyperlightJs;
@@ -156,7 +163,7 @@ console.log('10 + 20 = ' + sum);
 }
 ```
 
-See `src/javascript_sandbox/examples/` for file I/O and network demos.
+See [examples](./src/javascript_sandbox/examples/) for file I/O and network demos.
 
 ### Nanvix Sandbox
 

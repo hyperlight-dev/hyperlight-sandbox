@@ -5,6 +5,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 jobs:
   # Build all Python packages on Linux (pure + backend wheels).
   build-linux:

@@ -83,7 +83,13 @@ python-wheelhouse-test:
         --find-links={{wasm-wheels}} \
         --find-links={{python-guest-dist}} \
         --with "hyperlight-sandbox[wasm,python_guest]" \
-        python {{repo-root}}/src/sdk/python/tests/wheelhouse_wasm.py
+        python {{repo-root}}/src/sdk/python/tests/wheelhouse_wasm_python.py
+    uv run --no-project --no-index \
+        --find-links={{core-dist}} \
+        --find-links={{wasm-wheels}} \
+        --find-links={{javascript-guest-dist}} \
+        --with "hyperlight-sandbox[wasm,javascript_guest]" \
+        python {{repo-root}}/src/sdk/python/tests/wheelhouse_wasm_js.py
     uv run --no-project --no-index \
         --find-links={{core-dist}} \
         --find-links={{hyperlight-js-wheels}} \

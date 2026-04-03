@@ -61,7 +61,7 @@ python-dist: python-sync-guest-resources
 # Build only the platform-specific maturin backend wheels.
 # Used by CI to produce Windows wheels without needing guest binaries.
 # Requires sandbox-world.wasm to exist (run `just wasm guest-compile-wit` first).
-python-dist-backends:
+python-dist-backends: python-sync-env
     -{{rmrf}} {{wasm-wheels}}
     -{{rmrf}} {{hyperlight-js-wheels}}
     cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}}

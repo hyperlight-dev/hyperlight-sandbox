@@ -10,7 +10,7 @@ description = "Hyperlight JS guest for hyperlight-sandbox"
 hyperlight-sandbox.workspace = true
 anyhow = "1"
 url = "2"
-hyperlight-js = { git = "https://github.com/hyperlight-dev/hyperlight-js.git", rev = "eeca10c9574ecb3eb03955350e91b6f58d562792" }
+hyperlight-js = { git = "https://github.com/hyperlight-dev/hyperlight-js.git", rev = "dd118685db5da1aca3c22c51752ab1816de311cb" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

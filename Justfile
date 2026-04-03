@@ -13,7 +13,7 @@ clean: wasm::clean python::clean
 
 #### BUILD TARGETS ####
 
-build-all target=default-target: (wasm::build target) (js::build target) nanvix::build python::build
+build target=default-target: (wasm::build target) (js::build target) nanvix::build python::build
 
 lint: lint-rust wasm::lint js::lint python::lint
 

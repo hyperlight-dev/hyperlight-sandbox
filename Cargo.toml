@@ -23,18 +23,19 @@ license = "Apache-2.0"
 hyperlight-sandbox = { path = "src/hyperlight_sandbox" }
 hyperlight-javascript-sandbox = { path = "src/javascript_sandbox" }
 hyperlight-wasm-sandbox = { path = "src/wasm_sandbox" }
-hyperlight-common = { version = "0.13.1", default-features = false }
-hyperlight-component-macro = { version = "0.13.1" }
-hyperlight-host = { version = "0.13.1", default-features = false, features = ["executable_heap"] }
-hyperlight-wasm = { git = "https://github.com/jsturtevant/hyperlight-wasm", rev = "09b5e8297d827518847c08c8506bf83e85eb89b1" }
+hyperlight-common = { version = "0.14.0", default-features = false }
+hyperlight-component-macro = { version = "0.14.0" }
+hyperlight-host = { version = "0.14.0", default-features = false, features = ["executable_heap"] }
+hyperlight-wasm = { git = "https://github.com/jsturtevant/hyperlight-wasm", rev = "05a9eea" } #branch util-compont-fixes
 
 # Patched component-util (name collision fix, flags fix, empty-ns fix)
+# https://github.com/jsturtevant/hyperlight-1/tree/wasm-component-fixes
 [patch."https://github.com/hyperlight-dev/hyperlight"]
-hyperlight-common = { version = "=0.13.1" }
-hyperlight-guest = { version = "=0.13.1" }
-hyperlight-guest-bin = { version = "=0.13.1" }
-hyperlight-host = { version = "=0.13.1" }
-hyperlight-component-util = { git = "https://github.com/jsturtevant/hyperlight-1", branch = "wasm-component-fixes", package = "hyperlight-component-util" }
+hyperlight-common = { version = "0.14.0" }
+hyperlight-guest = { version = "=0.14.0" }
+hyperlight-guest-bin = { version = "=0.14.0" }
+hyperlight-host = { version = "0.14.0" }
+hyperlight-component-util = { git = "https://github.com/jsturtevant/hyperlight-1", rev="4701257034306b0978d49cc9140bc0b12de3b409",  package = "hyperlight-component-util" }
 
 [patch.crates-io]
-hyperlight-component-util = { git = "https://github.com/jsturtevant/hyperlight-1", branch = "wasm-component-fixes", package = "hyperlight-component-util" }
+hyperlight-component-util = { git = "https://github.com/jsturtevant/hyperlight-1", rev="4701257034306b0978d49cc9140bc0b12de3b409", package = "hyperlight-component-util" }

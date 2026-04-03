@@ -249,9 +249,9 @@ dependencies = [
 
 [[package]]
 name = "buddy_system_allocator"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b672b945a3e4f4f40bfd4cd5ee07df9e796a42254ce7cd6d2599ad969244c44a"
+checksum = "c1af5a01adeeade54c9f5060300227a8ee64c05b6376f28e9b8ee3b72dd2056f"
 dependencies = [
  "spin",
 ]
@@ -1031,20 +1031,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
-name = "elfcore"
-version = "2.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fdaa3d1c27119b3394513f4596894a40cd53cb4acec7fce636a9ca0c4abb171"
-dependencies = [
- "libc",
- "nix",
- "smallvec",
- "thiserror",
- "tracing",
- "zerocopy",
-]
-
-[[package]]
 name = "embedded-io"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1616,22 +1602,9 @@ dependencies = [
 
 [[package]]
 name = "hyperlight-common"
-version = "0.12.0"
-source = "git+https://github.com/hyperlight-dev/hyperlight?rev=620339aa95d508e8cbd1d38b4374f09090aade7b#620339aa95d508e8cbd1d38b4374f09090aade7b"
-dependencies = [
- "anyhow",
- "flatbuffers",
- "log",
- "spin",
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "hyperlight-common"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4187a7affab21aa49e498781595648437ac22cfdf94753c3200eddf89f7ab98c"
+checksum = "be2d385987047c64fdb5c95e05ef3b6bd9431001a8fe694abb29b29e99913167"
 dependencies = [
  "anyhow",
  "flatbuffers",
@@ -1644,9 +1617,9 @@ dependencies = [
 
 [[package]]
 name = "hyperlight-component-macro"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f814ad0745e14be12779361222d63a82928c0c6ce27612c0c89ed925d8957433"
+checksum = "fa7ae5cd7c8e5f5b925b07bce45be853ac0be0e6d4e8b2afd17ad8c16aa135c4"
 dependencies = [
  "env_logger",
  "hyperlight-component-util",
@@ -1655,13 +1628,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
- "wasmparser 0.245.1",
+ "wasmparser 0.246.1",
 ]
 
 [[package]]
 name = "hyperlight-component-util"
-version = "0.13.1"
-source = "git+https://github.com/jsturtevant/hyperlight-1?branch=wasm-component-fixes#5b5c8c4be6e157269bb90be1c6a8eab8e795214a"
+version = "0.14.0"
+source = "git+https://github.com/jsturtevant/hyperlight-1?rev=4701257034306b0978d49cc9140bc0b12de3b409#4701257034306b0978d49cc9140bc0b12de3b409"
 dependencies = [
  "itertools 0.14.0",
  "prettyplease",
@@ -1669,34 +1642,34 @@ dependencies = [
  "quote",
  "syn",
  "tracing",
- "wasmparser 0.245.1",
+ "wasmparser 0.246.1",
 ]
 
 [[package]]
 name = "hyperlight-guest"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45e6132c20b413ba14ad6967c3c941702276773d3bc749569e746e3d1df3dff3"
+checksum = "6ee2682d284171d2bd9e80e3e543de310356c1d8ec65e88028b3e08048d15d3d"
 dependencies = [
  "anyhow",
  "flatbuffers",
- "hyperlight-common 0.13.1",
+ "hyperlight-common",
  "serde_json",
  "tracing",
 ]
 
 [[package]]
 name = "hyperlight-guest-bin"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b84470d8d2f9647a02f6bf5287f4083937df6452cacac028cd772f3796c6e2f3"
+checksum = "3740817f3be98d18edb50eec985461baca0eba5b1f73d0f475b7a539d812e750"
 dependencies = [
  "buddy_system_allocator",
  "cc",
  "cfg-if",
  "flatbuffers",
  "glob",
- "hyperlight-common 0.13.1",
+ "hyperlight-common",
  "hyperlight-guest",
  "hyperlight-guest-macro",
  "hyperlight-guest-tracing",
@@ -1708,9 +1681,9 @@ dependencies = [
 
 [[package]]
 name = "hyperlight-guest-macro"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "440596a4204f3c60da9e11da838bcd280bf350b2087361a0ebf69c088bb76423"
+checksum = "a4f88cbcde1ca986e4f14a85ea0a436659edcb6eb63e8a9d14413ca5cdc8ea86"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1720,11 +1693,11 @@ dependencies = [
 
 [[package]]
 name = "hyperlight-guest-tracing"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f2c1db4d357e8ff0e0f9e26432b38e079d7d7949daa063effeb25bbdce50212"
+checksum = "d14e9c34c508ecfba1283a552c3eb118d8ee82d863e2e91377a6059f06cf84dd"
 dependencies = [
- "hyperlight-common 0.13.1",
+ "hyperlight-common",
  "spin",
  "tracing",
  "tracing-core",
@@ -1732,50 +1705,9 @@ dependencies = [
 
 [[package]]
 name = "hyperlight-host"
-version = "0.12.0"
-source = "git+https://github.com/hyperlight-dev/hyperlight?rev=620339aa95d508e8cbd1d38b4374f09090aade7b#620339aa95d508e8cbd1d38b4374f09090aade7b"
-dependencies = [
- "anyhow",
- "bitflags 2.11.0",
- "blake3",
- "cfg-if",
- "cfg_aliases",
- "crossbeam-channel",
- "elfcore",
- "flatbuffers",
- "goblin",
- "hyperlight-common 0.12.0",
- "kvm-bindings",
- "kvm-ioctls",
- "lazy_static",
- "libc",
- "log",
- "metrics",
- "mshv-bindings",
- "mshv-ioctls",
- "page_size",
- "rand 0.10.0",
- "rust-embed",
- "serde_json",
- "sha256",
- "termcolor",
- "thiserror",
- "tracing",
- "tracing-core",
- "tracing-log",
- "uuid",
- "vmm-sys-util",
- "windows",
- "windows-result",
- "windows-sys 0.61.2",
- "windows-version",
-]
-
-[[package]]
-name = "hyperlight-host"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05a62d79d2871137b0feea8db77e222289594766e2d6902ef0bdb0d65d8edda6"
+checksum = "65c2f9b5a13324c5dd786bf77a7531216207684da1cefc19fb9b697d08346ac0"
 dependencies = [
  "anyhow",
  "bitflags 2.11.0",
@@ -1785,7 +1717,7 @@ dependencies = [
  "crossbeam-channel",
  "flatbuffers",
  "goblin",
- "hyperlight-common 0.13.1",
+ "hyperlight-common",
  "kvm-bindings",
  "kvm-ioctls",
  "lazy_static",
@@ -1798,7 +1730,6 @@ dependencies = [
  "rand 0.10.0",
  "rust-embed",
  "serde_json",
- "sha256",
  "termcolor",
  "thiserror",
  "tracing",
@@ -1827,13 +1758,13 @@ dependencies = [
 
 [[package]]
 name = "hyperlight-js"
-version = "0.1.1"
-source = "git+https://github.com/hyperlight-dev/hyperlight-js.git?rev=eeca10c9574ecb3eb03955350e91b6f58d562792#eeca10c9574ecb3eb03955350e91b6f58d562792"
+version = "0.2.0"
+source = "git+https://github.com/hyperlight-dev/hyperlight-js.git?rev=dd118685db5da1aca3c22c51752ab1816de311cb#dd118685db5da1aca3c22c51752ab1816de311cb"
 dependencies = [
  "anyhow",
  "cargo-hyperlight",
  "fn-traits",
- "hyperlight-host 0.12.0",
+ "hyperlight-host",
  "hyperlight-js-runtime",
  "metrics",
  "oxc_resolver",
@@ -1846,21 +1777,21 @@ dependencies = [
 
 [[package]]
 name = "hyperlight-js-runtime"
-version = "0.1.1"
-source = "git+https://github.com/hyperlight-dev/hyperlight-js.git?rev=eeca10c9574ecb3eb03955350e91b6f58d562792#eeca10c9574ecb3eb03955350e91b6f58d562792"
+version = "0.2.0"
+source = "git+https://github.com/hyperlight-dev/hyperlight-js.git?rev=dd118685db5da1aca3c22c51752ab1816de311cb#dd118685db5da1aca3c22c51752ab1816de311cb"
 dependencies = [
  "anyhow",
  "base64",
- "cc",
+ "bindgen",
+ "chrono",
  "clap",
  "fn-traits",
  "hashbrown 0.16.1",
  "hex",
  "hmac",
- "hyperlight-common 0.12.0",
+ "hyperlight-common",
  "hyperlight-guest",
  "hyperlight-guest-bin",
- "libc",
  "rquickjs",
  "serde",
  "serde_json",
@@ -1927,7 +1858,7 @@ dependencies = [
 [[package]]
 name = "hyperlight-wasm"
 version = "0.13.1"
-source = "git+https://github.com/jsturtevant/hyperlight-wasm?rev=09b5e8297d827518847c08c8506bf83e85eb89b1#09b5e8297d827518847c08c8506bf83e85eb89b1"
+source = "git+https://github.com/jsturtevant/hyperlight-wasm?rev=05a9eea#05a9eea52e9bca0722d9e1e2b42e95d78b4d4afe"
 dependencies = [
  "anyhow",
  "blake3",
@@ -1938,8 +1869,8 @@ dependencies = [
  "chrono",
  "env_logger",
  "goblin",
- "hyperlight-common 0.13.1",
- "hyperlight-host 0.13.1",
+ "hyperlight-common",
+ "hyperlight-host",
  "hyperlight-wasm-runtime",
  "junction",
  "libc",
@@ -1957,7 +1888,7 @@ dependencies = [
 [[package]]
 name = "hyperlight-wasm-macro"
 version = "0.13.1"
-source = "git+https://github.com/jsturtevant/hyperlight-wasm?rev=09b5e8297d827518847c08c8506bf83e85eb89b1#09b5e8297d827518847c08c8506bf83e85eb89b1"
+source = "git+https://github.com/jsturtevant/hyperlight-wasm?rev=05a9eea#05a9eea52e9bca0722d9e1e2b42e95d78b4d4afe"
 dependencies = [
  "hyperlight-component-util",
  "itertools 0.14.0",
@@ -1969,13 +1900,13 @@ dependencies = [
 [[package]]
 name = "hyperlight-wasm-runtime"
 version = "0.13.1"
-source = "git+https://github.com/jsturtevant/hyperlight-wasm?rev=09b5e8297d827518847c08c8506bf83e85eb89b1#09b5e8297d827518847c08c8506bf83e85eb89b1"
+source = "git+https://github.com/jsturtevant/hyperlight-wasm?rev=05a9eea#05a9eea52e9bca0722d9e1e2b42e95d78b4d4afe"
 dependencies = [
  "cargo_metadata",
  "cc",
  "cfg-if",
  "cfg_aliases",
- "hyperlight-common 0.13.1",
+ "hyperlight-common",
  "hyperlight-guest",
  "hyperlight-guest-bin",
  "hyperlight-wasm-macro",
@@ -1995,9 +1926,9 @@ dependencies = [
  "http",
  "http-body",
  "http-body-util",
- "hyperlight-common 0.13.1",
+ "hyperlight-common",
  "hyperlight-component-macro",
- "hyperlight-host 0.13.1",
+ "hyperlight-host",
  "hyperlight-sandbox",
  "hyperlight-wasm",
  "log",
@@ -2531,18 +2462,6 @@ dependencies = [
  "mshv-bindings",
  "thiserror",
  "vmm-sys-util",
-]
-
-[[package]]
-name = "nix"
-version = "0.31.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d6d0705320c1e6ba1d912b5e37cf18071b6c2e9b7fa8215a1e8a7651966f5d3"
-dependencies = [
- "bitflags 2.11.0",
- "cfg-if",
- "cfg_aliases",
- "libc",
 ]
 
 [[package]]
@@ -3686,19 +3605,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sha256"
-version = "1.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f880fc8562bdeb709793f00eb42a2ad0e672c4f883bbe59122b926eca935c8f6"
-dependencies = [
- "async-trait",
- "bytes",
- "hex",
- "sha2",
- "tokio",
-]
-
-[[package]]
 name = "shellexpand"
 version = "3.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4419,6 +4325,19 @@ name = "wasmparser"
 version = "0.245.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4f08c9adee0428b7bddf3890fc27e015ac4b761cc608c822667102b8bfd6995e"
+dependencies = [
+ "bitflags 2.11.0",
+ "hashbrown 0.16.1",
+ "indexmap",
+ "semver",
+ "serde",
+]
+
+[[package]]
+name = "wasmparser"
+version = "0.246.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d991c35d79bf8336dc1cd632ed4aacf0dc5fac4bc466c670625b037b972bb9c"
 dependencies = [
  "bitflags 2.11.0",
  "hashbrown 0.16.1",

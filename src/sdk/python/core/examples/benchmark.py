@@ -58,8 +58,8 @@ def run_suite(name, backend, module=None, lang="python"):
     file_code = None
     if lang == "python":
         file_code = 'with open("/input/data.json") as f:\n    import json; print(json.load(f)["name"])'
-    elif backend == "hyperlight-js":
-        file_code = 'const data = JSON.parse(readFile("/input/data.json"));\nconsole.log(data.name);'
+    elif lang == "javascript":
+        file_code = 'const data = JSON.parse(read_file("/input/data.json"));\nconsole.log(data.name);'
 
     kwargs = {"backend": backend}
     if module:

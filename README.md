@@ -197,7 +197,7 @@ Tool requirements:
 
 ```bash
 # Build everything (Rust backends, Wasm guests, Python SDK)
-just build-all
+just build
 
 # Run the example suite
 just examples
@@ -206,7 +206,7 @@ just examples
 Other useful commands:
 
 ```bash
-just build-all         # Build all Rust backends, Wasm guests, and Python SDK
+just build         # Build all Rust backends, Wasm guests, and Python SDK
 just test              # Run full test suite (Rust + Python)
 just lint              # Lint Rust and Python code
 just fmt               # Format all code

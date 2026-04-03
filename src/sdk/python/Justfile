@@ -58,6 +58,15 @@ python-dist: python-sync-guest-resources
     cd {{repo-root}}/src/sdk/python/wasm_guests/python_guest && uv run python -m build --outdir {{python-guest-dist}}
     cd {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest && uv run python -m build --outdir {{javascript-guest-dist}}
 
+# Build only the platform-specific maturin backend wheels.
+# Used by CI to produce Windows wheels without needing guest binaries.
+# Requires sandbox-world.wasm to exist (run `just wasm guest-compile-wit` first).
+python-dist-backends: python-sync-env
+    -{{rmrf}} {{wasm-wheels}}
+    -{{rmrf}} {{hyperlight-js-wheels}}
+    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}}
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}}
+
 python-publish repository="pypi":
     uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{wasm-wheels}}/*
     uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{hyperlight-js-wheels}}/*
@@ -74,7 +83,13 @@ python-wheelhouse-test:
         --find-links={{wasm-wheels}} \
         --find-links={{python-guest-dist}} \
         --with "hyperlight-sandbox[wasm,python_guest]" \
-        python {{repo-root}}/src/sdk/python/tests/wheelhouse_wasm.py
+        python {{repo-root}}/src/sdk/python/tests/wheelhouse_wasm_python.py
+    uv run --no-project --no-index \
+        --find-links={{core-dist}} \
+        --find-links={{wasm-wheels}} \
+        --find-links={{javascript-guest-dist}} \
+        --with "hyperlight-sandbox[wasm,javascript_guest]" \
+        python {{repo-root}}/src/sdk/python/tests/wheelhouse_wasm_js.py
     uv run --no-project --no-index \
         --find-links={{core-dist}} \
         --find-links={{hyperlight-js-wheels}} \

@@ -17,6 +17,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Rust",
     "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
 ]
 keywords = ["hyperlight", "wasm", "sandbox", "isolation", "code-execution"]
 

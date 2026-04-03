@@ -43,6 +43,11 @@ benchmark: python::python-sandbox-benchmark
 
 python-dist: (wasm::build "release") (js::build "release") python::python-dist
 
+python-dist-backends: wasm::_clean-stale-wasm wasm::guest-compile-wit js::_clean-stale
+    cargo build --manifest-path src/wasm_sandbox/Cargo.toml --release
+    cargo build --manifest-path src/javascript_sandbox/Cargo.toml --release
+    just python python-dist-backends
+
 python-wheelhouse-test: python-dist python::python-wheelhouse-test
 
 examples target=default-target: (wasm::examples target) (js::examples target) python::examples

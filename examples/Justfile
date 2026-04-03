@@ -11,8 +11,8 @@ integration-agent-framework-devui-deps:
 copilot-sdk-example: integration-copilot-sdk-deps
     uv run python {{repo-root}}/examples/copilot-sdk/copilot_sdk_tools.py
 
-agent-framework-example: integration-agent-framework-deps
-    uv run python {{repo-root}}/examples/agent-framework/copilot_agent.py --no-wait
+agent-framework-example wait="--no-wait": integration-agent-framework-deps 
+    uv run python {{repo-root}}/examples/agent-framework/copilot_agent.py {{ wait }}
 
 agent-framework-example-interactive: integration-agent-framework-deps
     uv run python {{repo-root}}/examples/agent-framework/copilot_agent.py --interactive

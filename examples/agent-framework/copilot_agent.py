@@ -73,9 +73,10 @@ _SIMULATED_DATA = {
 
 DEFAULT_PROMPTS = [
     "Fetch all users, find admins, multiply 6*7, and print the users, admins, and multiplication result. Use one execute_code call.",
-    "Use execute_code and the python functions http_get/http_post(these are NOT a tools. use like `resp = http_get(\"https://example\")`) to try reading /input/secrets.txt (it doesn't exist — handle the error), then read /input/team.json which does exist, parse it, and print each team member's name and role.",
+    "Use execute_code and to try reading /input/secrets.txt (it doesn't exist — handle the error), then read /input/team.json which does exist, parse it, and print each team member's name and role.",
     (
         "Use execute_code to demonstrate the network allowlist. In a single code block:\n"
+        "Use plain python functions http_get/http_post(these are NOT a tools. use like `resp = http_get(\"https://example\")`) \n"
         "1. Use http_get to fetch https://httpbin.org/get — this should succeed (GET is allowed)\n"
         "2. Try http_post to https://httpbin.org/post — this should FAIL (only GET is allowed for httpbin.org)\n"
         "3. Try http_get to https://github.com — this should FAIL (github.com is not in the allowlist at all)\n"

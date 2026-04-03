@@ -4,7 +4,7 @@
 
 | Recipe | Delegates to | Purpose |
 |--------|-------------|---------|
-| `build-all` | `wasm::build`, `jss::build`, `nanvix::build`, `python::build` | Build everything |
+| `build` | `wasm::build`, `jss::build`, `nanvix::build`, `python::build` | Build everything |
 | `test` | `test-rust`, `wasm::test`, `python::python-test` | All tests |
 | `test-rust` | (direct cargo) | Core crate unit + integration tests |
 | `lint` | `lint-rust`, `wasm::lint`, `js::lint`, `python::lint` | All linters |

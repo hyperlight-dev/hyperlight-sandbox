@@ -261,17 +261,18 @@ resp = http_get("https://other.com/admin")
 
 Measured from `benchmark.py` (release build) — 5 cold / 10 warm rounds, averages shown.
 
-| Step | Wasm + Python | Wasm + JS | HyperlightJS |
-|---|---:|---:|---:|
-| Cold start (create + first run) | 386 ms | 363 ms | 307 ms |
-| Warm run (no restore) | 0.1 ms | 0.3 ms | 0.1 ms |
-| Cold start + tool dispatch | 376 ms | 338 ms | 313 ms |
-| Warm tool dispatch (no restore) | 0.2 ms | 1.3 ms | 0.1 ms |
-| Warm file I/O (no restore) | 0.5 ms | n/a | 0.1 ms |
-| Snapshot | 147 ms | 152 ms | 114 ms |
-| Restore | 162 ms | 151 ms | 133 ms |
-| Restore + run | 14 ms | 14 ms | 11 ms |
-| Restore + tool dispatch | 14 ms | 14 ms | 11 ms |
+Step                                    Wasm + Python Wasm + JavaScript      HyperlightJS
+-----------------------------------------------------------------------------------------
+Cold start (create + first run)              420.8 ms          409.2 ms          386.8 ms
+Warm run (no restore)                          0.2 ms            0.4 ms            0.1 ms
+Cold start + tool dispatch                   370.7 ms          384.1 ms          387.7 ms
+Warm tool dispatch (no restore)                0.4 ms            0.4 ms            0.1 ms
+Cold start + file I/O                        451.9 ms          443.5 ms          373.7 ms
+Warm file I/O (no restore)                     0.3 ms            0.5 ms            0.1 ms
+Snapshot                                     239.6 ms          215.3 ms          168.9 ms
+Restore                                       46.7 ms           43.5 ms           41.9 ms
+Restore + run                                  2.6 ms            3.3 ms            1.5 ms
+Restore + tool dispatch                        2.7 ms            3.2 ms            1.3 ms
 
 
 ---

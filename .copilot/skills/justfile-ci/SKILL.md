@@ -25,7 +25,7 @@ Justfile (root)                    ← orchestrates everything
 └── mod examples_mod 'examples/Justfile'
 ```
 
-- Root recipes (`test`, `build-all`, `lint`, `fmt`) delegate to subproject recipes via `mod::recipe` syntax
+- Root recipes (`test`, `build`, `lint`, `fmt`) delegate to subproject recipes via `mod::recipe` syntax
 - Subproject Justfiles own environment setup (e.g. `WIT_WORLD` for WASM)
 - Root Justfile uses `set unstable := true` to enable module imports
 - Justfiles are organized with `#### SECTION ####` headers (BUILD TARGETS, TESTS, DOCS, etc.)
@@ -41,7 +41,7 @@ See `references/architecture.md` for the full CI job layout and Justfile recipe 
 ## Workflow: Adding a New Step
 
 1. **Add the recipe to the subproject Justfile** — include any env setup, deps, and the actual command
-2. **Wire it into the root Justfile** if it should be part of `test`, `lint`, `fmt`, `build-all`, or `examples`
+2. **Wire it into the root Justfile** if it should be part of `test`, `lint`, `fmt`, `build`, or `examples`
 3. **Add the CI step** — call the `just` recipe from the appropriate CI job
 4. **Verify alignment** — root `just test` should run the same test steps that CI runs
 

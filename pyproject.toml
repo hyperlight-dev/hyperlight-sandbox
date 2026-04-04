@@ -1,6 +1,6 @@
 [project]
 name = "hyperlight-sandbox-dev"
-version = "0.0.0"
+version = "0.2.0"
 requires-python = ">=3.10"
 
 [tool.uv]

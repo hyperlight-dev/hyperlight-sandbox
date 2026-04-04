@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hyperlight-sandbox-python-guest"
-version = "0.1.0"
+version = "0.2.0"
 description = "Packaged Hyperlight Wasm Python guest exposed as python_guest.path"
 readme = "README.md"
 license = "Apache-2.0"

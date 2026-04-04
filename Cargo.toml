@@ -14,7 +14,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.89"
 license = "Apache-2.0"
@@ -23,10 +23,12 @@ license = "Apache-2.0"
 hyperlight-sandbox = { path = "src/hyperlight_sandbox" }
 hyperlight-javascript-sandbox = { path = "src/javascript_sandbox" }
 hyperlight-wasm-sandbox = { path = "src/wasm_sandbox" }
+hyperlight-sandbox-pyo3-common = { path = "src/sdk/python/pyo3_common" }
 hyperlight-common = { version = "0.14.0", default-features = false }
 hyperlight-component-macro = { version = "0.14.0" }
 hyperlight-host = { version = "0.14.0", default-features = false, features = ["executable_heap"] }
 hyperlight-wasm = { git = "https://github.com/jsturtevant/hyperlight-wasm", rev = "05a9eea" } #branch util-compont-fixes
+pyo3 = { version = "0.28", features = ["extension-module"] }
 
 # Patched component-util (name collision fix, flags fix, empty-ns fix)
 # https://github.com/jsturtevant/hyperlight-1/tree/wasm-component-fixes

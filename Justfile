@@ -41,7 +41,8 @@ test-rust:
 
 benchmark: python::python-sandbox-benchmark
 
-python-dist: (wasm::build "release") (js::build "release") python::python-dist
+python-dist: (wasm::build "release") (js::build "release")
+    just python python-dist
 
 python-dist-backends: wasm::_clean-stale-wasm wasm::guest-compile-wit js::_clean-stale
     cargo build --manifest-path src/wasm_sandbox/Cargo.toml --release

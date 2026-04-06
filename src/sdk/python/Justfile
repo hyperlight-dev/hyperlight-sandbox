@@ -5,6 +5,10 @@ export WIT_WORLD := repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm"
 rmrf := if os() == "windows" { "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" } else { "rm -rf" }
 mkdirp := if os() == "windows" { "New-Item -ItemType Directory -Force" } else { "mkdir -p" }
 
+# Set via env or CLI (e.g. `just interpreters="--interpreter python3.10 python3.13" python-dist`)
+# to build wheels for multiple Python versions. Defaults to empty (maturin uses active Python).
+interpreters := env("INTERPRETERS", "")
+
 dist-root := repo-root + "/dist/pythonsdk"
 core-dist := dist-root + "/core"
 wasm-wheels := dist-root + "/wasm_backend"
@@ -53,8 +57,8 @@ build: python-build
 python-dist: python-sync-guest-resources
     -{{rmrf}} {{dist-root}}
     cd {{repo-root}}/src/sdk/python/core && uv run python -m build --outdir {{core-dist}}
-    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}}
-    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}}
+    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}} {{interpreters}}
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}} {{interpreters}}
     cd {{repo-root}}/src/sdk/python/wasm_guests/python_guest && uv run python -m build --outdir {{python-guest-dist}}
     cd {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest && uv run python -m build --outdir {{javascript-guest-dist}}
 
@@ -64,8 +68,8 @@ python-dist: python-sync-guest-resources
 python-dist-backends: python-sync-env
     -{{rmrf}} {{wasm-wheels}}
     -{{rmrf}} {{hyperlight-js-wheels}}
-    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}}
-    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}}
+    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}} {{interpreters}}
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}} {{interpreters}}
 
 python-publish repository="pypi":
     uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{wasm-wheels}}/*
@@ -77,20 +81,20 @@ python-publish repository="pypi":
 # Smoke-test the wheels in dist/pythonsdk/ by installing them into
 # isolated environments and running basic tests.
 # Requires `just python-dist` (root) to have been run first.
-python-wheelhouse-test:
-    uv run --no-project --no-index \
+python-wheelhouse-test python-version="":
+    uv run --no-project {{ if python-version != "" { "--python " + python-version } else { "" } }} --no-index \
         --find-links={{core-dist}} \
         --find-links={{wasm-wheels}} \
         --find-links={{python-guest-dist}} \
         --with "hyperlight-sandbox[wasm,python_guest]" \
         python {{repo-root}}/src/sdk/python/tests/wheelhouse_wasm_python.py
-    uv run --no-project --no-index \
+    uv run --no-project {{ if python-version != "" { "--python " + python-version } else { "" } }} --no-index \
         --find-links={{core-dist}} \
         --find-links={{wasm-wheels}} \
         --find-links={{javascript-guest-dist}} \
         --with "hyperlight-sandbox[wasm,javascript_guest]" \
         python {{repo-root}}/src/sdk/python/tests/wheelhouse_wasm_js.py
-    uv run --no-project --no-index \
+    uv run --no-project {{ if python-version != "" { "--python " + python-version } else { "" } }} --no-index \
         --find-links={{core-dist}} \
         --find-links={{hyperlight-js-wheels}} \
         --find-links={{javascript-guest-dist}} \

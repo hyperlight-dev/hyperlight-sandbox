@@ -25,7 +25,7 @@ jobs:
       - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
 
       - name: Install Python
-        run: uv python install 3.12
+        run: uv python install 3.10 3.11 3.12 3.13
 
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
         with:
@@ -40,7 +40,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y clang
 
       - name: Build all Python packages
-        run: just python-dist
+        run: |
+          export INTERPRETERS="--interpreter $(uv python find 3.10) $(uv python find 3.11) $(uv python find 3.12) $(uv python find 3.13)"
+          just python-dist
 
       - uses: actions/upload-artifact@v4
         with:
@@ -63,7 +65,7 @@ jobs:
       - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
 
       - name: Install Python
-        run: uv python install 3.12
+        run: uv python install 3.10 3.11 3.12 3.13
 
       - name: Install just
         run: cargo install --locked just
@@ -72,7 +74,11 @@ jobs:
         run: choco install llvm -y
 
       - name: Build backend wheels
-        run: just python-dist-backends
+        shell: pwsh
+        run: |
+          $interps = "3.10", "3.11", "3.12", "3.13" | ForEach-Object { & uv python find $_ }
+          $env:INTERPRETERS = "--interpreter $($interps -join ' ')"
+          just python-dist-backends
 
       - uses: actions/upload-artifact@v4
         with:

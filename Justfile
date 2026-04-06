@@ -41,12 +41,12 @@ test-rust:
 
 benchmark: python::python-sandbox-benchmark
 
-python-dist: (wasm::build "release") (js::build "release") python::python-dist
+python-dist interpreters="": (wasm::build "release") (js::build "release") (python::python-dist interpreters)
 
-python-dist-backends: wasm::_clean-stale-wasm wasm::guest-compile-wit js::_clean-stale
+python-dist-backends interpreters="": wasm::_clean-stale-wasm wasm::guest-compile-wit js::_clean-stale
     cargo build --manifest-path src/wasm_sandbox/Cargo.toml --release
     cargo build --manifest-path src/javascript_sandbox/Cargo.toml --release
-    just python python-dist-backends
+    just python python-dist-backends interpreters="{{interpreters}}"
 
 python-wheelhouse-test: python-dist python::python-wheelhouse-test
 

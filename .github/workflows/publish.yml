@@ -41,8 +41,8 @@ jobs:
 
       - name: Build all Python packages
         run: |
-          INTERPS="--interpreter $(uv python find 3.10) $(uv python find 3.11) $(uv python find 3.12) $(uv python find 3.13)"
-          just python-dist interpreters="$INTERPS"
+          export INTERPRETERS="--interpreter $(uv python find 3.10) $(uv python find 3.11) $(uv python find 3.12) $(uv python find 3.13)"
+          just python-dist
 
       - uses: actions/upload-artifact@v4
         with:
@@ -77,7 +77,8 @@ jobs:
         shell: pwsh
         run: |
           $interps = "3.10", "3.11", "3.12", "3.13" | ForEach-Object { & uv python find $_ }
-          just python-dist-backends interpreters="--interpreter $($interps -join ' ')"
+          $env:INTERPRETERS = "--interpreter $($interps -join ' ')"
+          just python-dist-backends
 
       - uses: actions/upload-artifact@v4
         with:

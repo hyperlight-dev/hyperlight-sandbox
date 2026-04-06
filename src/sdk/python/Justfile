@@ -5,6 +5,10 @@ export WIT_WORLD := repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm"
 rmrf := if os() == "windows" { "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" } else { "rm -rf" }
 mkdirp := if os() == "windows" { "New-Item -ItemType Directory -Force" } else { "mkdir -p" }
 
+# Set via env or CLI (e.g. `just interpreters="--interpreter python3.10 python3.13" python-dist`)
+# to build wheels for multiple Python versions. Defaults to empty (maturin uses active Python).
+interpreters := env("INTERPRETERS", "")
+
 dist-root := repo-root + "/dist/pythonsdk"
 core-dist := dist-root + "/core"
 wasm-wheels := dist-root + "/wasm_backend"
@@ -50,7 +54,7 @@ build: python-build
 
 #### DIST / PUBLISH ####
 
-python-dist interpreters="": python-sync-guest-resources
+python-dist: python-sync-guest-resources
     -{{rmrf}} {{dist-root}}
     cd {{repo-root}}/src/sdk/python/core && uv run python -m build --outdir {{core-dist}}
     cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}} {{interpreters}}
@@ -61,7 +65,7 @@ python-dist interpreters="": python-sync-guest-resources
 # Build only the platform-specific maturin backend wheels.
 # Used by CI to produce Windows wheels without needing guest binaries.
 # Requires sandbox-world.wasm to exist (run `just wasm guest-compile-wit` first).
-python-dist-backends interpreters="": python-sync-env
+python-dist-backends: python-sync-env
     -{{rmrf}} {{wasm-wheels}}
     -{{rmrf}} {{hyperlight-js-wheels}}
     cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}} {{interpreters}}

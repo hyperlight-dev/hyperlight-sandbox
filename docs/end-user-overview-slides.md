@@ -117,11 +117,11 @@ result = sandbox.run('console.log(2 + 3)')
 
 ```rust
 // JavaScript via QuickJS in a Nanvix microkernel
-let mut sandbox = Sandbox::builder().guest(NanvixJavaScript).build()?;
+let mut sandbox = SandboxBuilder::new().guest(NanvixJavaScript).build()?;
 let result = sandbox.run(r#"console.log("Hello from Nanvix!")"#)?;
 
 // Python via Python in a Nanvix microkernel
-let mut sandbox = Sandbox::builder().guest(NanvixPython).build()?;
+let mut sandbox = SandboxBuilder::new().guest(NanvixPython).build()?;
 let result = sandbox.run(r#"print("Hello from Nanvix!")"#)?;
 ```
 

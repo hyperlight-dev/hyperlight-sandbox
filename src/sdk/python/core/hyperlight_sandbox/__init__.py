@@ -17,7 +17,7 @@ from ._module_resolver import DEFAULT_MODULE_REF, resolve_module_path
 try:
     __version__ = metadata.version("hyperlight-sandbox")
 except metadata.PackageNotFoundError:
-    __version__ = "0.1.0"
+    __version__ = "0.3.0"
 
 # Platform-dependent memory defaults: Windows Hyper-V needs larger allocations.
 if platform.system() == "Windows":

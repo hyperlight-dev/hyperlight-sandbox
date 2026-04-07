@@ -24,8 +24,8 @@ if platform.system() == "Windows":
     _DEFAULT_HEAP_SIZE = "400Mi"
     _DEFAULT_STACK_SIZE = "200Mi"
 else:
-    _DEFAULT_HEAP_SIZE = "200Mi"
-    _DEFAULT_STACK_SIZE = "100Mi"
+    _DEFAULT_HEAP_SIZE = "25Mi"
+    _DEFAULT_STACK_SIZE = "35Mi"
 
 
 def _normalize_backend(backend: str) -> str:

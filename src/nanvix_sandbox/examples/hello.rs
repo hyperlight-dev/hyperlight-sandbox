@@ -1,12 +1,12 @@
 //! Example: run JavaScript and Python code in a Nanvix microkernel sandbox.
 
 use hyperlight_nanvix_sandbox::{NanvixJavaScript, NanvixPython};
-use hyperlight_sandbox::Sandbox;
+use hyperlight_sandbox::{Sandbox, SandboxBuilder};
 
 fn main() {
     // --- JavaScript ---
     println!("=== Nanvix JavaScript Sandbox ===\n");
-    let mut js_sandbox = match Sandbox::builder()
+    let mut js_sandbox = match SandboxBuilder::new()
         .guest(NanvixJavaScript)
         .build()
     {
@@ -44,7 +44,7 @@ console.log("2 + 3 =", 2 + 3);
 
     // --- Python ---
     println!("\n=== Nanvix Python Sandbox ===\n");
-    let mut py_sandbox = match Sandbox::builder()
+    let mut py_sandbox = match SandboxBuilder::new()
         .guest(NanvixPython)
         .build()
     {

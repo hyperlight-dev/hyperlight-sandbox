@@ -2,17 +2,28 @@ use std::collections::HashMap;
 
 use hyperlight_javascript_sandbox::HyperlightJs;
 use hyperlight_sandbox::{
-    DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, HttpMethod, Sandbox, SandboxConfig,
+    DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, HttpMethod, Sandbox,
+    SandboxBuilder, SandboxConfig,
 };
 use hyperlight_sandbox_pyo3_common::{
-    PyExecutionResult, PySnapshot, build_tool_registry, parse_size, parse_tool_registration,
+    PyExecutionResult, build_tool_registry, parse_size, parse_tool_registration,
 };
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
+type JsSandboxInner = Sandbox<HyperlightJs>;
+type JsSnapshotInner = hyperlight_sandbox::Snapshot<<
+    <HyperlightJs as hyperlight_sandbox::Guest>::Sandbox as hyperlight_sandbox::GuestSandbox
+>::SnapshotData>;
+
+#[pyclass]
+pub struct PySnapshot {
+    inner: JsSnapshotInner,
+}
+
 #[pyclass(unsendable)]
 pub struct JSSandbox {
-    inner: Option<Sandbox>,
+    inner: Option<JsSandboxInner>,
     tools: HashMap<String, Py<PyAny>>,
     pending_networks: Vec<(String, Option<Vec<String>>)>,
     config: SandboxConfig,
@@ -82,7 +93,7 @@ impl JSSandbox {
     fn run(&mut self, py: Python<'_>, code: &str) -> PyResult<PyExecutionResult> {
         if self.inner.is_none() {
             let registry = build_tool_registry(py, &mut self.tools)?;
-            let mut builder = Sandbox::builder()
+            let mut builder = SandboxBuilder::new()
                 .module_path(&self.config.module_path)
                 .heap_size(self.config.heap_size)
                 .stack_size(self.config.stack_size)

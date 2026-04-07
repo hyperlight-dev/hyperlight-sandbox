@@ -197,7 +197,10 @@ def run_suite(name, backend, module=None, lang="python"):
 def main():
     all_results = {}
 
-    # Python in Wasm
+    # Python in Wasm — the defaults (25Mi heap / 35Mi stack) are sufficient.
+    # The Wasm guest embeds a full CPython interpreter (~44 MB AOT binary).
+    # Minimum viable: ~6 MiB heap, ~35 MiB stack (scratch must hold I/O
+    # buffers capped at min(heap, 70M) plus page tables and guest stacks).
     try:
         r = run_suite("Wasm + Python", backend="wasm", module="python_guest.path", lang="python")
         all_results["Wasm + Python"] = r

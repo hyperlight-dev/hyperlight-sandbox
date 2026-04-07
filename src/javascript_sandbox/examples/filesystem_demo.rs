@@ -1,7 +1,7 @@
 //! Filesystem capabilities demo for the JavaScript sandbox.
 
 use hyperlight_javascript_sandbox::HyperlightJs;
-use hyperlight_sandbox::{DirPerms, FilePerms, Sandbox};
+use hyperlight_sandbox::{DirPerms, FilePerms, SandboxBuilder};
 
 fn separator(label: &str) {
     println!("\n── {label} ──");
@@ -10,7 +10,7 @@ fn separator(label: &str) {
 fn main() {
     // ── 1: No filesystem ────────────────────────────────────────────
     separator("Test 1: No filesystem");
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(HyperlightJs)
         .build()
         .expect("failed to create sandbox");
@@ -31,7 +31,7 @@ fn main() {
     let input_tmp = tempfile::tempdir().unwrap();
     std::fs::write(input_tmp.path().join("hello.txt"), b"hello from host").unwrap();
 
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(HyperlightJs)
         .input_dir(input_tmp.path())
         .build()
@@ -50,7 +50,7 @@ fn main() {
 
     // ── 3: Temp output only ─────────────────────────────────────────
     separator("Test 3: Temp output only");
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(HyperlightJs)
         .temp_output()
         .build()
@@ -74,7 +74,7 @@ fn main() {
     let input_tmp = tempfile::tempdir().unwrap();
     std::fs::write(input_tmp.path().join("data.json"), br#"{"n": 21}"#).unwrap();
 
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(HyperlightJs)
         .input_dir(input_tmp.path())
         .temp_output()
@@ -112,7 +112,7 @@ console.log('doubled: ' + data.n * 2);
     let output_tmp = tempfile::tempdir().unwrap();
     std::fs::write(input_tmp.path().join("msg.txt"), b"shout").unwrap();
 
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(HyperlightJs)
         .input_dir(input_tmp.path())
         .output_dir(
@@ -139,7 +139,7 @@ console.log('done');
 
     // ── 6: Output wiped between runs ────────────────────────────────
     separator("Test 6: Output is ephemeral");
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(HyperlightJs)
         .temp_output()
         .build()
@@ -168,7 +168,7 @@ console.log('done');
     let input_tmp = tempfile::tempdir().unwrap();
     std::fs::write(input_tmp.path().join("readonly.txt"), b"do not modify").unwrap();
 
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(HyperlightJs)
         .input_dir(input_tmp.path())
         .build()

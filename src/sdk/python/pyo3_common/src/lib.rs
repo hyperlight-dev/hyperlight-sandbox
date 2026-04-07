@@ -1,4 +1,4 @@
-use hyperlight_sandbox::{ArgType, Snapshot, ToolRegistry, ToolSchema};
+use hyperlight_sandbox::{ArgType, ToolRegistry, ToolSchema};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyModule};
@@ -396,12 +396,6 @@ fn py_value_to_arg_type(val: &Bound<'_, PyAny>) -> Option<ArgType> {
     } else {
         None
     }
-}
-
-/// Opaque snapshot handle exposed to Python.
-#[pyclass]
-pub struct PySnapshot {
-    pub inner: Snapshot,
 }
 
 /// Build a [`ToolRegistry`] from a map of Python callables.

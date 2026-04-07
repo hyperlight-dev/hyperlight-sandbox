@@ -7,7 +7,7 @@
 //! Network tests live in network_demo.rs.
 
 use hyperlight_javascript_sandbox::HyperlightJs;
-use hyperlight_sandbox::{Sandbox, ToolRegistry};
+use hyperlight_sandbox::{SandboxBuilder, ToolRegistry};
 use serde::Deserialize;
 
 fn separator(title: &str) {
@@ -54,7 +54,7 @@ fn main() {
         Ok(serde_json::json!(val))
     });
 
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(HyperlightJs)
         .with_tools(tools)
         .build()

@@ -1,7 +1,7 @@
 //! Network access demo for the HyperlightJS sandbox backend.
 
 use hyperlight_javascript_sandbox::HyperlightJs;
-use hyperlight_sandbox::Sandbox;
+use hyperlight_sandbox::SandboxBuilder;
 
 fn separator(title: &str) {
     println!("\n{}", "═".repeat(60));
@@ -10,7 +10,7 @@ fn separator(title: &str) {
 }
 
 fn main() {
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(HyperlightJs)
         .build()
         .expect("failed to create JS sandbox");

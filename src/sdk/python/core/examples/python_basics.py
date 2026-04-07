@@ -25,7 +25,10 @@ def timed_run(sandbox, code, label="run"):
 # Create sandbox using the packaged python_guest artifact
 t0 = time.perf_counter()
 try:
-    sandbox = Sandbox(backend="wasm", module="python_guest.path")
+    sandbox = Sandbox(
+        backend="wasm",
+        module="python_guest.path",
+    )
 except ImportError as exc:
     raise SystemExit(
         "This example requires the Wasm backend and packaged Python guest package. "

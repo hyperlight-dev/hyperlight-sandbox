@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use hyperlight_sandbox::{DirPerms, FilePerms, Sandbox};
+use hyperlight_sandbox::{DirPerms, FilePerms, SandboxBuilder};
 use hyperlight_wasm_sandbox::Wasm;
 
 fn python_guest_path() -> String {
@@ -21,7 +21,7 @@ fn separator(label: &str) {
 fn main() {
     // ── 1: No filesystem ────────────────────────────────────────────
     separator("Test 1: No filesystem");
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(Wasm)
         .module_path(python_guest_path())
         .build()
@@ -43,7 +43,7 @@ fn main() {
     let input_tmp = tempfile::tempdir().unwrap();
     std::fs::write(input_tmp.path().join("greeting.txt"), b"hello from host").unwrap();
 
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(Wasm)
         .module_path(python_guest_path())
         .input_dir(input_tmp.path())
@@ -71,7 +71,7 @@ print(f"content: {content}")
 
     // ── 3: Temp output only ─────────────────────────────────────────
     separator("Test 3: Temp output only (writable preopen, no input)");
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(Wasm)
         .module_path(python_guest_path())
         .temp_output()
@@ -107,7 +107,7 @@ print('wrote output')
     let input_tmp = tempfile::tempdir().unwrap();
     std::fs::write(input_tmp.path().join("data.json"), br#"{"value": 42}"#).unwrap();
 
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(Wasm)
         .module_path(python_guest_path())
         .input_dir(input_tmp.path())
@@ -149,7 +149,7 @@ print(f"doubled: {result}")
     let output_tmp = tempfile::tempdir().unwrap();
     std::fs::write(input_tmp.path().join("source.txt"), b"transform me").unwrap();
 
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(Wasm)
         .module_path(python_guest_path())
         .input_dir(input_tmp.path())
@@ -188,7 +188,7 @@ print(f"transformed: {text.upper()}")
 
     // ── 6: Output is wiped between runs ─────────────────────────────
     separator("Test 6: Output is ephemeral (wiped between runs)");
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(Wasm)
         .module_path(python_guest_path())
         .temp_output()
@@ -235,7 +235,7 @@ print('wrote run2')
     let input_tmp = tempfile::tempdir().unwrap();
     std::fs::write(input_tmp.path().join("readonly.txt"), b"do not modify").unwrap();
 
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(Wasm)
         .module_path(python_guest_path())
         .input_dir(input_tmp.path())

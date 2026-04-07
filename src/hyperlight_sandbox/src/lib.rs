@@ -10,7 +10,6 @@ pub mod runtime;
 pub mod test_utils;
 pub mod tools;
 
-use std::any::Any;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -30,13 +29,13 @@ pub use tools::{ArgType, ToolRegistry, ToolSchema};
 #[cfg(windows)]
 pub const DEFAULT_HEAP_SIZE: u64 = 400 * 1024 * 1024;
 #[cfg(not(windows))]
-pub const DEFAULT_HEAP_SIZE: u64 = 200 * 1024 * 1024;
+pub const DEFAULT_HEAP_SIZE: u64 = 25 * 1024 * 1024;
 
 /// Default guest stack / scratch size in bytes (platform-dependent).
 #[cfg(windows)]
 pub const DEFAULT_STACK_SIZE: u64 = 200 * 1024 * 1024;
 #[cfg(not(windows))]
-pub const DEFAULT_STACK_SIZE: u64 = 100 * 1024 * 1024;
+pub const DEFAULT_STACK_SIZE: u64 = 35 * 1024 * 1024;
 
 /// Configuration for building a sandbox guest.
 #[derive(Debug, Clone)]
@@ -75,42 +74,31 @@ pub struct ExecutionResult {
 // Snapshot
 // ---------------------------------------------------------------------------
 
-#[derive(Clone)]
-pub struct Snapshot {
+pub struct Snapshot<T> {
     kind: &'static str,
-    runtime: std::sync::Arc<dyn Any + Send + Sync>,
+    snapshot: std::sync::Arc<T>,
 }
 
-impl Snapshot {
+impl<T> Clone for Snapshot<T> {
+    fn clone(&self) -> Self {
+        Self {
+            kind: self.kind,
+            snapshot: self.snapshot.clone(),
+        }
+    }
+}
+
+impl<T> Snapshot<T> {
     pub fn kind(&self) -> &'static str {
         self.kind
     }
 
-    pub fn new<T>(kind: &'static str, runtime: std::sync::Arc<T>) -> Self
-    where
-        T: Any + Send + Sync + 'static,
-    {
-        Self { kind, runtime }
+    pub fn new(kind: &'static str, snapshot: std::sync::Arc<T>) -> Self {
+        Self { kind, snapshot }
     }
 
-    pub fn restore<T>(
-        &self,
-        restore_runtime: impl FnOnce(std::sync::Arc<T>) -> Result<()>,
-        fs: &std::sync::Arc<std::sync::Mutex<CapFs>>,
-    ) -> Result<()>
-    where
-        T: Any + Send + Sync + 'static,
-    {
-        let runtime = self
-            .runtime
-            .clone()
-            .downcast::<T>()
-            .map_err(|_| anyhow::anyhow!("snapshot type mismatch (kind: {})", self.kind))?;
-        restore_runtime(runtime)?;
-        fs.lock()
-            .map_err(|_| anyhow::anyhow!("filesystem mutex poisoned during snapshot restore"))?
-            .clear_output_files();
-        Ok(())
+    pub fn snapshot(&self) -> &std::sync::Arc<T> {
+        &self.snapshot
     }
 }
 
@@ -119,40 +107,42 @@ impl Snapshot {
 // ---------------------------------------------------------------------------
 
 pub trait Guest: Sized {
+    type Sandbox: GuestSandbox;
     fn build(
         self,
         config: SandboxConfig,
         tools: ToolRegistry,
         network: std::sync::Arc<std::sync::Mutex<NetworkPermissions>>,
         fs: std::sync::Arc<std::sync::Mutex<CapFs>>,
-    ) -> Result<Box<dyn GuestSandbox>>;
+    ) -> Result<Self::Sandbox>;
 }
 
 pub trait GuestSandbox: Send {
+    type SnapshotData: Send + Sync + 'static;
     /// Execute guest code.
     ///
     /// Output files under `/output` are wiped before each execution.
     /// Input files are read-only and managed by the host.
     fn run(&mut self, code: &str) -> Result<ExecutionResult>;
     /// Capture a snapshot of the guest runtime state.
-    fn snapshot(&mut self) -> Result<Snapshot>;
+    fn snapshot(&mut self) -> Result<Snapshot<Self::SnapshotData>>;
     /// Restore a previously captured guest runtime state.
-    fn restore(&mut self, snapshot: &Snapshot) -> Result<()>;
+    fn restore(&mut self, snapshot: &Snapshot<Self::SnapshotData>) -> Result<()>;
 }
 
 // ---------------------------------------------------------------------------
 // Sandbox
 // ---------------------------------------------------------------------------
 
-pub struct Sandbox {
-    inner: Box<dyn GuestSandbox>,
+pub struct Sandbox<G: Guest> {
+    inner: G::Sandbox,
     network: std::sync::Arc<std::sync::Mutex<NetworkPermissions>>,
     fs: std::sync::Arc<std::sync::Mutex<CapFs>>,
 }
 
-impl Sandbox {
+impl<G: Guest> Sandbox<G> {
     /// Create a sandbox without filesystem access.
-    pub fn new<G: Guest>(guest: G, config: SandboxConfig, tools: ToolRegistry) -> Result<Self> {
+    pub fn new(guest: G, config: SandboxConfig, tools: ToolRegistry) -> Result<Self> {
         let network = std::sync::Arc::new(std::sync::Mutex::new(NetworkPermissions::new()));
         let fs = std::sync::Arc::new(std::sync::Mutex::new(CapFs::new()));
         let inner = guest.build(config, tools, network.clone(), fs.clone())?;
@@ -160,7 +150,7 @@ impl Sandbox {
     }
 
     /// Create a sandbox with a read-only input directory.
-    pub fn with_input<G: Guest>(
+    pub fn with_input(
         guest: G,
         config: SandboxConfig,
         tools: ToolRegistry,
@@ -173,10 +163,6 @@ impl Sandbox {
         Ok(Self { inner, network, fs })
     }
 
-    pub fn builder() -> SandboxBuilder<NoGuest> {
-        SandboxBuilder::default()
-    }
-
     /// Execute guest code.
     ///
     /// Output files under `/output` are cleared before each run. Input files
@@ -185,12 +171,20 @@ impl Sandbox {
         self.inner.run(code)
     }
 
-    pub fn snapshot(&mut self) -> Result<Snapshot> {
+    pub fn snapshot(&mut self) -> Result<Snapshot<<G::Sandbox as GuestSandbox>::SnapshotData>> {
         self.inner.snapshot()
     }
 
-    pub fn restore(&mut self, snapshot: &Snapshot) -> Result<()> {
-        self.inner.restore(snapshot)
+    pub fn restore(
+        &mut self,
+        snapshot: &Snapshot<<G::Sandbox as GuestSandbox>::SnapshotData>,
+    ) -> Result<()> {
+        self.inner.restore(snapshot)?;
+        self.fs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("filesystem mutex poisoned during snapshot restore"))?
+            .clear_output_files();
+        Ok(())
     }
 
     /// List filenames in the output directory (without reading contents).
@@ -231,7 +225,7 @@ pub struct NoGuest;
 /// Builder for constructing a [`Sandbox`].
 ///
 /// ```rust,ignore
-/// let sandbox = Sandbox::builder()
+/// let sandbox = SandboxBuilder::new()
 ///     .module_path("guest.aot")
 ///     .output_dir("/tmp/sandbox-out")
 ///     .guest(Wasm)
@@ -244,6 +238,12 @@ pub struct SandboxBuilder<G = NoGuest> {
     input_dir: Option<PathBuf>,
     output_dir: Option<(PathBuf, DirPerms, FilePerms)>,
     temp_output: bool,
+}
+
+impl SandboxBuilder<NoGuest> {
+    pub fn new() -> Self {
+        Self::default()
+    }
 }
 
 impl Default for SandboxBuilder<NoGuest> {
@@ -336,7 +336,7 @@ impl<G> SandboxBuilder<G>
 where
     G: Guest,
 {
-    pub fn build(self) -> Result<Sandbox> {
+    pub fn build(self) -> Result<Sandbox<G>> {
         let network = std::sync::Arc::new(std::sync::Mutex::new(NetworkPermissions::new()));
         let mut vfs = CapFs::new();
         if let Some(input_dir) = &self.input_dir {

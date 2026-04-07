@@ -118,19 +118,19 @@ struct RunResponse {
 pub struct HyperlightJs;
 
 impl Guest for HyperlightJs {
+    type Sandbox = JsGuestSandbox;
     fn build(
         self,
         config: SandboxConfig,
         tools: ToolRegistry,
         network: std::sync::Arc<std::sync::Mutex<NetworkPermissions>>,
         fs: std::sync::Arc<std::sync::Mutex<CapFs>>,
-    ) -> Result<Box<dyn GuestSandbox>> {
+    ) -> Result<JsGuestSandbox> {
         JsGuestSandbox::new(config, tools, network, fs)
-            .map(|sandbox| Box::new(sandbox) as Box<dyn GuestSandbox>)
     }
 }
 
-struct JsGuestSandbox {
+pub struct JsGuestSandbox {
     sandbox: LoadedJSSandbox,
     files: Arc<Mutex<CapFs>>,
     stdout: Arc<Mutex<String>>,
@@ -413,11 +413,13 @@ impl JsGuestSandbox {
 }
 
 impl GuestSandbox for JsGuestSandbox {
+    type SnapshotData = JsSnapshot;
+
     fn run(&mut self, code: &str) -> Result<ExecutionResult> {
         self.run_impl(code)
     }
 
-    fn snapshot(&mut self) -> Result<Snapshot> {
+    fn snapshot(&mut self) -> Result<Snapshot<JsSnapshot>> {
         let runtime = self
             .sandbox
             .snapshot()
@@ -425,15 +427,10 @@ impl GuestSandbox for JsGuestSandbox {
         Ok(Snapshot::new("hyperlight-js", runtime))
     }
 
-    fn restore(&mut self, snapshot: &Snapshot) -> Result<()> {
-        snapshot.restore::<JsSnapshot>(
-            |rt| {
-                self.sandbox
-                    .restore(rt)
-                    .map_err(|e| anyhow::anyhow!("restore failed: {e}"))
-            },
-            &self.files,
-        )
+    fn restore(&mut self, snapshot: &Snapshot<JsSnapshot>) -> Result<()> {
+        self.sandbox
+            .restore(snapshot.snapshot().clone())
+            .map_err(|e| anyhow::anyhow!("restore failed: {e}"))
     }
 }
 

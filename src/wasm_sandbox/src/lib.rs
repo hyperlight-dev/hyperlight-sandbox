@@ -24,15 +24,15 @@ pub(crate) mod bindings {
 pub struct Wasm;
 
 impl Guest for Wasm {
+    type Sandbox = WasmComponentSandbox;
     fn build(
         self,
         config: SandboxConfig,
         tools: ToolRegistry,
         network: std::sync::Arc<std::sync::Mutex<NetworkPermissions>>,
         fs: std::sync::Arc<std::sync::Mutex<CapFs>>,
-    ) -> Result<Box<dyn GuestSandbox>> {
+    ) -> Result<WasmComponentSandbox> {
         WasmComponentSandbox::with_tools(config, tools, network, fs)
-            .map(|sandbox| Box::new(sandbox) as Box<dyn GuestSandbox>)
     }
 }
 
@@ -216,7 +216,7 @@ impl bindings::hyperlight::sandbox::Tools for HostState {
     }
 }
 
-struct WasmComponentSandbox {
+pub struct WasmComponentSandbox {
     sandbox: bindings::RootSandbox<HostState, LoadedWasmSandbox>,
     fs: Arc<Mutex<CapFs>>,
 }
@@ -317,11 +317,13 @@ impl WasmComponentSandbox {
 }
 
 impl GuestSandbox for WasmComponentSandbox {
+    type SnapshotData = WasmSnapshot;
+
     fn run(&mut self, code: &str) -> Result<ExecutionResult> {
         self.run_impl(code)
     }
 
-    fn snapshot(&mut self) -> Result<Snapshot> {
+    fn snapshot(&mut self) -> Result<Snapshot<WasmSnapshot>> {
         let runtime = self
             .sandbox
             .sb
@@ -330,15 +332,10 @@ impl GuestSandbox for WasmComponentSandbox {
         Ok(Snapshot::new("wasm-component", runtime))
     }
 
-    fn restore(&mut self, snapshot: &Snapshot) -> Result<()> {
-        snapshot.restore::<WasmSnapshot>(
-            |rt| {
-                self.sandbox
-                    .sb
-                    .restore(rt)
-                    .map_err(|e| anyhow::anyhow!("restore failed: {e}"))
-            },
-            &self.fs,
-        )
+    fn restore(&mut self, snapshot: &Snapshot<WasmSnapshot>) -> Result<()> {
+        self.sandbox
+            .sb
+            .restore(snapshot.snapshot().clone())
+            .map_err(|e| anyhow::anyhow!("restore failed: {e}"))
     }
 }

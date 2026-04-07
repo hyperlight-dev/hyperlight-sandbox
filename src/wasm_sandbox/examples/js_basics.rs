@@ -8,7 +8,7 @@
 
 use std::path::Path;
 
-use hyperlight_sandbox::{DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, Sandbox, ToolRegistry};
+use hyperlight_sandbox::{SandboxBuilder, ToolRegistry};
 use hyperlight_wasm_sandbox::Wasm;
 use serde::Deserialize;
 
@@ -63,11 +63,9 @@ fn main() {
         Ok(serde_json::json!(val))
     });
 
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(Wasm)
         .module_path(javascript_guest_path())
-        .heap_size(DEFAULT_HEAP_SIZE)
-        .stack_size(DEFAULT_STACK_SIZE)
         .with_tools(tools)
         .build()
         .expect("failed to create JS sandbox");

@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use hyperlight_sandbox::{DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, Sandbox};
+use hyperlight_sandbox::SandboxBuilder;
 use hyperlight_wasm_sandbox::Wasm;
 
 fn python_guest_path() -> String {
@@ -19,11 +19,9 @@ fn separator(title: &str) {
 }
 
 fn main() {
-    let mut sandbox = Sandbox::builder()
+    let mut sandbox = SandboxBuilder::new()
         .guest(Wasm)
         .module_path(python_guest_path())
-        .heap_size(DEFAULT_HEAP_SIZE)
-        .stack_size(DEFAULT_STACK_SIZE)
         .build()
         .expect("failed to create sandbox");
     sandbox

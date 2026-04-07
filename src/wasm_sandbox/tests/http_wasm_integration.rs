@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use hyperlight_sandbox::test_utils::EchoServer;
-use hyperlight_sandbox::{DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, HttpMethod, Sandbox};
+use hyperlight_sandbox::{HttpMethod, SandboxBuilder};
 use hyperlight_wasm_sandbox::Wasm;
 
 fn python_guest_path() -> String {
@@ -22,11 +22,9 @@ async fn wasm_python_post_with_body() {
     let base_url = server.url("");
 
     let result = tokio::task::spawn_blocking(move || {
-        let mut sandbox = Sandbox::builder()
+        let mut sandbox = SandboxBuilder::new()
             .guest(Wasm)
             .module_path(python_guest_path())
-            .heap_size(DEFAULT_HEAP_SIZE)
-            .stack_size(DEFAULT_STACK_SIZE)
             .build()
             .expect("failed to create sandbox");
 
@@ -59,11 +57,9 @@ async fn wasm_python_get_request() {
     let base_url = server.url("");
 
     let result = tokio::task::spawn_blocking(move || {
-        let mut sandbox = Sandbox::builder()
+        let mut sandbox = SandboxBuilder::new()
             .guest(Wasm)
             .module_path(python_guest_path())
-            .heap_size(DEFAULT_HEAP_SIZE)
-            .stack_size(DEFAULT_STACK_SIZE)
             .build()
             .expect("failed to create sandbox");
 
@@ -97,11 +93,9 @@ async fn wasm_python_post_large_body_streams_in_chunks() {
     let base_url = server.url("");
 
     let result = tokio::task::spawn_blocking(move || {
-        let mut sandbox = Sandbox::builder()
+        let mut sandbox = SandboxBuilder::new()
             .guest(Wasm)
             .module_path(python_guest_path())
-            .heap_size(DEFAULT_HEAP_SIZE)
-            .stack_size(DEFAULT_STACK_SIZE)
             .build()
             .expect("failed to create sandbox");
 

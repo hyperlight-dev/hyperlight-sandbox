@@ -29,14 +29,15 @@ use hyperlight_sandbox::{
 pub struct NanvixJavaScript;
 
 impl Guest for NanvixJavaScript {
+    type Sandbox = NanvixSandbox;
     fn build(
         self,
         _config: SandboxConfig,
         _tools: ToolRegistry,
         _network: std::sync::Arc<std::sync::Mutex<hyperlight_sandbox::NetworkPermissions>>,
         _fs: std::sync::Arc<std::sync::Mutex<hyperlight_sandbox::CapFs>>,
-    ) -> Result<Box<dyn GuestSandbox>> {
-        Ok(Box::new(NanvixSandbox::new(WorkloadType::JavaScript)?))
+    ) -> Result<NanvixSandbox> {
+        NanvixSandbox::new(WorkloadType::JavaScript)
     }
 }
 
@@ -45,14 +46,15 @@ impl Guest for NanvixJavaScript {
 pub struct NanvixPython;
 
 impl Guest for NanvixPython {
+    type Sandbox = NanvixSandbox;
     fn build(
         self,
         _config: SandboxConfig,
         _tools: ToolRegistry,
         _network: std::sync::Arc<std::sync::Mutex<hyperlight_sandbox::NetworkPermissions>>,
         _fs: std::sync::Arc<std::sync::Mutex<hyperlight_sandbox::CapFs>>,
-    ) -> Result<Box<dyn GuestSandbox>> {
-        Ok(Box::new(NanvixSandbox::new(WorkloadType::Python)?))
+    ) -> Result<NanvixSandbox> {
+        NanvixSandbox::new(WorkloadType::Python)
     }
 }
 
@@ -60,7 +62,7 @@ impl Guest for NanvixPython {
 // Sandbox implementation
 // ---------------------------------------------------------------------------
 
-struct NanvixSandbox {
+pub struct NanvixSandbox {
     workload_type: WorkloadType,
     runtime_config: RuntimeConfig,
     /// Tokio runtime for async nanvix API
@@ -90,7 +92,12 @@ impl NanvixSandbox {
     }
 }
 
+/// Unit type used as snapshot data for backends that don't support snapshotting.
+pub struct NoSnapshot;
+
 impl GuestSandbox for NanvixSandbox {
+    type SnapshotData = NoSnapshot;
+
     fn run(&mut self, code: &str) -> Result<ExecutionResult> {
         // Write code to a temporary file
         let mut tmp = tempfile::Builder::new()
@@ -133,13 +140,13 @@ impl GuestSandbox for NanvixSandbox {
         }
     }
 
-    fn snapshot(&mut self) -> Result<Snapshot> {
+    fn snapshot(&mut self) -> Result<Snapshot<NoSnapshot>> {
         Err(anyhow::anyhow!(
             "snapshot is not supported by the Nanvix sandbox"
         ))
     }
 
-    fn restore(&mut self, _snapshot: &Snapshot) -> Result<()> {
+    fn restore(&mut self, _snapshot: &Snapshot<NoSnapshot>) -> Result<()> {
         Err(anyhow::anyhow!(
             "restore is not supported by the Nanvix sandbox"
         ))

@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "hyperlight-sandbox-backend-hyperlight-js"
-version = "0.2.0"
+version = "0.3.0"
 description = "HyperlightJS backend implementation for hyperlight-sandbox"
 readme = "README.md"
 license = "Apache-2.0"

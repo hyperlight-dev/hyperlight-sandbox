@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hyperlight-sandbox"
-version = "0.2.0"
+version = "0.3.0"
 description = "Python API for running code in isolated Hyperlight sandboxes with swappable backends"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
 dependencies = []
-optional-dependencies = { wasm = ["hyperlight-sandbox-backend-wasm>=0.2.0"], hyperlight_js = ["hyperlight-sandbox-backend-hyperlight-js>=0.2.0"], python_guest = ["hyperlight-sandbox-python-guest>=0.2.0"], javascript_guest = ["hyperlight-sandbox-javascript-guest>=0.2.0"], dev = ["atheris>=2.3.0"] }
+optional-dependencies = { wasm = ["hyperlight-sandbox-backend-wasm>=0.3.0"], hyperlight_js = ["hyperlight-sandbox-backend-hyperlight-js>=0.3.0"], python_guest = ["hyperlight-sandbox-python-guest>=0.3.0"], javascript_guest = ["hyperlight-sandbox-javascript-guest>=0.3.0"], dev = ["atheris>=2.3.0"] }
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",

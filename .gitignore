@@ -16,4 +16,12 @@ wheels/
 pip-wheel-metadata/
 src/sdk/python/wasm_backend/Cargo.lock
 src/sdk/python/hyperlight_js_backend/Cargo.lock
+src/sdk/dotnet/ffi/Cargo.lock
 docs/end-user-overview-slides.html
+
+# dotnet
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
+*.nupkg

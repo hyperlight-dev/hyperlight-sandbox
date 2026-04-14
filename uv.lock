@@ -671,7 +671,7 @@ wheels = [
 
 [[package]]
 name = "hyperlight-sandbox"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "src/sdk/python/core" }
 
 [package.optional-dependencies]
@@ -703,17 +703,17 @@ provides-extras = ["wasm", "hyperlight-js", "python-guest", "javascript-guest", 
 
 [[package]]
 name = "hyperlight-sandbox-backend-hyperlight-js"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "src/sdk/python/hyperlight_js_backend" }
 
 [[package]]
 name = "hyperlight-sandbox-backend-wasm"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "src/sdk/python/wasm_backend" }
 
 [[package]]
 name = "hyperlight-sandbox-dev"
-version = "0.2.0"
+version = "0.3.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -777,12 +777,12 @@ dev = [
 
 [[package]]
 name = "hyperlight-sandbox-javascript-guest"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "src/sdk/python/wasm_guests/javascript_guest" }
 
 [[package]]
 name = "hyperlight-sandbox-python-guest"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "src/sdk/python/wasm_guests/python_guest" }
 
 [[package]]

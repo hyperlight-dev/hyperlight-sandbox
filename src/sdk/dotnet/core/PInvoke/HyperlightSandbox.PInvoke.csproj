@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AnalysisMode>All</AnalysisMode>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <RootNamespace>HyperlightSandbox.PInvoke</RootNamespace>
+
+    <!-- NuGet Package Metadata -->
+    <PackageId>Hyperlight.HyperlightSandbox.PInvoke</PackageId>
+    <Description>P/Invoke bindings for hyperlight-sandbox. Contains native library interop for secure sandboxed code execution. This package is typically consumed via HyperlightSandbox.Api.</Description>
+    <PackageTags>hyperlight;sandbox;wasm;pinvoke;native;interop;security</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/hyperlight-dev/hyperlight-sandbox</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/hyperlight-dev/hyperlight-sandbox</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+  </PropertyGroup>
+
+  <!-- Rust source files — MSBuild uses these timestamps to decide when to rebuild -->
+  <ItemGroup>
+    <RustFiles Include="..\..\ffi\src\*.rs" />
+    <RustFiles Include="..\..\ffi\Cargo.toml" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <RustProfile Condition="'$(Configuration)' == 'Debug'">debug</RustProfile>
+    <RustProfile Condition="'$(Configuration)' == 'Release'">release</RustProfile>
+    <FfiCrateDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../ffi'))</FfiCrateDir>
+    <WorkspaceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../../..'))</WorkspaceRoot>
+  </PropertyGroup>
+
+  <!-- Build the Rust FFI crate when its sources are newer than the output -->
+  <Target Name="BuildRust" BeforeTargets="BeforeBuild"
+          Inputs="@(RustFiles)"
+          Outputs="$(WorkspaceRoot)\target\$(RustProfile)\libhyperlight_sandbox_dotnet_ffi.so;$(WorkspaceRoot)\target\$(RustProfile)\hyperlight_sandbox_dotnet_ffi.dll">
+    <Message Text="Building Rust FFI library ($(RustProfile))..." Importance="high" />
+    <!-- WIT_WORLD must point to the compiled WIT world so hyperlight-component-macro
+         generates bindings that match the guest component model ABI. Without this,
+         the runtime fails with "Host function vector parameter missing length". -->
+    <Exec Command="cargo build --manifest-path &quot;$(FfiCrateDir)/Cargo.toml&quot; --profile=$(RustProfile)"
+          Condition="'$(Configuration)' == 'Release'"
+          EnvironmentVariables="WIT_WORLD=$(WorkspaceRoot)/src/wasm_sandbox/wit/sandbox-world.wasm" />
+    <Exec Command="cargo build --manifest-path &quot;$(FfiCrateDir)/Cargo.toml&quot;"
+          Condition="'$(Configuration)' != 'Release'"
+          EnvironmentVariables="WIT_WORLD=$(WorkspaceRoot)/src/wasm_sandbox/wit/sandbox-world.wasm" />
+  </Target>
+
+  <!-- Include native library for NuGet packaging -->
+  <ItemGroup>
+    <None Include="$(WorkspaceRoot)\target\$(RustProfile)\libhyperlight_sandbox_dotnet_ffi.so"
+          Condition="Exists('$(WorkspaceRoot)\target\$(RustProfile)\libhyperlight_sandbox_dotnet_ffi.so')">
+      <Pack>true</Pack>
+      <PackagePath>runtimes/linux-x64/native/</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>runtimes/linux-x64/native/libhyperlight_sandbox_dotnet_ffi.so</Link>
+    </None>
+    <None Include="$(WorkspaceRoot)\target\$(RustProfile)\hyperlight_sandbox_dotnet_ffi.dll"
+          Condition="Exists('$(WorkspaceRoot)\target\$(RustProfile)\hyperlight_sandbox_dotnet_ffi.dll')">
+      <Pack>true</Pack>
+      <PackagePath>runtimes/win-x64/native/</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>runtimes/win-x64/native/hyperlight_sandbox_dotnet_ffi.dll</Link>
+    </None>
+  </ItemGroup>
+
+</Project>

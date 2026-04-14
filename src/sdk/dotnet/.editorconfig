@@ -1,0 +1,29 @@
+# EditorConfig for .NET projects
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+# Remove unnecessary usings (enforced via dotnet format, not build)
+dotnet_diagnostic.IDE0005.severity = suggestion
+
+# String comparison — we handle this explicitly in code, suppress the
+# auto-fix noise since dotnet format can't resolve it automatically.
+dotnet_diagnostic.CA1307.severity = none
+
+# Naming conventions
+dotnet_naming_rule.interface_should_start_with_i.severity = suggestion
+dotnet_naming_rule.interface_should_start_with_i.symbols = interface
+dotnet_naming_rule.interface_should_start_with_i.style = begins_with_i
+dotnet_naming_symbols.interface.applicable_kinds = interface
+dotnet_naming_style.begins_with_i.required_prefix = I
+
+# Test files - allow underscores in method names
+[**Tests.cs]
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.IDE1006.severity = none

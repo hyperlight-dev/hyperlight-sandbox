@@ -16,7 +16,7 @@ Supported backends:
 
 ## Overview
 
-hyperlight-sandbox provides a unified API across multiple isolation backends. All backends share a common capability model.  A python and rust SDK is provided.
+hyperlight-sandbox provides a unified API across multiple isolation backends. All backends share a common capability model.  A python, .NET, and rust SDK is provided.
 
 - **Secure code execution** -- Run untrusted code in hardware isolated sandboxes (KVM, MSHV, Hyper-v)
 - **Host tool dispatch** -- Register callables as tools; guest code invokes them by name with schema-validated arguments
@@ -78,6 +78,35 @@ print(f"3 + 4 = {total}, HTTP status: {resp['status']}")
 """)
 print(result.stdout)
 ```
+
+.NET SDK:
+
+```bash
+just wasm guest-build     # build the guest module
+just dotnet build         # build the .NET SDK
+```
+
+```csharp
+using HyperlightSandbox.Api;
+
+using var sandbox = new SandboxBuilder()
+    .WithModulePath("python-sandbox.aot")
+    .Build();
+
+sandbox.RegisterTool<MathArgs, double>("add", args => args.a + args.b);
+sandbox.AllowDomain("https://httpbin.org");
+
+var result = sandbox.Run("""
+    total = call_tool("add", a=3, b=4)
+    resp = http_get("https://httpbin.org/get")
+    print(f"3 + 4 = {total}, HTTP status: {resp['status']}")
+    """);
+Console.WriteLine(result.Stdout);
+
+record MathArgs(double a, double b);
+```
+
+For full .NET SDK documentation, see [src/sdk/dotnet/README.md](src/sdk/dotnet/README.md).
 
 ## Sandbox Backends
 

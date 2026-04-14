@@ -1,0 +1,4 @@
+# Force LF line endings for C# files so dotnet format passes on all platforms.
+*.cs text eol=lf
+*.csproj text eol=lf
+*.sln text eol=lf

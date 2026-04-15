@@ -11,6 +11,14 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # wasmtime (indirect, via hyperlight-wasm) must stay aligned with the
+      # hyperlight-wasm-aot CLI that compiles .aot guest binaries.  The AOT
+      # compiler is installed from a pinned git rev and uses its own Cargo.lock,
+      # so a workspace-only bump creates a version mismatch at runtime.
+      # Update wasmtime only when hyperlight-wasm itself is updated.
+      - dependency-name: "wasmtime"
+      - dependency-name: "wasmtime-*"
 
   # Rust (Python wasm backend — separate workspace)
   - package-ecosystem: "cargo"

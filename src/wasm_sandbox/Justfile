@@ -9,16 +9,18 @@ rmrf := if os() == "windows" { "Remove-Item -Recurse -Force -ErrorAction Silentl
 ensure-tools:
     @command -v clang >/dev/null 2>&1 || { echo "clang not found — install with: apt install clang or brew install llvm"; exit 1; }
     @command -v wasm-tools >/dev/null 2>&1 || cargo install wasm-tools --locked
-    @command -v hyperlight-wasm-aot >/dev/null 2>&1 || \
-        cargo install hyperlight-wasm-aot \
-            --git https://github.com/jsturtevant/hyperlight-wasm \
-            --rev 09b5e8297d827518847c08c8506bf83e85eb89b1
+    # Always force-install: cargo install skips when the same rev is cached,
+    # even if the cached binary was compiled with different dependency versions
+    # (e.g. a stale wasmtime patch from the CI Cargo bin cache).
+    cargo install hyperlight-wasm-aot --locked --force \
+        --git https://github.com/jsturtevant/hyperlight-wasm \
+        --rev 09b5e8297d827518847c08c8506bf83e85eb89b1
 
 [windows]
 ensure-tools:
     if (-not (Get-Command clang -ErrorAction SilentlyContinue)) { Write-Error 'clang not found — install with: winget install LLVM.LLVM'; exit 1 }; \
     if (-not (Get-Command wasm-tools -ErrorAction SilentlyContinue)) { cargo install wasm-tools --locked }; \
-    if (-not (Get-Command hyperlight-wasm-aot -ErrorAction SilentlyContinue)) { cargo install hyperlight-wasm-aot --git https://github.com/jsturtevant/hyperlight-wasm --rev 09b5e8297d827518847c08c8506bf83e85eb89b1 }
+    cargo install hyperlight-wasm-aot --locked --force --git https://github.com/jsturtevant/hyperlight-wasm --rev 09b5e8297d827518847c08c8506bf83e85eb89b1
 
 guest-build-wasm: ensure-tools
     cd {{repo-root}}/src/wasm_sandbox/guests/python && uv run componentize-py \

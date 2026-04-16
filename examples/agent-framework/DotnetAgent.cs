@@ -54,12 +54,18 @@ codeTool.RegisterTool<ComputeArgs, double>("compute",
         _ => throw new ArgumentException($"Unknown operation: {args.Operation}"),
     });
 
-codeTool.RegisterTool<FetchDataArgs, string>("fetch_data",
-    args => args.Source switch
+// Async tool — simulates fetching from an external service.
+codeTool.RegisterToolAsync<FetchDataArgs, string>("fetch_data",
+    async args =>
     {
-        "weather" => """{"temperature": 22, "condition": "sunny"}""",
-        "stock" => """{"symbol": "MSFT", "price": 425.50}""",
-        _ => """{"error": "unknown source"}""",
+        // In real system this would be an actual HTTP/DB call.
+        await Task.Delay(1).ConfigureAwait(false);
+        return args.Source switch
+        {
+            "weather" => """{"temperature": 22, "condition": "sunny"}""",
+            "stock" => """{"symbol": "MSFT", "price": 425.50}""",
+            _ => """{"error": "unknown source"}""",
+        };
     });
 
 // --- Create IChatClient with function invocation ---

@@ -192,6 +192,35 @@ public sealed class Sandbox : IDisposable
     }
 
     /// <summary>
+    /// Registers a typed tool whose handler is asynchronous.
+    /// </summary>
+    /// <typeparam name="TArgs">
+    /// The argument type. Public properties define the tool's parameter schema.
+    /// </typeparam>
+    /// <typeparam name="TResult">
+    /// The return type. Serialized to JSON for the guest.
+    /// </typeparam>
+    /// <param name="name">Tool name (must be unique).</param>
+    /// <param name="handler">
+    /// Async function invoked when the guest calls this tool. Receives
+    /// deserialized arguments. The return value is serialized to JSON for
+    /// the guest.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// The underlying FFI callback is synchronous — the async handler is
+    /// blocked on at the interop boundary via <c>GetAwaiter().GetResult()</c>.
+    /// This is safe because FFI callbacks run on threads without a
+    /// <see cref="System.Threading.SynchronizationContext"/>.
+    /// </para>
+    /// </remarks>
+    public void RegisterToolAsync<TArgs, TResult>(string name, Func<TArgs, Task<TResult>> handler)
+    {
+        // Wrap the async handler into a sync handler that blocks at the FFI boundary.
+        RegisterTool<TArgs, TResult>(name, args => handler(args).GetAwaiter().GetResult());
+    }
+
+    /// <summary>
     /// Registers a tool with raw JSON input/output.
     /// </summary>
     /// <param name="name">Tool name.</param>
@@ -234,6 +263,28 @@ public sealed class Sandbox : IDisposable
             GC.KeepAlive(this);
             result.ThrowIfError();
         } // lock
+    }
+
+    /// <summary>
+    /// Registers a raw JSON tool whose handler is asynchronous.
+    /// </summary>
+    /// <param name="name">Tool name.</param>
+    /// <param name="handler">
+    /// Async function receiving a JSON string and returning a JSON string.
+    /// Return <c>{"error": "message"}</c> to signal an error to the guest.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// The underlying FFI callback is synchronous — the async handler is
+    /// blocked on at the interop boundary via <c>GetAwaiter().GetResult()</c>.
+    /// This is safe because FFI callbacks run on threads without a
+    /// <see cref="System.Threading.SynchronizationContext"/>.
+    /// </para>
+    /// </remarks>
+    public void RegisterToolAsync(string name, Func<string, Task<string>> handler)
+    {
+        // Wrap the async handler into a sync handler that blocks at the FFI boundary.
+        RegisterTool(name, (string json) => handler(json).GetAwaiter().GetResult());
     }
 
     // -----------------------------------------------------------------------

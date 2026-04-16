@@ -281,6 +281,83 @@ public class IntegrationTests
     }
 
     // -----------------------------------------------------------------------
+    // Async tool dispatch
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void Integration_ToolDispatch_AsyncTypedTool_Works()
+    {
+        using var sandbox = TryCreateSandbox();
+        if (sandbox == null) return;
+
+        // Register a tool with an async handler (e.g. simulating a DB/HTTP call).
+        sandbox.RegisterToolAsync<AddArgs, double>("add_async", async args =>
+        {
+            await Task.Delay(10).ConfigureAwait(false); // Simulate I/O
+            return args.a + args.b;
+        });
+
+        var result = sandbox.Run("""
+            result = call_tool("add_async", a=50, b=25)
+            print(f"result={result}")
+            """);
+
+        Assert.True(result.Success);
+        Assert.Contains("result=75", result.Stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Integration_ToolDispatch_AsyncRawJsonTool_Works()
+    {
+        using var sandbox = TryCreateSandbox();
+        if (sandbox == null) return;
+
+        // Register a raw JSON tool with an async handler.
+        sandbox.RegisterToolAsync("fetch_async", async (string json) =>
+        {
+            await Task.Delay(10).ConfigureAwait(false); // Simulate I/O
+            return json.Contains("weather", StringComparison.Ordinal)
+                ? """{"data": "sunny"}"""
+                : """{"data": "unknown"}""";
+        });
+
+        var result = sandbox.Run("""
+            r = call_tool("fetch_async", key="weather")
+            print(r)
+            """);
+
+        Assert.True(result.Success);
+        Assert.Contains("sunny", result.Stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Integration_ToolDispatch_MixedSyncAndAsyncTools_Works()
+    {
+        using var sandbox = TryCreateSandbox();
+        if (sandbox == null) return;
+
+        // Sync tool.
+        sandbox.RegisterTool<AddArgs, double>("add", args => args.a + args.b);
+
+        // Async tool.
+        sandbox.RegisterToolAsync<AddArgs, double>("multiply_async", async args =>
+        {
+            await Task.Delay(10).ConfigureAwait(false);
+            return args.a * args.b;
+        });
+
+        var result = sandbox.Run("""
+            s = call_tool("add", a=3, b=4)
+            p = call_tool("multiply_async", a=6, b=7)
+            print(f"{s} {p}")
+            """);
+
+        Assert.True(result.Success);
+        Assert.Contains("7", result.Stdout, StringComparison.Ordinal);
+        Assert.Contains("42", result.Stdout, StringComparison.Ordinal);
+    }
+
+    // -----------------------------------------------------------------------
     // Helper types
     // -----------------------------------------------------------------------
 

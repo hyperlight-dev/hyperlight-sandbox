@@ -30,6 +30,13 @@ sandbox.RegisterTool("lookup", (string json) =>
     return """{"result": "not found"}""";
 });
 
+// --- Register an async typed tool (e.g. simulating an external API call) ---
+sandbox.RegisterToolAsync<MathArgs, double>("add_async", async args =>
+{
+    await Task.Delay(10).ConfigureAwait(false); // Simulate I/O latency
+    return args.A + args.B;
+});
+
 // --- Test 1: Typed tool dispatch ---
 Console.WriteLine("═══ Test 1: Typed tool dispatch ═══");
 var result = sandbox.Run("""
@@ -53,6 +60,16 @@ result = sandbox.Run("""
 
     model = call_tool("lookup", key="model")
     print(f"Model: {model}")
+    """);
+
+Console.WriteLine($"stdout:\n{result.Stdout}");
+
+// --- Test 3: Async tool dispatch ---
+Console.WriteLine("═══ Test 3: Async tool dispatch ═══");
+
+result = sandbox.Run("""
+    async_sum = call_tool("add_async", a=100, b=200)
+    print(f"Async 100 + 200 = {async_sum}")
     """);
 
 Console.WriteLine($"stdout:\n{result.Stdout}");

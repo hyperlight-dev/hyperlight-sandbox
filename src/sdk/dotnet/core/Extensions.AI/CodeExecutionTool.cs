@@ -82,6 +82,31 @@ public sealed class CodeExecutionTool : IDisposable
     }
 
     /// <summary>
+    /// Registers a typed tool whose handler is asynchronous.
+    /// Must be called before the first <see cref="Execute"/>.
+    /// </summary>
+    public void RegisterToolAsync<TArgs, TResult>(string name, Func<TArgs, Task<TResult>> handler)
+    {
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _sandbox.RegisterToolAsync(name, handler);
+        }
+    }
+
+    /// <summary>
+    /// Registers a raw JSON tool whose handler is asynchronous.
+    /// </summary>
+    public void RegisterToolAsync(string name, Func<string, Task<string>> handler)
+    {
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _sandbox.RegisterToolAsync(name, handler);
+        }
+    }
+
+    /// <summary>
     /// Adds a domain to the network allowlist.
     /// </summary>
     public void AllowDomain(string target, IReadOnlyList<string>? methods = null)

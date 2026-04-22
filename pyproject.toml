@@ -28,7 +28,7 @@ dev = [
     "componentize-py",
     "build",
     "twine",
-    "ruff>=0.15",
+    "ruff>=0.15.11",
     "hyperlight-sandbox",
     "hyperlight-sandbox-python-guest",
     "hyperlight-sandbox-javascript-guest",

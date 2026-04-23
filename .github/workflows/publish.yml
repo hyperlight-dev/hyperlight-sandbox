@@ -44,7 +44,7 @@ jobs:
           export INTERPRETERS="--interpreter $(uv python find 3.10) $(uv python find 3.11) $(uv python find 3.12) $(uv python find 3.13)"
           just python-dist
 
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: python-wheels-linux
           path: dist/pythonsdk/
@@ -80,7 +80,7 @@ jobs:
           $env:INTERPRETERS = "--interpreter $($interps -join ' ')"
           just python-dist-backends
 
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: python-wheels-windows
           path: dist/pythonsdk/

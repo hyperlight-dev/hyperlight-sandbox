@@ -24,7 +24,7 @@ hyperlight-sandbox-javascript-guest = { workspace = true }
 
 [dependency-groups]
 dev = [
-    "maturin>=1.7,<2.0",
+    "maturin>=1.13.1,<2.0",
     "componentize-py",
     "build",
     "twine",

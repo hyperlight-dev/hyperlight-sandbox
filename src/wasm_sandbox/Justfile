@@ -14,13 +14,13 @@ ensure-tools:
     # (e.g. a stale wasmtime patch from the CI Cargo bin cache).
     cargo install hyperlight-wasm-aot --locked --force \
         --git https://github.com/jsturtevant/hyperlight-wasm \
-        --rev 09b5e8297d827518847c08c8506bf83e85eb89b1
+        --rev 40660fe1bb62ac09767656edb49f022d9b5f2aaf
 
 [windows]
 ensure-tools:
     if (-not (Get-Command clang -ErrorAction SilentlyContinue)) { Write-Error 'clang not found — install with: winget install LLVM.LLVM'; exit 1 }; \
     if (-not (Get-Command wasm-tools -ErrorAction SilentlyContinue)) { cargo install wasm-tools --locked }; \
-    cargo install hyperlight-wasm-aot --locked --force --git https://github.com/jsturtevant/hyperlight-wasm --rev 09b5e8297d827518847c08c8506bf83e85eb89b1
+    cargo install hyperlight-wasm-aot --locked --force --git https://github.com/jsturtevant/hyperlight-wasm --rev 40660fe1bb62ac09767656edb49f022d9b5f2aaf
 
 guest-build-wasm: ensure-tools
     cd {{repo-root}}/src/wasm_sandbox/guests/python && uv run componentize-py \

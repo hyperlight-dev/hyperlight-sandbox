@@ -148,8 +148,10 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           sudo chmod 666 /dev/kvm
 
-      - name: Build guest modules
-        run: just wasm guest-build
+      - name: Build sandbox runtimes
+        run: |
+          just wasm build
+          just js build
 
       - name: Format check
         run: just dotnet fmt-check

@@ -132,8 +132,10 @@ jobs:
       - name: Install LLVM
         run: choco install llvm -y
 
-      - name: Build WIT world
-        run: just wasm guest-compile-wit
+      - name: Build sandbox runtimes
+        run: |
+          just wasm build release
+          just js build release
 
       - name: Build Windows native library
         run: just dotnet build-rust release
@@ -179,8 +181,10 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           sudo chmod 666 /dev/kvm
 
-      - name: Build guest modules
-        run: just wasm guest-build
+      - name: Build sandbox runtimes
+        run: |
+          just wasm build release
+          just js build release
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:

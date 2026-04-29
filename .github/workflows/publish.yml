@@ -113,13 +113,47 @@ jobs:
       - name: Publish to PyPI
         run: just python python-publish
 
+  # Build the Windows native library for the .NET P/Invoke NuGet package.
+  dotnet-build-windows:
+    if: ${{ !github.event.act }}
+    name: Build Windows .NET native library
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606  # v1.15.4
+        with:
+          cache-key: release-windows-dotnet
+          rustflags: ""
+
+      - name: Install just
+        run: cargo install --locked just
+
+      - name: Install LLVM
+        run: choco install llvm -y
+
+      - name: Build WIT world
+        run: just wasm guest-compile-wit
+
+      - name: Build Windows native library
+        run: just dotnet build-rust release
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: dotnet-native-windows
+          path: target/release/hyperlight_sandbox_dotnet_ffi.dll
+
   # Build and publish .NET NuGet packages.
   dotnet-publish:
     if: ${{ !github.event.act }}
     name: Publish .NET NuGet packages
+    needs: [dotnet-build-windows]
     runs-on: ubuntu-latest
     environment:
       name: nuget
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
@@ -148,13 +182,29 @@ jobs:
       - name: Build guest modules
         run: just wasm guest-build
 
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: dotnet-native-windows
+          path: target/release
+
       - name: Build and pack
         run: just dotnet dist
 
       - name: Package test
         run: just dotnet package-test release
 
+      - name: Verify NuGet native assets
+        run: |
+          unzip -l dist/dotnetsdk/Hyperlight.HyperlightSandbox.PInvoke.*.nupkg | grep -F "runtimes/linux-x64/native/libhyperlight_sandbox_dotnet_ffi.so"
+          unzip -l dist/dotnetsdk/Hyperlight.HyperlightSandbox.PInvoke.*.nupkg | grep -F "runtimes/win-x64/native/hyperlight_sandbox_dotnet_ffi.dll"
+
+      - name: NuGet login
+        uses: NuGet/login@ebc737b6fc418a6ca0073cf116ec8dc156d8b81e  # v1
+        id: nuget-login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
       - name: Publish to NuGet
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         run: just dotnet publish

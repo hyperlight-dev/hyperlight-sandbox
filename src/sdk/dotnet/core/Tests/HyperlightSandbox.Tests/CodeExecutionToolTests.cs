@@ -26,6 +26,15 @@ public class CodeExecutionToolTests
     }
 
     [Fact]
+    public void Create_WithJavaScriptBackend_Succeeds()
+    {
+        using var tool = new CodeExecutionTool(
+            new SandboxBuilder().WithBackend(SandboxBackend.JavaScript));
+
+        Assert.NotNull(tool);
+    }
+
+    [Fact]
     public void Create_NullBuilder_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() =>
@@ -49,6 +58,16 @@ public class CodeExecutionToolTests
 
         Assert.Throws<ObjectDisposedException>(() =>
             tool.Execute("print('hello')"));
+    }
+
+    [Theory]
+    [InlineData(SandboxBackend.Wasm, "None")]
+    [InlineData(SandboxBackend.JavaScript, "void 0;")]
+    public void InitializationCodeFor_UsesBackendNoOp(
+        SandboxBackend backend,
+        string expectedCode)
+    {
+        Assert.Equal(expectedCode, CodeExecutionTool.InitializationCodeFor(backend));
     }
 
     // -----------------------------------------------------------------------

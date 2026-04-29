@@ -21,6 +21,7 @@
 
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char};
+use std::ptr::NonNull;
 
 use anyhow::Result;
 use hyperlight_javascript_sandbox::HyperlightJs;
@@ -299,13 +300,13 @@ fn error_result(err: anyhow::Error) -> FFIResult {
 ///
 /// The caller must ensure `ptr` is a valid, null-terminated UTF-8 string.
 unsafe fn read_cstr<'a>(ptr: *const c_char, param_name: &str) -> Result<&'a str, FFIResult> {
-    if ptr.is_null() {
-        return Err(FFIResult::error(
+    let ptr = NonNull::new(ptr.cast_mut()).ok_or_else(|| {
+        FFIResult::error(
             FFIErrorCode::InvalidArgument,
             safe_cstring(format!("Null pointer passed for {param_name}")),
-        ));
-    }
-    let cstr = unsafe { CStr::from_ptr(ptr) };
+        )
+    })?;
+    let cstr = unsafe { CStr::from_ptr(ptr.as_ptr()) };
     cstr.to_str().map_err(|e| {
         FFIResult::error(
             FFIErrorCode::InvalidArgument,
@@ -324,13 +325,13 @@ unsafe fn read_cstr<'a>(ptr: *const c_char, param_name: &str) -> Result<&'a str,
 /// The caller must ensure `handle` points to a live, properly-aligned
 /// allocation of type `T` (i.e. was returned by `Box::into_raw`).
 unsafe fn deref_handle_mut<'a, T>(handle: *mut T, name: &str) -> Result<&'a mut T, FFIResult> {
-    if handle.is_null() {
-        return Err(FFIResult::error(
+    let mut handle = NonNull::new(handle).ok_or_else(|| {
+        FFIResult::error(
             FFIErrorCode::InvalidArgument,
             safe_cstring(format!("Null pointer passed for {name}")),
-        ));
-    }
-    Ok(unsafe { &mut *handle })
+        )
+    })?;
+    Ok(unsafe { handle.as_mut() })
 }
 
 /// Validate an immutable handle pointer and return a shared reference.
@@ -340,13 +341,13 @@ unsafe fn deref_handle_mut<'a, T>(handle: *mut T, name: &str) -> Result<&'a mut 
 /// The caller must ensure `handle` points to a live, properly-aligned
 /// allocation of type `T`.
 unsafe fn deref_handle<'a, T>(handle: *const T, name: &str) -> Result<&'a T, FFIResult> {
-    if handle.is_null() {
-        return Err(FFIResult::error(
+    let handle = NonNull::new(handle.cast_mut()).ok_or_else(|| {
+        FFIResult::error(
             FFIErrorCode::InvalidArgument,
             safe_cstring(format!("Null pointer passed for {name}")),
-        ));
-    }
-    Ok(unsafe { &*handle })
+        )
+    })?;
+    Ok(unsafe { handle.as_ref() })
 }
 
 /// Build the `ToolRegistry` from the collected tool entries.
@@ -1011,8 +1012,17 @@ pub unsafe extern "C" fn hyperlight_sandbox_run(
         return error_result(e);
     }
 
-    let sandbox_result =
-        with_sandbox!(state.inner.as_mut().expect("initialized above"), sb => sb.run(code_str));
+    let sandbox = match state.inner.as_mut() {
+        Some(s) => s,
+        None => {
+            return FFIResult::error(
+                FFIErrorCode::Unknown,
+                safe_cstring("Sandbox initialization did not produce an active backend"),
+            );
+        }
+    };
+
+    let sandbox_result = with_sandbox!(sandbox, sb => sb.run(code_str));
 
     match sandbox_result {
         Ok(result) => {

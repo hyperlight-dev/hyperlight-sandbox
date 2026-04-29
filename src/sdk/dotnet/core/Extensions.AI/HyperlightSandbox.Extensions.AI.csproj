@@ -28,4 +28,8 @@
     <PackageReference Include="Microsoft.Extensions.AI" Version="9.5.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="HyperlightSandbox.Tests" />
+  </ItemGroup>
+
 </Project>

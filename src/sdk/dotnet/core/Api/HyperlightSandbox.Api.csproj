@@ -25,6 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="HyperlightSandbox.Extensions.AI" />
     <InternalsVisibleTo Include="HyperlightSandbox.Tests" />
   </ItemGroup>
 

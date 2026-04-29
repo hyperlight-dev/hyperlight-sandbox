@@ -49,7 +49,17 @@ public class JavaScriptBackendTests
     {
         // Default backend requires module path (Wasm)
         var builder = new SandboxBuilder();
+        Assert.Equal(SandboxBackend.Wasm, builder.Backend);
         Assert.Throws<InvalidOperationException>(() => builder.Build());
+    }
+
+    [Fact]
+    public void WithBackend_UpdatesBackendProperty()
+    {
+        var builder = new SandboxBuilder()
+            .WithBackend(SandboxBackend.JavaScript);
+
+        Assert.Equal(SandboxBackend.JavaScript, builder.Backend);
     }
 
     // -----------------------------------------------------------------------

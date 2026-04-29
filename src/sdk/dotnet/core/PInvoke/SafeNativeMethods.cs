@@ -67,6 +67,7 @@ internal static partial class SafeNativeMethods
         string rid = OperatingSystem.IsWindows() ? "win-x64" : "linux-x64";
         string runtimePath = Path.Join(
             assemblyDirectory, "runtimes", rid, "native", platformLibraryName);
+        List<string> searchedPaths = [runtimePath];
 
         if (File.Exists(runtimePath))
         {
@@ -75,6 +76,7 @@ internal static partial class SafeNativeMethods
 
         // Check assembly directory directly (local development)
         string localPath = Path.Join(assemblyDirectory, platformLibraryName);
+        searchedPaths.Add(localPath);
         if (File.Exists(localPath))
         {
             return NativeLibrary.Load(localPath);
@@ -87,12 +89,14 @@ internal static partial class SafeNativeMethods
         while (dir != null)
         {
             string cargoTarget = Path.Join(dir, "target", "debug", platformLibraryName);
+            searchedPaths.Add(cargoTarget);
             if (File.Exists(cargoTarget))
             {
                 return NativeLibrary.Load(cargoTarget);
             }
 
             string cargoTargetRelease = Path.Join(dir, "target", "release", platformLibraryName);
+            searchedPaths.Add(cargoTargetRelease);
             if (File.Exists(cargoTargetRelease))
             {
                 return NativeLibrary.Load(cargoTargetRelease);
@@ -102,8 +106,9 @@ internal static partial class SafeNativeMethods
         }
 #endif
 
-        // Fallback to default resolution
-        return IntPtr.Zero;
+        throw new DllNotFoundException(
+            $"Unable to load native library '{libraryName}'. Searched paths: " +
+            string.Join(Path.PathSeparator, searchedPaths));
     }
 
     // -----------------------------------------------------------------------

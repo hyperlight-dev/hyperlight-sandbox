@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Runtime.InteropServices;
 using HyperlightSandbox.PInvoke;
 using Xunit;
@@ -172,6 +173,26 @@ public class PInvokeLayerTests
         Assert.NotNull(version);
         Assert.NotEmpty(version);
         Assert.Contains('.', version);
+    }
+
+    [Fact]
+    public void DllImportResolver_ForSandboxLibraryWithoutApprovedPath_ThrowsDllNotFoundException()
+    {
+        var resolver = typeof(SafeNativeMethods).GetMethod(
+            "DllImportResolver",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(resolver);
+
+        var ex = Assert.Throws<TargetInvocationException>(() =>
+            resolver.Invoke(null, [
+                "hyperlight_sandbox_dotnet_ffi",
+                typeof(string).Assembly,
+                null,
+            ]));
+
+        var dllNotFound = Assert.IsType<DllNotFoundException>(ex.InnerException);
+        Assert.Contains("hyperlight_sandbox_dotnet_ffi", dllNotFound.Message);
+        Assert.Contains("Searched paths", dllNotFound.Message);
     }
 
     // -----------------------------------------------------------------------

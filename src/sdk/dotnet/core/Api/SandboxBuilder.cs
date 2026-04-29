@@ -30,6 +30,11 @@ public sealed class SandboxBuilder
     private SandboxBackend _backend = SandboxBackend.Wasm;
 
     /// <summary>
+    /// Gets the backend configured for sandboxes built by this builder.
+    /// </summary>
+    internal SandboxBackend Backend => _backend;
+
+    /// <summary>
     /// Sets the backend to use. Default is <see cref="SandboxBackend.Wasm"/>.
     /// </summary>
     /// <param name="backend">The backend type.</param>

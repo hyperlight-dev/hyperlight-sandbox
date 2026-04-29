@@ -37,7 +37,11 @@ namespace HyperlightSandbox.Extensions.AI;
 /// </remarks>
 public sealed class CodeExecutionTool : IDisposable
 {
+    private const string WasmInitializationCode = "None";
+    private const string JavaScriptInitializationCode = "void 0;";
+
     private readonly Api.Sandbox _sandbox;
+    private readonly string _initializationCode;
     private Api.SandboxSnapshot? _snapshot;
     private bool _initialized;
     private bool _disposed;
@@ -53,6 +57,7 @@ public sealed class CodeExecutionTool : IDisposable
     public CodeExecutionTool(Api.SandboxBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
+        _initializationCode = InitializationCodeFor(builder.Backend);
         _sandbox = builder.Build();
     }
 
@@ -140,8 +145,7 @@ public sealed class CodeExecutionTool : IDisposable
             {
                 // Initialize the sandbox runtime with a no-op, then snapshot
                 // the CLEAN state before any user code pollutes it.
-                // Use empty string that's valid in both Python ("") and JS ("").
-                _sandbox.Run("None");
+                _sandbox.Run(_initializationCode);
                 _snapshot = _sandbox.Snapshot();
                 _initialized = true;
             }
@@ -222,4 +226,11 @@ public sealed class CodeExecutionTool : IDisposable
         // Only free what WE own. The sandbox cleans up via its own finalizer.
         _snapshot?.Dispose();
     }
+
+    internal static string InitializationCodeFor(Api.SandboxBackend backend) => backend switch
+    {
+        Api.SandboxBackend.Wasm => WasmInitializationCode,
+        Api.SandboxBackend.JavaScript => JavaScriptInitializationCode,
+        _ => throw new ArgumentOutOfRangeException(nameof(backend), backend, "Unknown sandbox backend."),
+    };
 }

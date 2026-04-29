@@ -523,9 +523,9 @@ public sealed class Sandbox : IDisposable
     /// Releases the sandbox and all associated native resources.
     /// </summary>
     /// <remarks>
-    /// After disposal, all pinned tool callback delegates are freed,
-    /// allowing the GC to collect them. The native sandbox handle is
-    /// also released.
+    /// The native sandbox handle is released before pinned tool callback
+    /// delegates are freed. This keeps callbacks valid for the full native
+    /// drop path if the backend ever invokes them during cleanup.
     /// </remarks>
     public void Dispose()
     {
@@ -538,26 +538,32 @@ public sealed class Sandbox : IDisposable
 
             _disposed = true;
 
+            ReleaseNativeHandle();
             FreePinnedDelegates();
-
-            // Release the native sandbox handle.
-            if (!_handle.IsInvalid)
-            {
-                _handle.Dispose();
-            }
 
             GC.SuppressFinalize(this);
         } // lock
     }
 
     /// <summary>
-    /// Destructor — ensures pinned GCHandles are freed even if the user
-    /// forgets to call <see cref="Dispose"/>. The <see cref="SandboxSafeHandle"/>
-    /// has its own finalizer for the native handle.
+    /// Destructor — ensures the native handle is released before pinned
+    /// GCHandles are freed even if the user forgets to call <see cref="Dispose"/>.
     /// </summary>
     ~Sandbox()
     {
+        ReleaseNativeHandle();
         FreePinnedDelegates();
+    }
+
+    /// <summary>
+    /// Releases the native sandbox handle. Safe to call multiple times.
+    /// </summary>
+    private void ReleaseNativeHandle()
+    {
+        if (!_handle.IsInvalid)
+        {
+            _handle.Dispose();
+        }
     }
 
     /// <summary>

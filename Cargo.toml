@@ -28,14 +28,8 @@ hyperlight-sandbox-pyo3-common = { path = "src/sdk/python/pyo3_common" }
 hyperlight-common = { version = "0.14.0", default-features = false }
 hyperlight-component-macro = { version = "0.14.0" }
 hyperlight-host = { version = "0.14.0", default-features = false, features = ["executable_heap"] }
-hyperlight-wasm = { git = "https://github.com/jsturtevant/hyperlight-wasm", rev = "05a9eea" }
+hyperlight-wasm = { git = "https://github.com/jsturtevant/hyperlight-wasm", rev = "13906096edc2e014220c11a040242070ce6dee90" } #branch util-compont-fixes
 pyo3 = { version = "0.28", features = ["extension-module"] }
-
-# Patched component-util — the published 0.14.0 has name collision, flags,
-# and empty-namespace bugs that break the generated host bindings.
-# This patch will be removed once the fixes are merged upstream.
-[patch.crates-io]
-hyperlight-component-util = { git = "https://github.com/jsturtevant/hyperlight-1", rev = "4701257034306b0978d49cc9140bc0b12de3b409", package = "hyperlight-component-util" }
 
 # hyperlight-wasm 0.13.1 (git) depends on hyperlight-* from the hyperlight-dev
 # GitHub org. Redirect those to the published 0.14.0 crates.io versions.
@@ -44,3 +38,7 @@ hyperlight-common = { version = "0.14.0" }
 hyperlight-guest = { version = "=0.14.0" }
 hyperlight-guest-bin = { version = "=0.14.0" }
 hyperlight-host = { version = "0.14.0" }
+hyperlight-component-util = { git = "https://github.com/jsturtevant/hyperlight-1", rev="cdbed80af127b4d74e2633511cadb07bfea0160e",  package = "hyperlight-component-util" }
+
+[patch.crates-io]
+hyperlight-component-util = { git = "https://github.com/jsturtevant/hyperlight-1", rev="cdbed80af127b4d74e2633511cadb07bfea0160e", package = "hyperlight-component-util" }

@@ -24,11 +24,11 @@ hyperlight-sandbox-javascript-guest = { workspace = true }
 
 [dependency-groups]
 dev = [
-    "maturin>=1.7,<2.0",
+    "maturin>=1.13.1,<2.0",
     "componentize-py",
     "build",
     "twine",
-    "ruff>=0.15",
+    "ruff>=0.15.12",
     "hyperlight-sandbox",
     "hyperlight-sandbox-python-guest",
     "hyperlight-sandbox-javascript-guest",
@@ -41,14 +41,14 @@ copilot-sdk = [
     "hyperlight-sandbox-python-guest",
 ]
 agent-framework = [
-    "agent-framework-github-copilot>=0.0.0a0",
+    "agent-framework-github-copilot>=1.0.0b260423",
     "pydantic",
     "hyperlight-sandbox",
     "hyperlight-sandbox-backend-wasm",
     "hyperlight-sandbox-python-guest",
 ]
 agent-framework-devui = [
-    "agent-framework-devui>=0.0.0a0",
+    "agent-framework-devui>=1.0.0b260421",
 ]
 
 [tool.ruff]

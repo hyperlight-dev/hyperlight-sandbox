@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <Version>0.3.0</Version>
+    <Authors>Hyperlight developers</Authors>
+    <Company>hyperlight-dev</Company>
+    <Copyright>Copyright © Microsoft 2026</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/hyperlight-dev/hyperlight-sandbox</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/hyperlight-dev/hyperlight-sandbox</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+</Project>

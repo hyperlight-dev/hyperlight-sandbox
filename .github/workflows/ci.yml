@@ -99,6 +99,81 @@ jobs:
       - name: Run examples
         run: just wasm examples
 
+  dotnet-sdk:
+    name: .NET SDK (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606  # v1.15.4
+        with:
+          toolchain: nightly, 1.94
+          components: rustfmt, clippy
+          rustflags: ""
+
+      - uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7  # v5.2.0
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        with:
+          node-version: "latest"
+          cache: npm
+          cache-dependency-path: src/wasm_sandbox/guests/javascript/package-lock.json
+
+      - name: Install just
+        run: cargo install --locked just
+
+      - name: Install clang (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang
+
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        run: choco install llvm -y
+
+      - name: Enable KVM
+        if: runner.os == 'Linux' && !env.ACT
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 666 /dev/kvm
+
+      - name: Build sandbox runtimes
+        run: |
+          just wasm build
+          just js build
+
+      - name: Format check
+        run: just dotnet fmt-check
+
+      - name: Lint
+        run: just dotnet lint
+
+      - name: Build
+        run: just dotnet build
+
+      - name: Test Rust FFI
+        run: just dotnet test-rust
+
+      - name: Test .NET
+        run: just dotnet test-dotnet
+
+      - name: Run examples
+        run: just dotnet examples
+
+      - name: Package test
+        run: just dotnet package-test
+
   python-sdk:
     name: Python SDK (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

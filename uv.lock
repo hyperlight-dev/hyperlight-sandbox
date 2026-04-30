@@ -629,7 +629,7 @@ dev = [
     { name = "hyperlight-sandbox-javascript-guest", editable = "src/sdk/python/wasm_guests/javascript_guest" },
     { name = "hyperlight-sandbox-python-guest", editable = "src/sdk/python/wasm_guests/python_guest" },
     { name = "maturin", specifier = ">=1.13.1,<2.0" },
-    { name = "ruff", specifier = ">=0.15.11" },
+    { name = "ruff", specifier = ">=0.15.12" },
     { name = "twine" },
 ]
 

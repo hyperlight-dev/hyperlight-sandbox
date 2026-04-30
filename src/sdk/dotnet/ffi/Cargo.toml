@@ -1,0 +1,28 @@
+[package]
+name = "hyperlight-sandbox-dotnet-ffi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "C-compatible FFI layer for the hyperlight-sandbox .NET SDK"
+
+[lib]
+# cdylib for the .NET P/Invoke shared library.
+# rlib is also needed so `cargo test` can link the test harness.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hyperlight-sandbox.workspace = true
+hyperlight-wasm-sandbox.workspace = true
+hyperlight-javascript-sandbox.workspace = true
+anyhow = "1"
+libc = "0.2"
+log = "0.4"
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Com"] }
+
+[dev-dependencies]
+hyperlight-sandbox = { workspace = true, features = ["test-utils"] }
+tempfile = "3"

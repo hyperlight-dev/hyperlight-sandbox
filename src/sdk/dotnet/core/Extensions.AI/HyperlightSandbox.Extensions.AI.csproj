@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AnalysisMode>All</AnalysisMode>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <RootNamespace>HyperlightSandbox.Extensions.AI</RootNamespace>
+
+    <!-- NuGet Package Metadata -->
+    <PackageId>Hyperlight.HyperlightSandbox.Extensions.AI</PackageId>
+    <Description>AI agent integration for hyperlight-sandbox. Provides CodeExecutionTool for use with GitHub Copilot SDK and Microsoft Agent Framework via AIFunction.</Description>
+    <PackageTags>hyperlight;sandbox;ai;agent;copilot;tools;code-execution</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/hyperlight-dev/hyperlight-sandbox</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/hyperlight-dev/hyperlight-sandbox</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Api\HyperlightSandbox.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="9.5.0" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="9.5.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="HyperlightSandbox.Tests" />
+  </ItemGroup>
+
+</Project>

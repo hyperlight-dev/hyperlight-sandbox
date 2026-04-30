@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AnalysisMode>All</AnalysisMode>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <RootNamespace>HyperlightSandbox.Api</RootNamespace>
+
+    <!-- NuGet Package Metadata -->
+    <PackageId>Hyperlight.HyperlightSandbox.Api</PackageId>
+    <Description>High-level .NET API for running code in secure, sandboxed environments using hyperlight. Provides Sandbox, tool registration, filesystem access, network allowlists, and snapshot/restore.</Description>
+    <PackageTags>hyperlight;sandbox;wasm;security;code-execution;ai;tools</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/hyperlight-dev/hyperlight-sandbox</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/hyperlight-dev/hyperlight-sandbox</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PInvoke\HyperlightSandbox.PInvoke.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="HyperlightSandbox.Extensions.AI" />
+    <InternalsVisibleTo Include="HyperlightSandbox.Tests" />
+  </ItemGroup>
+
+</Project>

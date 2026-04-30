@@ -1,0 +1,160 @@
+# .NET SDK build recipes for hyperlight-sandbox.
+#
+# These recipes build the Rust FFI crate, the .NET solution, and run
+# tests/examples. The WIT_WORLD env var is required for the Rust build
+# so that hyperlight-component-macro generates bindings that match the
+# guest component model ABI.
+
+set unstable := true
+set windows-shell := ["pwsh", "-NoLogo", "-Command"]
+
+repo-root := invocation_directory_native()
+export WIT_WORLD := repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm"
+
+default-target := "debug"
+rmrf := if os() == "windows" { "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" } else { "rm -rf" }
+mkdirp := if os() == "windows" { "New-Item -ItemType Directory -Force -Path" } else { "mkdir -p" }
+devnull := if os() == "windows" { "$null" } else { "/dev/null" }
+
+#### BUILD ####
+
+# Build everything (Rust FFI + .NET solution)
+build target=default-target: (build-rust target) (build-dotnet target)
+
+# Build only the Rust FFI crate
+build-rust target=default-target:
+    cargo build --manifest-path {{repo-root}}/src/sdk/dotnet/ffi/Cargo.toml {{ if target == "release" { "--release" } else { "" } }}
+
+# Build only the .NET solution
+build-dotnet target=default-target:
+    dotnet build {{repo-root}}/src/sdk/dotnet/core/HyperlightSandbox.sln --configuration {{ if target == "release" { "Release" } else { "Debug" } }}
+
+#### FORMAT ####
+
+# Apply all formatting (Rust + .NET)
+fmt: fmt-rust fmt-dotnet
+
+# Apply Rust formatting
+fmt-rust:
+    cargo +nightly fmt --manifest-path {{repo-root}}/src/sdk/dotnet/ffi/Cargo.toml
+
+# Apply .NET formatting (whitespace + remove unused usings)
+fmt-dotnet:
+    dotnet format {{repo-root}}/src/sdk/dotnet/core/HyperlightSandbox.sln
+    dotnet format analyzers {{repo-root}}/src/sdk/dotnet/core/HyperlightSandbox.sln --diagnostics IDE0005 --severity warn
+
+# Check all formatting (Rust + .NET)
+fmt-check: fmt-check-rust fmt-check-dotnet
+
+# Check Rust formatting
+fmt-check-rust:
+    cargo +nightly fmt --manifest-path {{repo-root}}/src/sdk/dotnet/ffi/Cargo.toml -- --check
+
+# Check .NET formatting
+fmt-check-dotnet:
+    dotnet format {{repo-root}}/src/sdk/dotnet/core/HyperlightSandbox.sln --verify-no-changes
+
+#### LINT ####
+
+# Lint everything (Rust clippy + .NET analyzers)
+lint target=default-target: (lint-rust target) (analyze target)
+
+# Rust clippy
+lint-rust target=default-target:
+    cargo clippy --manifest-path {{repo-root}}/src/sdk/dotnet/ffi/Cargo.toml --profile={{ if target == "debug" { "dev" } else { target } }} -- -D warnings
+
+# .NET Roslyn analyzers with warnings as errors
+analyze target=default-target:
+    dotnet build {{repo-root}}/src/sdk/dotnet/core/HyperlightSandbox.sln /p:TreatWarningsAsErrors=true /p:EnforceCodeStyleInBuild=true --configuration {{ if target == "release" { "Release" } else { "Debug" } }}
+
+#### TEST ####
+
+# Run all tests (Rust + .NET)
+test target=default-target: test-rust (test-dotnet target)
+
+# Run Rust FFI tests
+test-rust:
+    cargo test --manifest-path {{repo-root}}/src/sdk/dotnet/ffi/Cargo.toml
+
+# Run .NET xUnit tests
+test-dotnet target=default-target: (build target)
+    dotnet test {{repo-root}}/src/sdk/dotnet/core/HyperlightSandbox.sln --configuration {{ if target == "release" { "Release" } else { "Debug" } }} --no-build
+
+#### EXAMPLES ####
+
+# Run the core examples (requires guest module: just wasm guest-build)
+examples:
+    dotnet run --project {{repo-root}}/src/sdk/dotnet/core/Examples/BasicExample/BasicExample.csproj
+    dotnet run --project {{repo-root}}/src/sdk/dotnet/core/Examples/ToolRegistrationExample/ToolRegistrationExample.csproj
+    dotnet run --project {{repo-root}}/src/sdk/dotnet/core/Examples/SnapshotExample/SnapshotExample.csproj
+
+# Run the top-level agent example (requires GITHUB_TOKEN)
+agent-framework-example:
+    dotnet run --project {{repo-root}}/examples/agent-framework/DotnetAgent.csproj
+
+# Run the top-level Copilot SDK example (requires Copilot CLI auth)
+copilot-sdk-example:
+    dotnet run --project {{repo-root}}/examples/copilot-sdk/DotnetCopilotSdk.csproj
+
+#### DIST / PUBLISH ####
+
+# Build NuGet packages
+dist target="release": (build target)
+    {{mkdirp}} {{repo-root}}/dist/dotnetsdk
+    dotnet pack {{repo-root}}/src/sdk/dotnet/core/PInvoke/HyperlightSandbox.PInvoke.csproj --configuration {{ if target == "release" { "Release" } else { "Debug" } }} --no-build --output {{repo-root}}/dist/dotnetsdk
+    dotnet pack {{repo-root}}/src/sdk/dotnet/core/Api/HyperlightSandbox.Api.csproj --configuration {{ if target == "release" { "Release" } else { "Debug" } }} --no-build --output {{repo-root}}/dist/dotnetsdk
+    dotnet pack {{repo-root}}/src/sdk/dotnet/core/Extensions.AI/HyperlightSandbox.Extensions.AI.csproj --configuration {{ if target == "release" { "Release" } else { "Debug" } }} --no-build --output {{repo-root}}/dist/dotnetsdk
+    @echo "✅ NuGet packages created in dist/dotnetsdk/"
+
+# Publish NuGet packages to nuget.org (requires NUGET_API_KEY env var)
+[unix]
+publish feed="nuget": (dist "release")
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{feed}}" = "nuget" ]; then
+        SOURCE="https://api.nuget.org/v3/index.json"
+    elif [ "{{feed}}" = "test" ]; then
+        SOURCE="https://apiint.nugettest.org/v3/index.json"
+    else
+        SOURCE="{{feed}}"
+    fi
+    if [ -z "${NUGET_API_KEY:-}" ]; then
+        echo "❌ NUGET_API_KEY environment variable is required"
+        exit 1
+    fi
+    for pkg in {{repo-root}}/dist/dotnetsdk/*.nupkg; do
+        echo "Publishing $(basename $pkg) to $SOURCE..."
+        dotnet nuget push "$pkg" --source "$SOURCE" --api-key "$NUGET_API_KEY" --skip-duplicate
+    done
+    echo "✅ All packages published!"
+
+[windows]
+publish feed="nuget": (dist "release")
+    $source = if ("{{feed}}" -eq "nuget") { "https://api.nuget.org/v3/index.json" } elseif ("{{feed}}" -eq "test") { "https://apiint.nugettest.org/v3/index.json" } else { "{{feed}}" }; \
+    if (-not $env:NUGET_API_KEY) { Write-Error "❌ NUGET_API_KEY environment variable is required"; exit 1 }; \
+    Get-ChildItem "{{repo-root}}/dist/dotnetsdk/*.nupkg" | ForEach-Object { \
+        Write-Host "Publishing $($_.Name) to $source..."; \
+        dotnet nuget push $_.FullName --source $source --api-key $env:NUGET_API_KEY --skip-duplicate \
+    }; \
+    Write-Host "✅ All packages published!"
+
+# Test that NuGet packages can be installed and used
+package-test target="debug": (dist target)
+    @echo "Testing NuGet package installation..."
+    dotnet restore {{repo-root}}/src/sdk/dotnet/core/Tests/HyperlightSandbox.PackageTests/HyperlightSandbox.PackageTests.csproj --force
+    dotnet build {{repo-root}}/src/sdk/dotnet/core/Tests/HyperlightSandbox.PackageTests/HyperlightSandbox.PackageTests.csproj --configuration {{ if target == "release" { "Release" } else { "Debug" } }} --no-restore
+    dotnet test {{repo-root}}/src/sdk/dotnet/core/Tests/HyperlightSandbox.PackageTests/HyperlightSandbox.PackageTests.csproj --configuration {{ if target == "release" { "Release" } else { "Debug" } }} --no-build
+    @echo "✅ NuGet package installation tests passed!"
+
+#### CLEAN ####
+
+# Clean all .NET build artifacts
+clean:
+    -dotnet clean {{repo-root}}/src/sdk/dotnet/core/HyperlightSandbox.sln 2>{{devnull}}
+    -{{rmrf}} {{repo-root}}/src/sdk/dotnet/core/PInvoke/bin
+    -{{rmrf}} {{repo-root}}/src/sdk/dotnet/core/PInvoke/obj
+    -{{rmrf}} {{repo-root}}/src/sdk/dotnet/core/Api/bin
+    -{{rmrf}} {{repo-root}}/src/sdk/dotnet/core/Api/obj
+    -{{rmrf}} {{repo-root}}/src/sdk/dotnet/core/Extensions.AI/bin
+    -{{rmrf}} {{repo-root}}/src/sdk/dotnet/core/Extensions.AI/obj
+    -{{rmrf}} {{repo-root}}/dist/dotnetsdk

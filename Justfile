@@ -4,35 +4,36 @@ mod wasm 'src/wasm_sandbox/Justfile'
 mod js 'src/javascript_sandbox/Justfile'
 mod nanvix 'src/nanvix_sandbox/Justfile'
 mod python 'src/sdk/python/Justfile'
+mod dotnet 'src/sdk/dotnet/Justfile'
 mod examples_mod 'examples/Justfile'
 
 default-target := "debug"
 
-clean: wasm::clean python::clean
+clean: wasm::clean python::clean dotnet::clean
     cargo clean
 
 #### BUILD TARGETS ####
 
-build target=default-target: (wasm::build target) (js::build target) nanvix::build python::build
+build target=default-target: (wasm::build target) (js::build target) nanvix::build python::build (dotnet::build target)
 
 lint: lint-rust wasm::lint js::lint python::lint
 
 lint-rust:
     cargo clippy -p hyperlight-sandbox --all-targets --features test-utils -- -D warnings
 
-fmt: fmt-rust python::fmt
+fmt: fmt-rust python::fmt dotnet::fmt
 
 fmt-rust:
     cargo +nightly fmt --all
 
-fmt-check: fmt-check-rust python::fmt-check
+fmt-check: fmt-check-rust python::fmt-check dotnet::fmt-check
 
 fmt-check-rust:
     cargo +nightly fmt --all -- --check
 
 #### TESTS ####
 
-test: wasm::guest-build wasm::js-guest-build python::build python::python-test test-rust wasm::test
+test: wasm::guest-build wasm::js-guest-build python::build python::python-test test-rust wasm::test dotnet::test-rust dotnet::test
 
 fuzz seconds="60": (python::python-fuzz seconds)
 
@@ -51,7 +52,7 @@ python-dist-backends: wasm::_clean-stale-wasm wasm::guest-compile-wit js::_clean
 
 python-wheelhouse-test: python-dist python::python-wheelhouse-test
 
-examples target=default-target: (wasm::examples target) (js::examples target) python::examples
+examples target=default-target: (wasm::examples target) (js::examples target) python::examples dotnet::examples
 
 integration-examples target=default-target: (wasm::guest-build target) wasm::js-guest-build python::build examples_mod::integration-examples
 

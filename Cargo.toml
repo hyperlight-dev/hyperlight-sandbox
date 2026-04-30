@@ -6,6 +6,7 @@ members = [
 	"src/sdk/python/pyo3_common",
 	"src/sdk/python/wasm_backend",
 	"src/sdk/python/hyperlight_js_backend",
+	"src/sdk/dotnet/ffi",
 ]
 # nanvix_sandbox requires nightly Rust (nanvix uses #![feature(never_type)])
 exclude = [
@@ -30,8 +31,8 @@ hyperlight-host = { version = "0.14.0", default-features = false, features = ["e
 hyperlight-wasm = { git = "https://github.com/jsturtevant/hyperlight-wasm", rev = "13906096edc2e014220c11a040242070ce6dee90" } #branch util-compont-fixes
 pyo3 = { version = "0.28", features = ["extension-module"] }
 
-# Patched component-util (name collision fix, flags fix, empty-ns fix)
-# https://github.com/jsturtevant/hyperlight-1/tree/wasm-component-fixes
+# hyperlight-wasm 0.13.1 (git) depends on hyperlight-* from the hyperlight-dev
+# GitHub org. Redirect those to the published 0.14.0 crates.io versions.
 [patch."https://github.com/hyperlight-dev/hyperlight"]
 hyperlight-common = { version = "0.14.0" }
 hyperlight-guest = { version = "=0.14.0" }

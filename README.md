@@ -82,8 +82,8 @@ print(result.stdout)
 .NET SDK:
 
 ```shell
-dotnet add package Hyperlight.HyperlightSandbox.Api --version <VERSION>
-dotnet add package Hyperlight.HyperlightSandbox.Guest.Python --version <VERSION>
+dotnet add package Hyperlight.HyperlightSandbox.Api
+dotnet add package Hyperlight.HyperlightSandbox.Guest.Python
 ```
 
 ```csharp

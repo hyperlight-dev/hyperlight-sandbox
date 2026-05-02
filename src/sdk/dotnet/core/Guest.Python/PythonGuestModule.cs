@@ -30,6 +30,14 @@ public static class PythonGuestModule
             .WithModulePath(GetModulePath());
     }
 
+    /// <summary>
+    /// Configures the builder to use the bundled Python guest module with the Wasm backend.
+    /// </summary>
+    /// <param name="builder">The sandbox builder to configure.</param>
+    /// <returns>The same builder for chaining.</returns>
+    public static SandboxBuilder AddPythonModule(this SandboxBuilder builder) =>
+        WithPythonModule(builder);
+
     private static string FindGuestFile(string fileName)
     {
         string assemblyDir = Path.GetDirectoryName(

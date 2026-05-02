@@ -81,16 +81,17 @@ print(result.stdout)
 
 .NET SDK:
 
-```bash
-just wasm guest-build     # build the guest module
-just dotnet build         # build the .NET SDK
+```shell
+dotnet add package Hyperlight.HyperlightSandbox.Api --version <VERSION>
+dotnet add package Hyperlight.HyperlightSandbox.Guest.Python --version <VERSION>
 ```
 
 ```csharp
 using HyperlightSandbox.Api;
+using HyperlightSandbox.Guest.Python;
 
 using var sandbox = new SandboxBuilder()
-    .WithModulePath("python-sandbox.aot")
+    .AddPythonModule()
     .Build();
 
 sandbox.RegisterTool<MathArgs, double>("add", args => args.a + args.b);

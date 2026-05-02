@@ -67,7 +67,7 @@ And to use it:
 ```python
 from hyperlight_sandbox import Sandbox
 
-sandbox = Sandbox(backend="wasm", module="python_guest.path")
+sandbox = Sandbox(backend="wasm")
 sandbox.register_tool("add", lambda a=0, b=0: a + b)
 sandbox.allow_domain("https://httpbin.org")
 

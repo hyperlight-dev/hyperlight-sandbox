@@ -91,7 +91,7 @@ using HyperlightSandbox.Api;
 using HyperlightSandbox.Guest.Python;
 
 using var sandbox = new SandboxBuilder()
-    .AddPythonModule()
+    .WithPythonModule()
     .Build();
 
 sandbox.RegisterTool<MathArgs, double>("add", args => args.a + args.b);

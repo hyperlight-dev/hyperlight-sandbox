@@ -14,6 +14,7 @@ use hyperlight_wasm::{
     LoadedWasmSandbox, SandboxBuilder as HyperlightSandboxBuilder, Snapshot as WasmSnapshot,
 };
 
+pub mod credentials;
 mod wasi_impl;
 
 pub(crate) mod bindings {
@@ -41,6 +42,29 @@ pub struct HostState {
     pub(crate) fs: Arc<Mutex<CapFs>>,
     pub(crate) network: Arc<Mutex<NetworkPermissions>>,
     pub(crate) active_requests: Arc<AtomicUsize>,
+    pub(crate) credential_registry: credentials::CredentialRegistry,
+}
+
+impl HostState {
+    /// Register a scoped credential that guests can later `attach` to
+    /// outgoing requests.  This is a host-side-only API — it is NOT
+    /// exposed through WIT so guests cannot register their own
+    /// credentials.
+    pub fn register_credential(
+        &self,
+        id: String,
+        entry: credentials::CredentialEntry,
+    ) -> Result<(), String> {
+        let mut registry = self
+            .credential_registry
+            .lock()
+            .map_err(|_| "credential registry mutex poisoned".to_string())?;
+        if registry.contains_key(&id) {
+            return Err(format!("credential '{}' already registered", id));
+        }
+        registry.insert(id, entry);
+        Ok(())
+    }
 }
 
 #[allow(refining_impl_trait)]
@@ -222,21 +246,19 @@ impl bindings::hyperlight::sandbox::Tools for HostState {
 }
 
 // ---------------------------------------------------------------------------
-// Scoped credentials — skeleton stub (commit B).
+// Scoped credentials — `attach` implementation (commit C).
 //
-// The full design lands in follow-up commits:
-//   * Credential registry on `HostState` (host-side `register_credential`).
-//   * `attach` records a request -> credential binding in per-Sandbox state.
-//   * The outgoing-handler dispatch path consults that binding, calls the
-//     resolver, enforces the credential's target scope, and injects the
-//     `<header>: <prefix><value>` pair before the existing `allow_domain`
-//     gate runs.
+// The guest calls `attach(request, credential_id)` to bind a
+// previously-registered credential to an outgoing HTTP request.
+// This records the binding inside the `OutgoingRequest` itself so
+// the outgoing-handler dispatch path can later resolve and inject
+// the token header.
 //
-// Until then, every `attach` call is rejected with `Unknown` so guests
-// fail loudly if they try to use the API before the registry exists.
-// This keeps the host-side trait surface satisfied so `cargo check`
-// passes after the WIT addition, without silently pretending credentials
-// work.
+// Error semantics:
+//   * `Unknown`         — credential id not found in the registry.
+//   * `AlreadyAttached` — the request already has a credential.
+//   * `ScopeMismatch` / `ResolverFailed` — reserved for the
+//     outgoing-handler (commit D/E).
 // ---------------------------------------------------------------------------
 impl
     bindings::hyperlight::sandbox::Credentials<
@@ -247,20 +269,41 @@ impl
 {
     fn attach(
         &mut self,
-        _request: hyperlight_common::resource::BorrowedResourceGuard<
+        request: hyperlight_common::resource::BorrowedResourceGuard<
             '_,
             crate::wasi_impl::resource::Resource<
                 crate::wasi_impl::types::http_outgoing_request::OutgoingRequest,
             >,
         >,
-        _credential: String,
+        credential: String,
     ) -> Result<
         Result<(), bindings::hyperlight::sandbox::credentials::CredentialError>,
         hyperlight_host::HyperlightError,
     > {
-        Ok(Err(
-            bindings::hyperlight::sandbox::credentials::CredentialError::Unknown,
-        ))
+        use bindings::hyperlight::sandbox::credentials::CredentialError;
+
+        use crate::wasi_impl::resource::BlockOn;
+
+        // Verify the credential exists in the host-side registry.
+        {
+            let registry = self.credential_registry.lock().map_err(|_| {
+                hyperlight_host::HyperlightError::Error(
+                    "credential registry mutex poisoned".to_string(),
+                )
+            })?;
+            if !registry.contains_key(&credential) {
+                return Ok(Err(CredentialError::Unknown));
+            }
+        }
+
+        // Write the credential binding into the request.
+        let mut guard = request.write().block_on();
+        if guard.attached_credential.is_some() {
+            return Ok(Err(CredentialError::AlreadyAttached));
+        }
+        guard.attached_credential = Some(credential);
+
+        Ok(Ok(()))
     }
 }
 
@@ -292,6 +335,7 @@ impl WasmComponentSandbox {
             fs: fs.clone(),
             network: network.clone(),
             active_requests: Arc::new(AtomicUsize::new(0)),
+            credential_registry: credentials::empty_registry(),
         };
 
         let mut proto = HyperlightSandboxBuilder::new()

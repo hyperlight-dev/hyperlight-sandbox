@@ -50,6 +50,11 @@ impl bindings::root::component::RootImports for HostState {
         self
     }
 
+    type Credentials = HostState;
+    fn credentials(&mut self) -> &mut Self {
+        self
+    }
+
     type Environment = HostState;
     fn environment(&mut self) -> &mut Self {
         self
@@ -213,6 +218,49 @@ impl bindings::hyperlight::sandbox::Tools for HostState {
             },
             Err(e) => Err(e.to_string()),
         })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Scoped credentials — skeleton stub (commit B).
+//
+// The full design lands in follow-up commits:
+//   * Credential registry on `HostState` (host-side `register_credential`).
+//   * `attach` records a request -> credential binding in per-Sandbox state.
+//   * The outgoing-handler dispatch path consults that binding, calls the
+//     resolver, enforces the credential's target scope, and injects the
+//     `<header>: <prefix><value>` pair before the existing `allow_domain`
+//     gate runs.
+//
+// Until then, every `attach` call is rejected with `Unknown` so guests
+// fail loudly if they try to use the API before the registry exists.
+// This keeps the host-side trait surface satisfied so `cargo check`
+// passes after the WIT addition, without silently pretending credentials
+// work.
+// ---------------------------------------------------------------------------
+impl
+    bindings::hyperlight::sandbox::Credentials<
+        crate::wasi_impl::resource::Resource<
+            crate::wasi_impl::types::http_outgoing_request::OutgoingRequest,
+        >,
+    > for HostState
+{
+    fn attach(
+        &mut self,
+        _request: hyperlight_common::resource::BorrowedResourceGuard<
+            '_,
+            crate::wasi_impl::resource::Resource<
+                crate::wasi_impl::types::http_outgoing_request::OutgoingRequest,
+            >,
+        >,
+        _credential: String,
+    ) -> Result<
+        Result<(), bindings::hyperlight::sandbox::credentials::CredentialError>,
+        hyperlight_host::HyperlightError,
+    > {
+        Ok(Err(
+            bindings::hyperlight::sandbox::credentials::CredentialError::Unknown,
+        ))
     }
 }
 

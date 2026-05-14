@@ -90,20 +90,27 @@ impl
         // Scope is enforced BEFORE the network permission check so a
         // mis-scoped credential is rejected immediately with a clear
         // error rather than leaking through to the allow-list gate.
+        //
+        // The credential-registry mutex is dropped before the resolver
+        // is invoked — resolvers may perform slow I/O (e.g. an IMDS
+        // round-trip on cache miss) and we do not want to serialise
+        // unrelated credentialed requests behind one slow resolver.
         // -----------------------------------------------------------------
         let credential_header: Option<(String, String)> =
             if let Some(ref cred_id) = request_data.attached_credential {
-                let registry = self.credential_registry.lock().map_err(|_| {
-                    HyperlightError::Error("credential registry mutex poisoned".to_string())
-                })?;
-                let entry = match registry.get(cred_id) {
-                    Some(e) => e.clone(),
-                    // Defensive: attach() validated this, but the registry
-                    // could have been cleared between attach and dispatch.
-                    None => {
-                        return Ok(Err(ErrorCode::InternalError(Some(
-                            "attached credential not found in registry".to_string(),
-                        ))));
+                let entry = {
+                    let registry = self.credential_registry.lock().map_err(|_| {
+                        HyperlightError::Error("credential registry mutex poisoned".to_string())
+                    })?;
+                    match registry.get(cred_id) {
+                        Some(e) => e.clone(),
+                        // Defensive: attach() validated this, but the registry
+                        // could have been cleared between attach and dispatch.
+                        None => {
+                            return Ok(Err(ErrorCode::InternalError(Some(
+                                "attached credential not found in registry".to_string(),
+                            ))));
+                        }
                     }
                 };
 
@@ -113,10 +120,22 @@ impl
                     return Ok(Err(ErrorCode::HTTPRequestDenied));
                 }
 
-                // Resolve the token.  For now the resolver string IS the
-                // token value (static credentials).  A future commit will
-                // support async resolution callbacks.
-                let header_value = format!("{}{}", entry.prefix, entry.resolver);
+                // Resolve the token by invoking the registered
+                // callback.  The resolver returns the literal secret
+                // value on success; on failure we surface a fixed,
+                // host-redacted message so the guest never sees the
+                // resolver's diagnostic text (which could contain
+                // secret material).
+                let token = match (entry.resolver)() {
+                    Ok(t) => t,
+                    Err(_diag) => {
+                        return Ok(Err(ErrorCode::InternalError(Some(
+                            "credential resolver failed".to_string(),
+                        ))));
+                    }
+                };
+
+                let header_value = format!("{}{}", entry.prefix, token);
                 Some((entry.header.clone(), header_value))
             } else {
                 None

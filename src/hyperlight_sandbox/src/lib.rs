@@ -18,7 +18,7 @@ pub use cap_fs::{
     CapFs, DescriptorFlags, DescriptorStat, DescriptorType, Dir, DirPerms, FilePerms, FsError,
     OpenFlags,
 };
-pub use credentials::{CredentialEntry, CredentialRegistry};
+pub use credentials::{CredentialEntry, CredentialRegistry, ResolverFn};
 pub use network::{HttpMethod, MethodFilter, NetworkPermission, NetworkPermissions};
 use serde::{Deserialize, Serialize};
 pub use tools::{ArgType, ToolRegistry, ToolSchema};

@@ -187,7 +187,7 @@ class Sandbox:
         target: str,
         header: str = "Authorization",
         prefix: str = "Bearer ",
-        resolver: str,
+        resolver: Callable[[], str],
     ) -> None:
         """Register a scoped credential for outgoing HTTP requests.
 
@@ -201,8 +201,15 @@ class Sandbox:
             header: HTTP header name to set (default ``Authorization``).
             prefix: Value prefix prepended to the resolved token
                 (default ``Bearer ``).
-            resolver: Opaque resolver key.  Currently used as the
-                literal token value (static credentials).
+            resolver: A callable invoked with no arguments on every
+                credentialed outgoing request to produce a fresh token
+                value as a ``str``.  Called synchronously from the host
+                HTTP dispatch path, so it must be fast and thread-safe;
+                long-running fetches (e.g. IMDS, OAuth) should be
+                memoised by the caller.  Any exception raised by the
+                callable surfaces to guest code as a host-redacted
+                request-level error (only the exception **type name**
+                is propagated; the message body is dropped).
         """
         self._inner.register_credential(id, target, header, prefix, resolver)
 

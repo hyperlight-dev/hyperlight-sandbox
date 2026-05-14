@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use hyperlight_sandbox::{
-    DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, HttpMethod, Sandbox,
+    DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, HttpMethod, ResolverFn, Sandbox,
     SandboxBuilder, SandboxConfig,
 };
 use hyperlight_sandbox_pyo3_common::{
@@ -22,7 +23,37 @@ struct PendingCredential {
     target: String,
     header: String,
     prefix: String,
-    resolver: String,
+    resolver: ResolverFn,
+}
+
+/// Wrap a Python callable as a [`ResolverFn`] suitable for storage in
+/// the credential registry.
+///
+/// On each invocation the wrapper re-acquires the Python GIL, calls
+/// the supplied callable with no arguments, and extracts the result
+/// as a Python `str`.  Exceptions are mapped to a redacted Rust error
+/// — only the exception **type name** is surfaced, never the message
+/// (which may contain secret material assembled by user code).
+fn python_callable_to_resolver(callable: Py<PyAny>) -> ResolverFn {
+    Arc::new(move || -> Result<String, String> {
+        Python::attach(|py| {
+            let bound = callable.bind(py);
+            match bound.call0() {
+                Ok(result) => result
+                    .extract::<String>()
+                    .map_err(|_| "credential resolver did not return a str".to_string()),
+                Err(err) => {
+                    let type_name = err
+                        .get_type(py)
+                        .qualname()
+                        .ok()
+                        .and_then(|n| n.extract::<String>().ok())
+                        .unwrap_or_else(|| "Exception".to_string());
+                    Err(format!("python resolver raised {type_name}"))
+                }
+            }
+        })
+    })
 }
 
 #[pyclass]
@@ -192,6 +223,12 @@ impl WasmSandbox {
     ///
     /// Must be called before `run()`. The credential can then be
     /// attached to individual requests by guest code via WIT `attach`.
+    ///
+    /// `resolver` is a Python callable that takes no arguments and
+    /// returns the secret token as a `str`. It is invoked synchronously
+    /// from the WASI HTTP dispatch path on every credentialed request,
+    /// so it must be fast and thread-safe; long-running token fetches
+    /// should be memoised by the caller.
     #[pyo3(signature = (id, target, header, prefix, resolver))]
     fn register_credential(
         &mut self,
@@ -199,8 +236,9 @@ impl WasmSandbox {
         target: &str,
         header: &str,
         prefix: &str,
-        resolver: &str,
+        resolver: Py<PyAny>,
     ) -> PyResult<()> {
+        let resolver_fn = python_callable_to_resolver(resolver);
         if let Some(sandbox) = self.inner.as_ref() {
             // Register directly on the live sandbox.
             sandbox
@@ -210,7 +248,7 @@ impl WasmSandbox {
                         target: target.to_string(),
                         header: header.to_string(),
                         prefix: prefix.to_string(),
-                        resolver: resolver.to_string(),
+                        resolver: resolver_fn,
                     },
                 )
                 .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
@@ -221,7 +259,7 @@ impl WasmSandbox {
                 target: target.to_string(),
                 header: header.to_string(),
                 prefix: prefix.to_string(),
-                resolver: resolver.to_string(),
+                resolver: resolver_fn,
             });
         }
         Ok(())

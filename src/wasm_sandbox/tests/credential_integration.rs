@@ -7,9 +7,11 @@
 //! host injected (or blocked).
 
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use hyperlight_sandbox::test_utils::EchoServer;
-use hyperlight_sandbox::{CredentialEntry, HttpMethod, SandboxBuilder};
+use hyperlight_sandbox::{CredentialEntry, HttpMethod, ResolverFn, SandboxBuilder};
 use hyperlight_wasm_sandbox::Wasm;
 
 fn python_guest_path() -> String {
@@ -19,14 +21,11 @@ fn python_guest_path() -> String {
         .to_string()
 }
 
-/// Helper to build a [`CredentialEntry`] with sensible defaults.
-fn cred(target: &str, resolver: &str) -> CredentialEntry {
-    CredentialEntry {
-        target: target.to_string(),
-        header: "authorization".to_string(),
-        prefix: "Bearer ".to_string(),
-        resolver: resolver.to_string(),
-    }
+/// Helper to build a [`CredentialEntry`] with sensible defaults and a
+/// static token value.  Tests that need rotation or fault injection
+/// build a custom [`ResolverFn`] inline instead.
+fn cred(target: &str, token: &str) -> CredentialEntry {
+    CredentialEntry::with_static_resolver(target, "authorization", "Bearer ", token)
 }
 
 // -----------------------------------------------------------------------
@@ -444,5 +443,279 @@ async fn duplicate_credential_registration_rejected() {
     assert!(
         format!("{err}").contains("already registered"),
         "error should mention 'already registered', got: {err}"
+    );
+}
+
+// -----------------------------------------------------------------------
+// Resolver is invoked per-request — proves token refresh contract
+// -----------------------------------------------------------------------
+
+#[tokio::test]
+async fn resolver_invoked_per_request() {
+    let server = EchoServer::start().await;
+    let base_url = server.url("");
+
+    let result = tokio::task::spawn_blocking(move || {
+        let mut sandbox = SandboxBuilder::new()
+            .guest(Wasm)
+            .module_path(python_guest_path())
+            .build()
+            .expect("failed to create sandbox");
+
+        // Resolver that returns a different token on each invocation.
+        // This is the canonical proof that the host calls the resolver
+        // for every outgoing credentialed request, not just once at
+        // registration time.
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_for_resolver = Arc::clone(&counter);
+        let resolver: ResolverFn = Arc::new(move || {
+            let n = counter_for_resolver.fetch_add(1, Ordering::SeqCst);
+            Ok(format!("rotating-token-{n}"))
+        });
+
+        sandbox
+            .register_credential(
+                "rotating",
+                CredentialEntry {
+                    target: base_url.clone(),
+                    header: "authorization".to_string(),
+                    prefix: "Bearer ".to_string(),
+                    resolver,
+                },
+            )
+            .expect("register_credential failed");
+
+        sandbox
+            .allow_domain(&base_url, vec![HttpMethod::Get])
+            .expect("allow_domain failed");
+
+        let code = format!(
+            r#"
+import json
+r1 = http_get("{base_url}/api/one", credential="rotating")
+r2 = http_get("{base_url}/api/two", credential="rotating")
+print(json.dumps([json.loads(r1["body"]), json.loads(r2["body"])]))
+"#,
+            base_url = base_url.trim_end_matches('/')
+        );
+
+        (sandbox.run(&code).expect("sandbox run failed"), counter)
+    })
+    .await
+    .unwrap();
+
+    let (exec, counter) = result;
+    assert_eq!(exec.exit_code, 0, "stderr: {}", exec.stderr);
+
+    let echoes: Vec<serde_json::Value> =
+        serde_json::from_str(exec.stdout.trim()).expect("failed to parse echo array");
+    assert_eq!(echoes.len(), 2, "expected two echoed responses");
+    assert_eq!(
+        echoes[0]["headers"]["authorization"].as_str(),
+        Some("Bearer rotating-token-0"),
+        "first request should see token-0"
+    );
+    assert_eq!(
+        echoes[1]["headers"]["authorization"].as_str(),
+        Some("Bearer rotating-token-1"),
+        "second request should see token-1 — resolver MUST be called per request"
+    );
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        2,
+        "resolver should have been invoked exactly twice"
+    );
+}
+
+// -----------------------------------------------------------------------
+// Resolver failure surfaces as a request error with no token leakage
+// -----------------------------------------------------------------------
+
+#[tokio::test]
+async fn resolver_failure_surfaces_as_error() {
+    let server = EchoServer::start().await;
+    let base_url = server.url("");
+
+    let result = tokio::task::spawn_blocking(move || {
+        let mut sandbox = SandboxBuilder::new()
+            .guest(Wasm)
+            .module_path(python_guest_path())
+            .build()
+            .expect("failed to create sandbox");
+
+        // Resolver that always fails.  The diagnostic string MUST NOT
+        // appear in any guest-visible error — the host redacts it to a
+        // fixed message.
+        let resolver: ResolverFn =
+            Arc::new(|| Err("secret-bearing diagnostic that must not leak".to_string()));
+
+        sandbox
+            .register_credential(
+                "broken",
+                CredentialEntry {
+                    target: base_url.clone(),
+                    header: "authorization".to_string(),
+                    prefix: "Bearer ".to_string(),
+                    resolver,
+                },
+            )
+            .expect("register_credential failed");
+
+        sandbox
+            .allow_domain(&base_url, vec![HttpMethod::Get])
+            .expect("allow_domain failed");
+
+        let code = format!(
+            r#"
+try:
+    resp = http_get("{base_url}/api/data", credential="broken")
+    print("UNEXPECTED_OK:" + resp["body"])
+except Exception as e:
+    print("ERR:" + repr(e))
+"#,
+            base_url = base_url.trim_end_matches('/')
+        );
+
+        sandbox.run(&code).expect("sandbox run failed")
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(result.exit_code, 0, "stderr: {}", result.stderr);
+    assert!(
+        result.stdout.starts_with("ERR:"),
+        "guest should have raised an exception, got stdout: {}",
+        result.stdout
+    );
+    // The host-redacted message is the only thing the guest may see.
+    assert!(
+        !result.stdout.contains("secret-bearing"),
+        "resolver diagnostic must NOT leak to guest, stdout was: {}",
+        result.stdout
+    );
+    assert!(
+        !result.stdout.contains("must not leak"),
+        "resolver diagnostic must NOT leak to guest, stdout was: {}",
+        result.stdout
+    );
+}
+
+// -----------------------------------------------------------------------
+// Multi-tenant isolation: two sandboxes that register the same
+// credential id with DIFFERENT tokens must each see only their own
+// token.  Proves the credential registry is per-`Sandbox` instance
+// — there is no global key table, no shared `Arc`, no cross-instance
+// lookup path.
+//
+// If this test ever fails it means the host has acquired a shared
+// registry by mistake (e.g. a `lazy_static!`, a `OnceCell`, or a
+// stray `Arc::clone` between sandboxes).  Treat as critical.
+// -----------------------------------------------------------------------
+
+#[tokio::test]
+async fn isolated_registries_across_sandboxes() {
+    let server = EchoServer::start().await;
+    let base_url = server.url("");
+
+    let (result_a, result_b) = tokio::task::spawn_blocking(move || {
+        // ---- Sandbox A: id="shared" → token-tenant-A ----
+        let result_a = {
+            let mut sandbox = SandboxBuilder::new()
+                .guest(Wasm)
+                .module_path(python_guest_path())
+                .build()
+                .expect("failed to create sandbox A");
+
+            sandbox
+                .register_credential("shared", cred(&base_url, "token-tenant-A"))
+                .expect("register_credential on sandbox A failed");
+
+            sandbox
+                .allow_domain(&base_url, vec![HttpMethod::Get])
+                .expect("allow_domain on sandbox A failed");
+
+            let code = format!(
+                r#"
+resp = http_get("{base_url}/tenant-a", credential="shared")
+print(resp["body"])
+"#,
+                base_url = base_url.trim_end_matches('/')
+            );
+
+            sandbox.run(&code).expect("sandbox A run failed")
+        };
+
+        // ---- Sandbox B: same id="shared" → token-tenant-B ----
+        let result_b = {
+            let mut sandbox = SandboxBuilder::new()
+                .guest(Wasm)
+                .module_path(python_guest_path())
+                .build()
+                .expect("failed to create sandbox B");
+
+            sandbox
+                .register_credential("shared", cred(&base_url, "token-tenant-B"))
+                .expect("register_credential on sandbox B failed");
+
+            sandbox
+                .allow_domain(&base_url, vec![HttpMethod::Get])
+                .expect("allow_domain on sandbox B failed");
+
+            let code = format!(
+                r#"
+resp = http_get("{base_url}/tenant-b", credential="shared")
+print(resp["body"])
+"#,
+                base_url = base_url.trim_end_matches('/')
+            );
+
+            sandbox.run(&code).expect("sandbox B run failed")
+        };
+
+        (result_a, result_b)
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(
+        result_a.exit_code, 0,
+        "sandbox A stderr: {}",
+        result_a.stderr
+    );
+    assert_eq!(
+        result_b.exit_code, 0,
+        "sandbox B stderr: {}",
+        result_b.stderr
+    );
+
+    let echo_a: serde_json::Value =
+        serde_json::from_str(result_a.stdout.trim()).expect("failed to parse echo response A");
+    let echo_b: serde_json::Value =
+        serde_json::from_str(result_b.stdout.trim()).expect("failed to parse echo response B");
+
+    assert_eq!(
+        echo_a["headers"]["authorization"].as_str(),
+        Some("Bearer token-tenant-A"),
+        "sandbox A must see ONLY its own token"
+    );
+    assert_eq!(
+        echo_b["headers"]["authorization"].as_str(),
+        Some("Bearer token-tenant-B"),
+        "sandbox B must see ONLY its own token"
+    );
+
+    // Belt-and-braces: neither sandbox's stdout contains the other's
+    // token.  Catches any future regression where, say, a debug log
+    // path or a shared registry accidentally surfaces the foreign
+    // value to the guest.
+    assert!(
+        !result_a.stdout.contains("token-tenant-B"),
+        "sandbox A leaked sandbox B's token: {}",
+        result_a.stdout
+    );
+    assert!(
+        !result_b.stdout.contains("token-tenant-A"),
+        "sandbox B leaked sandbox A's token: {}",
+        result_b.stdout
     );
 }

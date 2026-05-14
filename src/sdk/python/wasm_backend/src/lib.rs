@@ -16,6 +16,15 @@ type WasmSnapshotInner = hyperlight_sandbox::Snapshot<<
     <Wasm as hyperlight_sandbox::Guest>::Sandbox as hyperlight_sandbox::GuestSandbox
 >::SnapshotData>;
 
+/// Buffered credential registration for lazy sandbox init.
+struct PendingCredential {
+    id: String,
+    target: String,
+    header: String,
+    prefix: String,
+    resolver: String,
+}
+
 #[pyclass]
 pub struct PySnapshot {
     inner: WasmSnapshotInner,
@@ -26,6 +35,7 @@ pub struct WasmSandbox {
     inner: Option<WasmSandboxInner>,
     tools: HashMap<String, Py<PyAny>>,
     pending_networks: Vec<(String, Option<Vec<String>>)>,
+    pending_credentials: Vec<PendingCredential>,
     config: SandboxConfig,
     input_dir: Option<String>,
     output_dir: Option<String>,
@@ -48,6 +58,7 @@ impl WasmSandbox {
             inner: None,
             tools: HashMap::new(),
             pending_networks: Vec::new(),
+            pending_credentials: Vec::new(),
             config: SandboxConfig {
                 module_path: module_path.to_string(),
                 heap_size: match heap_size {
@@ -115,6 +126,19 @@ impl WasmSandbox {
                     .allow_domain(&target, methods)
                     .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
             }
+            for cred in std::mem::take(&mut self.pending_credentials) {
+                sandbox
+                    .register_credential(
+                        cred.id,
+                        hyperlight_sandbox::CredentialEntry {
+                            target: cred.target,
+                            header: cred.header,
+                            prefix: cred.prefix,
+                            resolver: cred.resolver,
+                        },
+                    )
+                    .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+            }
             self.inner = Some(sandbox);
         }
         let sandbox = self.inner.as_mut().unwrap();
@@ -161,6 +185,45 @@ impl WasmSandbox {
         sandbox
             .restore(&snapshot.inner)
             .map_err(|e| PyRuntimeError::new_err(format!("Restore failed: {e}")))?;
+        Ok(())
+    }
+
+    /// Register a scoped credential for outgoing HTTP requests.
+    ///
+    /// Must be called before `run()`. The credential can then be
+    /// attached to individual requests by guest code via WIT `attach`.
+    #[pyo3(signature = (id, target, header, prefix, resolver))]
+    fn register_credential(
+        &mut self,
+        id: &str,
+        target: &str,
+        header: &str,
+        prefix: &str,
+        resolver: &str,
+    ) -> PyResult<()> {
+        if let Some(sandbox) = self.inner.as_ref() {
+            // Register directly on the live sandbox.
+            sandbox
+                .register_credential(
+                    id,
+                    hyperlight_sandbox::CredentialEntry {
+                        target: target.to_string(),
+                        header: header.to_string(),
+                        prefix: prefix.to_string(),
+                        resolver: resolver.to_string(),
+                    },
+                )
+                .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        } else {
+            // Buffer for later — will be applied when sandbox initialises.
+            self.pending_credentials.push(PendingCredential {
+                id: id.to_string(),
+                target: target.to_string(),
+                header: header.to_string(),
+                prefix: prefix.to_string(),
+                resolver: resolver.to_string(),
+            });
+        }
         Ok(())
     }
 

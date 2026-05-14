@@ -32,8 +32,9 @@ impl Guest for Wasm {
         tools: ToolRegistry,
         network: std::sync::Arc<std::sync::Mutex<NetworkPermissions>>,
         fs: std::sync::Arc<std::sync::Mutex<CapFs>>,
+        credentials: credentials::CredentialRegistry,
     ) -> Result<WasmComponentSandbox> {
-        WasmComponentSandbox::with_tools(config, tools, network, fs)
+        WasmComponentSandbox::with_tools(config, tools, network, fs, credentials)
     }
 }
 
@@ -43,28 +44,6 @@ pub struct HostState {
     pub(crate) network: Arc<Mutex<NetworkPermissions>>,
     pub(crate) active_requests: Arc<AtomicUsize>,
     pub(crate) credential_registry: credentials::CredentialRegistry,
-}
-
-impl HostState {
-    /// Register a scoped credential that guests can later `attach` to
-    /// outgoing requests.  This is a host-side-only API — it is NOT
-    /// exposed through WIT so guests cannot register their own
-    /// credentials.
-    pub fn register_credential(
-        &self,
-        id: String,
-        entry: credentials::CredentialEntry,
-    ) -> Result<(), String> {
-        let mut registry = self
-            .credential_registry
-            .lock()
-            .map_err(|_| "credential registry mutex poisoned".to_string())?;
-        if registry.contains_key(&id) {
-            return Err(format!("credential '{}' already registered", id));
-        }
-        registry.insert(id, entry);
-        Ok(())
-    }
 }
 
 #[allow(refining_impl_trait)]
@@ -318,6 +297,7 @@ impl WasmComponentSandbox {
         tools: ToolRegistry,
         network: Arc<Mutex<NetworkPermissions>>,
         fs: Arc<Mutex<CapFs>>,
+        credentials: credentials::CredentialRegistry,
     ) -> Result<Self> {
         // Verify the shared tokio runtime is available before proceeding.
         hyperlight_sandbox::runtime::RUNTIME
@@ -335,7 +315,7 @@ impl WasmComponentSandbox {
             fs: fs.clone(),
             network: network.clone(),
             active_requests: Arc::new(AtomicUsize::new(0)),
-            credential_registry: credentials::empty_registry(),
+            credential_registry: credentials,
         };
 
         let mut proto = HyperlightSandboxBuilder::new()

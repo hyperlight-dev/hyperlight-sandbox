@@ -180,6 +180,32 @@ class Sandbox:
     def allow_domain(self, target: str, methods: list[str] | None = None) -> None:
         self._inner.allow_domain(target, methods)
 
+    def register_credential(
+        self,
+        id: str,
+        *,
+        target: str,
+        header: str = "Authorization",
+        prefix: str = "Bearer ",
+        resolver: str,
+    ) -> None:
+        """Register a scoped credential for outgoing HTTP requests.
+
+        Must be called before ``run()``.  Guest code can then bind the
+        credential to an individual request via WIT ``attach``.
+
+        Args:
+            id: Unique identifier for this credential.
+            target: URL-prefix scope.  Only requests whose URL starts
+                with this value are eligible for injection.
+            header: HTTP header name to set (default ``Authorization``).
+            prefix: Value prefix prepended to the resolved token
+                (default ``Bearer ``).
+            resolver: Opaque resolver key.  Currently used as the
+                literal token value (static credentials).
+        """
+        self._inner.register_credential(id, target, header, prefix, resolver)
+
     def snapshot(self):
         """Capture the current sandbox state.
 

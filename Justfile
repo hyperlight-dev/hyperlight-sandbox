@@ -2,7 +2,6 @@ set unstable := true
 
 mod wasm 'src/wasm_sandbox/Justfile'
 mod js 'src/javascript_sandbox/Justfile'
-mod nanvix 'src/nanvix_sandbox/Justfile'
 mod python 'src/sdk/python/Justfile'
 mod dotnet 'src/sdk/dotnet/Justfile'
 mod examples_mod 'examples/Justfile'
@@ -14,7 +13,7 @@ clean: wasm::clean python::clean dotnet::clean
 
 #### BUILD TARGETS ####
 
-build target=default-target: (wasm::build target) (js::build target) nanvix::build python::build (dotnet::build target)
+build target=default-target: (wasm::build target) (js::build target) python::build (dotnet::build target)
 
 lint: lint-rust wasm::lint js::lint python::lint
 

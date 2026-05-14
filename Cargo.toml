@@ -8,10 +8,6 @@ members = [
 	"src/sdk/python/hyperlight_js_backend",
 	"src/sdk/dotnet/ffi",
 ]
-# nanvix_sandbox requires nightly Rust (nanvix uses #![feature(never_type)])
-exclude = [
-	"src/nanvix_sandbox",
-]
 resolver = "2"
 
 [workspace.package]

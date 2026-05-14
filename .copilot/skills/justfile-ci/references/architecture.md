@@ -4,7 +4,7 @@
 
 | Recipe | Delegates to | Purpose |
 |--------|-------------|---------|
-| `build` | `wasm::build`, `jss::build`, `nanvix::build`, `python::build` | Build everything |
+| `build` | `wasm::build`, `jss::build`, `python::build` | Build everything |
 | `test` | `test-rust`, `wasm::test`, `python::python-test` | All tests |
 | `test-rust` | (direct cargo) | Core crate unit + integration tests |
 | `lint` | `lint-rust`, `wasm::lint`, `js::lint`, `python::lint` | All linters |
@@ -21,8 +21,7 @@
 ci.yml
 ├── rust           — fmt-check-rust, lint-rust, test-rust
 ├── wasm-sandbox   — wasm build, lint, test, examples + python fmt-check/lint/build/examples/python-test/fuzz/benchmark/integration-examples
-├── javascript-sandbox — js build, lint, test, examples
-└── nanvix-sandbox — nanvix build (examples skipped pending upstream)
+└── javascript-sandbox — js build, lint, test, examples
 ```
 
 ## Subproject Justfile Responsibilities
@@ -38,10 +37,6 @@ ci.yml
 - Needs WIT world from wasm for compilation
 - Recipes: `build`, `test`, `examples`, `lint`
 - `examples` is a flat recipe listing all `cargo run` commands
-
-### nanvix (`src/nanvix_sandbox/Justfile`)
-- Standalone build, excluded from workspace
-- Recipes: `build`, `examples` (currently skipped)
 
 ### python (`src/sdk/python/Justfile`)
 - Manages `uv`, `maturin`, `ruff` tooling

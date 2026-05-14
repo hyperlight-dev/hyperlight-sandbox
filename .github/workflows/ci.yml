@@ -411,26 +411,3 @@ jobs:
 
       - name: Run examples
         run: just js examples
-
-  nanvix-sandbox:
-    name: Nanvix Sandbox · build
-    runs-on: ubuntu-latest #current linux only
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-
-      - uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7  # v1.16.0
-        with:
-          toolchain: nightly
-          rustflags: ""
-
-      - name: Install just
-        run: cargo install --locked just
-
-      - name: Build
-        run: just nanvix build
-
-      # NOTE: nanvix examples are skipped until hyperlight-nanvix updates to
-      # the new nanvix registry API (qjs/python3 are now separate packages).
-      # See: https://github.com/hyperlight-dev/hyperlight-nanvix
-      # - name: Run examples
-      #   run: just nanvix examples

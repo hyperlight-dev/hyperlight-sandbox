@@ -7,7 +7,6 @@ Bump the version in **all** manifest files. For example, to go from `0.1.0` → 
 ### Rust (Cargo)
 
 - `Cargo.toml` — `[workspace.package] version`
-- `src/nanvix_sandbox/Cargo.toml` — `[package] version` (excluded from workspace, must be updated manually)
 
 All other workspace member crates inherit the version automatically.
 

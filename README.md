@@ -12,7 +12,6 @@ Supported backends:
 
 - [Wasm Component Sandbox](#wasm-component-sandbox) (Python/Javascript or provide your own)
 - [HyperlightJS Sandbox](#hyperlightjs-sandbox)
-- [Nanvix Sandbox](#nanvix-sandbox)
 
 ## Overview
 
@@ -194,35 +193,6 @@ console.log('10 + 20 = ' + sum);
 ```
 
 See [examples](./src/javascript_sandbox/examples/) for file I/O and network demos.
-
-### Nanvix Sandbox
-
-A microkernel-based backend built on [hyperlight-nanvix](https://github.com/hyperlight-dev/hyperlight-nanvix) that runs JavaScript or Python inside a Nanvix VM. Currently limited to basic code execution with stdout capture -- no host tools, file I/O, networking, or snapshot support yet.
-
-```rust
-use hyperlight_nanvix_sandbox::{NanvixJavaScript, NanvixPython};
-use hyperlight_sandbox::Sandbox;
-
-fn main() {
-    // JavaScript
-    let mut js = Sandbox::builder()
-        .guest(NanvixJavaScript)
-        .build()
-        .expect("failed to create JS sandbox");
-
-    let result = js.run(r#"console.log("Hello from Nanvix JS!");"#).unwrap();
-    print!("{}", result.stdout);
-
-    // Python
-    let mut py = Sandbox::builder()
-        .guest(NanvixPython)
-        .build()
-        .expect("failed to create Python sandbox");
-
-    let result = py.run(r#"print("Hello from Nanvix Python!")"#).unwrap();
-    print!("{}", result.stdout);
-}
-```
 
 ## Building
 

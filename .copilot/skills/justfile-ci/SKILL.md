@@ -20,7 +20,6 @@ This repo uses a **hierarchical Justfile** structure with a matching **GitHub Ac
 Justfile (root)                    ← orchestrates everything
 ├── mod wasm 'src/wasm_sandbox/Justfile'
 ├── mod js 'src/javascript_sandbox/Justfile'
-├── mod nanvix 'src/nanvix_sandbox/Justfile'
 ├── mod python 'src/sdk/python/Justfile'
 └── mod examples_mod 'examples/Justfile'
 ```

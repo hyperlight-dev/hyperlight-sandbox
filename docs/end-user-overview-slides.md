@@ -111,19 +111,7 @@ result = sandbox.run('console.log(2 + 3)')
 
 ---
 
-# Guest Support: Nanvix & Extensibility
-
-## Nanvix guests (Rust API)
-
-```rust
-// JavaScript via QuickJS in a Nanvix microkernel
-let mut sandbox = SandboxBuilder::new().guest(NanvixJavaScript).build()?;
-let result = sandbox.run(r#"console.log("Hello from Nanvix!")"#)?;
-
-// Python via Python in a Nanvix microkernel
-let mut sandbox = SandboxBuilder::new().guest(NanvixPython).build()?;
-let result = sandbox.run(r#"print("Hello from Nanvix!")"#)?;
-```
+# Guest Support & Extensibility
 
 ## Broader Wasm/WASI guest model
 

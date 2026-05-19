@@ -139,7 +139,36 @@ def _http_request(method: str, url: str, body: str = "", content_type: str = "")
 
 
 class Executor:
-    """Implements the WIT executor interface for componentize-py."""
+    """Implements the WIT executor interface for componentize-py.
+
+    The executor keeps a single, persistent module-level namespace
+    (``self._globals``) that is reused across every call to :py:meth:`run`.
+    Names defined by guest code (``x = 1``, ``def foo(): ...``,
+    ``class C: ...``) therefore remain visible to subsequent runs on
+    the same sandbox instance, matching:
+
+      * the snapshot/restore contract documented on ``WasmSandbox`` —
+        ``snapshot``/``restore`` is the mechanism for rewinding state,
+        not bare back-to-back ``run`` calls;
+      * the JavaScript guest's ``globalThis`` persistence story for
+        explicit global writes;
+      * the ``python_basics`` example, which sets ``counter = 100``
+        and treats ``restore`` (not the next ``run``) as the action
+        that makes ``counter`` undefined.
+
+    Host-provided helpers (``call_tool``, ``http_get``, ``http_post``)
+    are seeded once on construction. Guest code may shadow them
+    locally, but the originals are restored by ``snapshot``/``restore``
+    along with the rest of the namespace.
+    """
+
+    def __init__(self) -> None:
+        self._globals: dict = {
+            "__builtins__": __builtins__,
+            "call_tool": _call_tool,
+            "http_get": http_get,
+            "http_post": http_post,
+        }
 
     def run(self, code: str) -> ExecutionResult:
         """Execute Python code and capture output."""
@@ -152,7 +181,7 @@ class Executor:
 
         exit_code = 0
         try:
-            exec(code, {"__builtins__": __builtins__, "call_tool": _call_tool, "http_get": http_get, "http_post": http_post})
+            exec(code, self._globals)
         except SystemExit as e:
             exit_code = e.code if isinstance(e.code, int) else 1
         except Exception as e:

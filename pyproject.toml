@@ -49,7 +49,7 @@ agent-framework = [
     "hyperlight-sandbox-python-guest",
 ]
 agent-framework-devui = [
-    "agent-framework-devui>=1.0.0b260514",
+    "agent-framework-devui>=1.0.0b260521",
 ]
 
 [tool.ruff]

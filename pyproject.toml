@@ -42,7 +42,7 @@ copilot-sdk = [
     "hyperlight-sandbox-python-guest",
 ]
 agent-framework = [
-    "agent-framework-github-copilot>=1.0.0b260429",
+    "agent-framework-github-copilot>=1.0.0b260521",
     "pydantic",
     "hyperlight-sandbox",
     "hyperlight-sandbox-backend-wasm",

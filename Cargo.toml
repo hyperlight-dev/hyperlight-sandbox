@@ -37,4 +37,8 @@ hyperlight-host = { version = "0.14.0" }
 hyperlight-component-util = { git = "https://github.com/jsturtevant/hyperlight-1", rev="cdbed80af127b4d74e2633511cadb07bfea0160e",  package = "hyperlight-component-util" }
 
 [patch.crates-io]
-hyperlight-component-util = { git = "https://github.com/jsturtevant/hyperlight-1", rev="cdbed80af127b4d74e2633511cadb07bfea0160e", package = "hyperlight-component-util" }
+# Keep the patched 0.14 util available for crates that still depend on it.
+hyperlight-component-util-014 = { package = "hyperlight-component-util", git = "https://github.com/jsturtevant/hyperlight-1", rev="cdbed80af127b4d74e2633511cadb07bfea0160e" }
+# hyperlight-component-macro 0.15 depends on util 0.15, but the published
+# util is missing the bindgen fixes this workspace relies on.
+hyperlight-component-util = { path = "patches/hyperlight-component-util-0.15" }

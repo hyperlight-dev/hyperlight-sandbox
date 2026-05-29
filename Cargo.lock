@@ -1628,16 +1628,8 @@ dependencies = [
 [[package]]
 name = "hyperlight-component-util"
 version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4066c05c73d5eecdcd7d31e106df789f7f74d6a5cfde5b4df7d54dd66e8ae442"
 dependencies = [
- "itertools 0.14.0",
- "prettyplease",
- "proc-macro2",
- "quote",
- "syn",
- "tracing",
- "wasmparser 0.248.0",
+ "hyperlight-component-util 0.14.0",
 ]
 
 [[package]]

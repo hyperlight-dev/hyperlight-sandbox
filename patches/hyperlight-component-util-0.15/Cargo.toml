@@ -1,0 +1,14 @@
+[package]
+name = "hyperlight-component-util"
+version = "0.15.0"
+edition = "2024"
+rust-version = "1.89"
+license = "Apache-2.0"
+description = "Compatibility shim for the patched Hyperlight component util used by this workspace"
+publish = false
+
+[lib]
+name = "hyperlight_component_util"
+
+[dependencies]
+hyperlight-component-util-compat = { package = "hyperlight-component-util", git = "https://github.com/jsturtevant/hyperlight-1", rev = "cdbed80af127b4d74e2633511cadb07bfea0160e" }

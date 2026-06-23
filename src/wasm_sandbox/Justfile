@@ -30,6 +30,13 @@ guest-build-wasm: ensure-tools
 
 guest-compile-wit: ensure-tools
     wasm-tools component wit {{repo-root}}/src/wasm_sandbox/wit/hyperlight-sandbox.wit -w -o {{repo-root}}/src/wasm_sandbox/wit/sandbox-world.wasm
+    # Strip the `producers` custom section: it embeds the wit-component/wasm-tools
+    # version string (e.g. 0.248.0 vs 0.252.0), which is the ONLY thing that differs
+    # between tool versions. Removing it makes the committed artifact byte-stable, so
+    # the CI drift check (just wasm guest-compile-wit + git diff) no longer flaps on a
+    # wasm-tools bump or a contributor's differing local version. wasm-tools buffers
+    # the whole module, so the in-place -o is safe.
+    wasm-tools strip -d producers {{repo-root}}/src/wasm_sandbox/wit/sandbox-world.wasm -o {{repo-root}}/src/wasm_sandbox/wit/sandbox-world.wasm
 
 # Invalidate cargo caches that embed the WIT signature.
 # Without this, cargo won't detect that sandbox-world.wasm changed

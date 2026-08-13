@@ -11,10 +11,10 @@ from hyperlight_sandbox import Sandbox
 sandbox = Sandbox(backend="wasm", module="python_guest.path")
 sandbox.register_tool("add", lambda a=0, b=0: a + b)
 
-result = sandbox.run('''
+result = sandbox.run("""
 result = call_tool('add', a=3, b=4)
 print(result)
-''')
+""")
 print(result.stdout)  # "7\n"
 ```
 

@@ -31,6 +31,10 @@ jobs:
           test "$(grep -c '"resolved":' package-lock.json)" -eq \
             "$(grep -c '"resolved": "https://registry.npmjs.org/' package-lock.json)"
 
+      - name: Validate clean install
+        working-directory: src/wasm_sandbox/guests/javascript
+        run: npm ci --ignore-scripts --registry=https://registry.npmjs.org/
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: javascript-package-lock

@@ -2,6 +2,9 @@ name: Regenerate JavaScript lockfile
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - jsturtevant-consolidate-javascript-updates
 
 jobs:
   regenerate:

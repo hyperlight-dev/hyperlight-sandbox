@@ -11,6 +11,9 @@ python-version-flag := "--python"
 # Set via env or CLI (e.g. `just interpreters="--interpreter python3.10 python3.14" python-dist`)
 # to build wheels for multiple Python versions. Defaults to empty (maturin uses active Python).
 interpreters := env("INTERPRETERS", "")
+# Set in Linux wheel builds to enforce and audit a specific manylinux policy.
+manylinux := env("MANYLINUX", "")
+manylinux-arg := if manylinux != "" { "--manylinux " + manylinux } else { "" }
 # Atheris currently supports fuzzing on Python <= 3.12. Keep the rest of the
 # SDK test/build surface on the active Python while running fuzz on 3.12.
 default-fuzz-python := "3.12"
@@ -69,8 +72,8 @@ build: python-build
 python-dist: python-sync-guest-resources
     -{{rmrf}} {{dist-root}}
     cd {{repo-root}}/src/sdk/python/core && uv run python -m build --outdir {{core-dist}}
-    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}} {{interpreters}}
-    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}} {{interpreters}}
+    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}} {{manylinux-arg}} {{interpreters}}
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}} {{manylinux-arg}} {{interpreters}}
     cd {{repo-root}}/src/sdk/python/wasm_guests/python_guest && uv run python -m build --outdir {{python-guest-dist}}
     cd {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest && uv run python -m build --outdir {{javascript-guest-dist}}
 
@@ -80,8 +83,8 @@ python-dist: python-sync-guest-resources
 python-dist-backends: python-sync-env
     -{{rmrf}} {{wasm-wheels}}
     -{{rmrf}} {{hyperlight-js-wheels}}
-    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}} {{interpreters}}
-    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}} {{interpreters}}
+    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}} {{manylinux-arg}} {{interpreters}}
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}} {{manylinux-arg}} {{interpreters}}
 
 python-publish repository="pypi":
     uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{wasm-wheels}}/*

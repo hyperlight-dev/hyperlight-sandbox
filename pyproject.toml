@@ -29,7 +29,7 @@ dev = [
     "componentize-py",
     "build",
     "twine",
-    "ruff>=0.15.18",
+    "ruff>=0.16.2",
     "hyperlight-sandbox",
     "hyperlight-sandbox-python-guest",
     "hyperlight-sandbox-javascript-guest",
@@ -42,14 +42,14 @@ copilot-sdk = [
     "hyperlight-sandbox-python-guest",
 ]
 agent-framework = [
-    "agent-framework-github-copilot>=1.0.0rc1",
+    "agent-framework-github-copilot>=1.0.1",
     "pydantic",
     "hyperlight-sandbox",
     "hyperlight-sandbox-backend-wasm",
     "hyperlight-sandbox-python-guest",
 ]
 agent-framework-devui = [
-    "agent-framework-devui>=1.0.0b260528",
+    "agent-framework-devui>=1.0.0b260730",
 ]
 
 [tool.ruff]

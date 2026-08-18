@@ -255,10 +255,14 @@ jobs:
       - name: Benchmark
         run: just benchmark
 
-  # Build all Python packages on Linux (pure + backend wheels).
+  # Build all Python packages on Linux for glibc 2.28 and newer.
   python-wheelhouse-build-linux:
-    name: Python wheelhouse build (Linux)
+    name: Python wheelhouse build (manylinux_2_28)
     runs-on: ubuntu-latest
+    container:
+      image: quay.io/pypa/manylinux_2_28_x86_64@sha256:f854c50adf7b7a325bc4794316f3758d387a41d61f9e2ebca0f26c7dc8f761d4
+    env:
+      MANYLINUX: "2_28"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -282,12 +286,24 @@ jobs:
         run: cargo install --locked just
 
       - name: Install clang
-        run: sudo apt-get update && sudo apt-get install -y clang
+        run: dnf install -y clang
 
       - name: Build all Python packages
         run: |
           export INTERPRETERS="--interpreter $(uv python find 3.10) $(uv python find 3.11) $(uv python find 3.12) $(uv python find 3.13) $(uv python find 3.14)"
           just python-dist
+
+      - name: Verify manylinux compatibility
+        run: |
+          for wheel in dist/pythonsdk/{wasm_backend,hyperlight_js_backend}/*.whl; do
+            case "$wheel" in
+              *-manylinux_2_28_x86_64.whl) ;;
+              *)
+                echo "::error::Unexpected Linux wheel tag: $wheel"
+                exit 1
+                ;;
+            esac
+          done
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:

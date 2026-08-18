@@ -122,20 +122,36 @@ fn chunked_body_streams_correctly() {
 #[test]
 fn send_https_get_request() {
     async {
-        let req = HttpRequest {
-            url: url::Url::parse("https://httpbin.org/get").unwrap(),
-            method: "GET".to_string(),
-            headers: vec![],
-            body: HttpRequest::body_from_bytes(None),
-        };
+        const MAX_ATTEMPTS: usize = 3;
+        let mut backoff = std::time::Duration::from_millis(250);
 
-        let resp = http::send_http_request(req)
-            .await
-            .expect("HTTPS GET to httpbin.org failed — TLS or DNS issue");
-        assert_eq!(resp.status, 200);
+        for attempt in 1..=MAX_ATTEMPTS {
+            let req = HttpRequest {
+                url: url::Url::parse("https://github.com/hyperlight-dev/hyperlight-sandbox")
+                    .unwrap(),
+                method: "GET".to_string(),
+                headers: vec![],
+                body: HttpRequest::body_from_bytes(None),
+            };
 
-        let echo: serde_json::Value = serde_json::from_slice(&resp.body).unwrap();
-        assert!(echo["url"].as_str().unwrap().contains("httpbin.org"));
+            match http::send_http_request(req).await {
+                Ok(resp) if resp.status < 500 => {
+                    assert_eq!(resp.status, 200);
+                    assert!(String::from_utf8_lossy(&resp.body).contains("hyperlight-sandbox"));
+                    return;
+                }
+                Ok(resp) if attempt == MAX_ATTEMPTS => {
+                    panic!("HTTPS GET to github.com returned status {}", resp.status);
+                }
+                Err(error) if attempt == MAX_ATTEMPTS => {
+                    panic!("HTTPS GET to github.com failed after {MAX_ATTEMPTS} attempts: {error}");
+                }
+                Ok(_) | Err(_) => {}
+            }
+
+            tokio::time::sleep(backoff).await;
+            backoff = backoff.saturating_mul(2);
+        }
     }
     .block_on();
 }

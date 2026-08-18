@@ -5,12 +5,16 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 10
 
   # Rust (root workspace)
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 10
     ignore:
       # wasmtime (indirect, via hyperlight-wasm) must stay aligned with the
       # hyperlight-wasm-aot CLI that compiles .aot guest binaries.  The AOT
@@ -25,27 +29,37 @@ updates:
     directory: "/src/sdk/python/wasm_backend"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 10
 
   # Rust (Python hyperlight-js backend — separate workspace)
   - package-ecosystem: "cargo"
     directory: "/src/sdk/python/hyperlight_js_backend"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 10
 
   # Rust (Python pyo3 common — separate workspace)
   - package-ecosystem: "cargo"
     directory: "/src/sdk/python/pyo3_common"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 10
 
   # Python (uv/pip)
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 10
 
   # npm (JavaScript guest)
   - package-ecosystem: "npm"
     directory: "/src/wasm_sandbox/guests/javascript"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 10

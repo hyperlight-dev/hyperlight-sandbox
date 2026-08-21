@@ -17,13 +17,13 @@ type HlResult<T> = T;
 // Sockets: Network
 // ---------------------------------------------------------------------------
 
-impl network::Network for HostState {
+impl network::Network<crate::HostBindings> for HostState {
     type T = u32;
 }
 
-impl wasi::sockets::Network for HostState {}
+impl wasi::sockets::Network<crate::HostBindings> for HostState {}
 
-impl wasi::sockets::InstanceNetwork<u32> for HostState {
+impl wasi::sockets::InstanceNetwork<crate::HostBindings, u32> for HostState {
     fn instance_network(&mut self) -> HlResult<u32> {
         0
     }
@@ -35,6 +35,7 @@ impl wasi::sockets::InstanceNetwork<u32> for HostState {
 
 impl
     tcp::TcpSocket<
+        crate::HostBindings,
         monotonic_clock::Duration,
         network::ErrorCode,
         Resource<Stream>,
@@ -225,6 +226,7 @@ impl
 
 impl
     wasi::sockets::Tcp<
+        crate::HostBindings,
         monotonic_clock::Duration,
         network::ErrorCode,
         Resource<Stream>,
@@ -237,8 +239,13 @@ impl
 {
 }
 
-impl wasi::sockets::TcpCreateSocket<network::ErrorCode, network::IpAddressFamily, u32>
-    for HostState
+impl
+    wasi::sockets::TcpCreateSocket<
+        crate::HostBindings,
+        network::ErrorCode,
+        network::IpAddressFamily,
+        u32,
+    > for HostState
 {
     fn create_tcp_socket(
         &mut self,
@@ -253,8 +260,12 @@ impl wasi::sockets::TcpCreateSocket<network::ErrorCode, network::IpAddressFamily
 // ---------------------------------------------------------------------------
 
 impl
-    udp::IncomingDatagramStream<network::ErrorCode, network::IpSocketAddress, Resource<AnyPollable>>
-    for HostState
+    udp::IncomingDatagramStream<
+        crate::HostBindings,
+        network::ErrorCode,
+        network::IpSocketAddress,
+        Resource<AnyPollable>,
+    > for HostState
 {
     type T = u32;
     fn receive(
@@ -271,8 +282,12 @@ impl
 }
 
 impl
-    udp::OutgoingDatagramStream<network::ErrorCode, network::IpSocketAddress, Resource<AnyPollable>>
-    for HostState
+    udp::OutgoingDatagramStream<
+        crate::HostBindings,
+        network::ErrorCode,
+        network::IpSocketAddress,
+        Resource<AnyPollable>,
+    > for HostState
 {
     type T = u32;
     fn check_send(
@@ -295,6 +310,7 @@ impl
 
 impl
     udp::UdpSocket<
+        crate::HostBindings,
         network::ErrorCode,
         u32,
         network::IpAddressFamily,
@@ -390,6 +406,7 @@ impl
 
 impl
     wasi::sockets::Udp<
+        crate::HostBindings,
         network::ErrorCode,
         network::IpAddressFamily,
         network::IpSocketAddress,
@@ -399,8 +416,13 @@ impl
 {
 }
 
-impl wasi::sockets::UdpCreateSocket<network::ErrorCode, network::IpAddressFamily, u32>
-    for HostState
+impl
+    wasi::sockets::UdpCreateSocket<
+        crate::HostBindings,
+        network::ErrorCode,
+        network::IpAddressFamily,
+        u32,
+    > for HostState
 {
     fn create_udp_socket(
         &mut self,
@@ -416,6 +438,7 @@ impl wasi::sockets::UdpCreateSocket<network::ErrorCode, network::IpAddressFamily
 
 impl
     ip_name_lookup::ResolveAddressStream<
+        crate::HostBindings,
         network::ErrorCode,
         network::IpAddress,
         Resource<AnyPollable>,
@@ -433,8 +456,14 @@ impl
     }
 }
 
-impl wasi::sockets::IpNameLookup<network::ErrorCode, network::IpAddress, u32, Resource<AnyPollable>>
-    for HostState
+impl
+    wasi::sockets::IpNameLookup<
+        crate::HostBindings,
+        network::ErrorCode,
+        network::IpAddress,
+        u32,
+        Resource<AnyPollable>,
+    > for HostState
 {
     fn resolve_addresses(
         &mut self,

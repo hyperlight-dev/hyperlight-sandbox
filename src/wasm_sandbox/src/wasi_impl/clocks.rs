@@ -19,7 +19,7 @@ fn now() -> u64 {
     std::time::Instant::now().duration_since(*EPOCH).as_nanos() as u64
 }
 
-impl wasi::clocks::MonotonicClock<Resource<AnyPollable>> for HostState {
+impl wasi::clocks::MonotonicClock<crate::HostBindings, Resource<AnyPollable>> for HostState {
     fn now(&mut self) -> HlResult<monotonic_clock::Instant> {
         now()
     }
@@ -44,7 +44,7 @@ impl wasi::clocks::MonotonicClock<Resource<AnyPollable>> for HostState {
     }
 }
 
-impl wasi::clocks::WallClock for HostState {
+impl wasi::clocks::WallClock<crate::HostBindings> for HostState {
     fn now(&mut self) -> HlResult<wall_clock::Datetime> {
         let d = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

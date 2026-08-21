@@ -21,7 +21,7 @@ fn random_u64() -> u64 {
     })
 }
 
-impl wasi::random::Random for HostState {
+impl wasi::random::Random<crate::HostBindings> for HostState {
     fn get_random_bytes(&mut self, len: u64) -> HlResult<Vec<u8>> {
         let capped = len.min(MAX_ALLOC_BYTES) as usize;
         let mut buf = vec![0u8; capped];
@@ -33,7 +33,7 @@ impl wasi::random::Random for HostState {
     }
 }
 
-impl wasi::random::Insecure for HostState {
+impl wasi::random::Insecure<crate::HostBindings> for HostState {
     fn get_insecure_random_bytes(&mut self, len: u64) -> HlResult<Vec<u8>> {
         let capped = len.min(MAX_ALLOC_BYTES) as usize;
         let mut buf = vec![0u8; capped];
@@ -45,7 +45,7 @@ impl wasi::random::Insecure for HostState {
     }
 }
 
-impl wasi::random::InsecureSeed for HostState {
+impl wasi::random::InsecureSeed<crate::HostBindings> for HostState {
     fn insecure_seed(&mut self) -> HlResult<(u64, u64)> {
         (random_u64(), random_u64())
     }

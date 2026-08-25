@@ -38,7 +38,7 @@ impl From<HeaderError> for http_types::HeaderError {
     }
 }
 
-impl http_types::Fields for HostState {
+impl http_types::Fields<crate::HostBindings> for HostState {
     type T = Resource<Headers>;
 
     fn new(&mut self) -> Resource<Headers> {
@@ -115,7 +115,9 @@ impl http_types::Fields for HostState {
 // IncomingRequest
 // ---------------------------------------------------------------------------
 
-impl http_types::IncomingRequest<Resource<Headers>, Resource<IncomingBody>> for HostState {
+impl http_types::IncomingRequest<crate::HostBindings, Resource<Headers>, Resource<IncomingBody>>
+    for HostState
+{
     type T = Resource<IncomingRequest>;
     fn method(
         &mut self,
@@ -164,7 +166,9 @@ impl http_types::IncomingRequest<Resource<Headers>, Resource<IncomingBody>> for 
 // OutgoingRequest
 // ---------------------------------------------------------------------------
 
-impl http_types::OutgoingRequest<Resource<Headers>, Resource<OutgoingBody>> for HostState {
+impl http_types::OutgoingRequest<crate::HostBindings, Resource<Headers>, Resource<OutgoingBody>>
+    for HostState
+{
     type T = Resource<OutgoingRequest>;
     fn new(&mut self, headers: Resource<Headers>) -> Resource<OutgoingRequest> {
         Resource::new(OutgoingRequest::new(headers))
@@ -248,7 +252,7 @@ fn as_u64_nanos_saturating(duration: &std::time::Duration) -> u64 {
     duration.as_nanos().min(u64::MAX as u128) as u64
 }
 
-impl http_types::RequestOptions<u64> for HostState {
+impl http_types::RequestOptions<crate::HostBindings, u64> for HostState {
     type T = Resource<RequestOptions>;
     fn new(&mut self) -> Resource<RequestOptions> {
         Resource::default()
@@ -317,7 +321,7 @@ impl http_types::RequestOptions<u64> for HostState {
 // ResponseOutparam
 // ---------------------------------------------------------------------------
 
-impl http_types::ResponseOutparam<Resource<OutgoingResponse>> for HostState {
+impl http_types::ResponseOutparam<crate::HostBindings, Resource<OutgoingResponse>> for HostState {
     type T = Resource<ResponseOutparam>;
     fn set(
         &mut self,
@@ -332,7 +336,9 @@ impl http_types::ResponseOutparam<Resource<OutgoingResponse>> for HostState {
 // IncomingResponse
 // ---------------------------------------------------------------------------
 
-impl http_types::IncomingResponse<Resource<Headers>, Resource<IncomingBody>> for HostState {
+impl http_types::IncomingResponse<crate::HostBindings, Resource<Headers>, Resource<IncomingBody>>
+    for HostState
+{
     type T = Resource<IncomingResponse>;
     fn status(
         &mut self,
@@ -363,7 +369,9 @@ impl http_types::IncomingResponse<Resource<Headers>, Resource<IncomingBody>> for
 // IncomingBody
 // ---------------------------------------------------------------------------
 
-impl http_types::IncomingBody<Resource<FutureHeaders>, Resource<Stream>> for HostState {
+impl http_types::IncomingBody<crate::HostBindings, Resource<FutureHeaders>, Resource<Stream>>
+    for HostState
+{
     type T = Resource<IncomingBody>;
     fn stream(
         &mut self,
@@ -385,7 +393,9 @@ impl http_types::IncomingBody<Resource<FutureHeaders>, Resource<Stream>> for Hos
 // OutgoingBody
 // ---------------------------------------------------------------------------
 
-impl http_types::OutgoingBody<Resource<Headers>, Resource<Stream>> for HostState {
+impl http_types::OutgoingBody<crate::HostBindings, Resource<Headers>, Resource<Stream>>
+    for HostState
+{
     type T = Resource<OutgoingBody>;
     fn write(
         &mut self,
@@ -415,7 +425,9 @@ impl http_types::OutgoingBody<Resource<Headers>, Resource<Stream>> for HostState
 // OutgoingResponse
 // ---------------------------------------------------------------------------
 
-impl http_types::OutgoingResponse<Resource<Headers>, Resource<OutgoingBody>> for HostState {
+impl http_types::OutgoingResponse<crate::HostBindings, Resource<Headers>, Resource<OutgoingBody>>
+    for HostState
+{
     type T = Resource<OutgoingResponse>;
     fn new(&mut self, headers: Resource<Headers>) -> Resource<OutgoingResponse> {
         Resource::new(OutgoingResponse::new(headers))
@@ -453,7 +465,9 @@ impl http_types::OutgoingResponse<Resource<Headers>, Resource<OutgoingBody>> for
 // FutureTrailers
 // ---------------------------------------------------------------------------
 
-impl http_types::FutureTrailers<Resource<Headers>, Resource<AnyPollable>> for HostState {
+impl http_types::FutureTrailers<crate::HostBindings, Resource<Headers>, Resource<AnyPollable>>
+    for HostState
+{
     type T = Resource<FutureHeaders>;
     fn subscribe(
         &mut self,
@@ -480,8 +494,12 @@ impl http_types::FutureTrailers<Resource<Headers>, Resource<AnyPollable>> for Ho
 // FutureIncomingResponse
 // ---------------------------------------------------------------------------
 
-impl http_types::FutureIncomingResponse<Resource<IncomingResponse>, Resource<AnyPollable>>
-    for HostState
+impl
+    http_types::FutureIncomingResponse<
+        crate::HostBindings,
+        Resource<IncomingResponse>,
+        Resource<AnyPollable>,
+    > for HostState
 {
     type T = Resource<FutureIncomingResponse>;
     fn subscribe(
@@ -504,8 +522,14 @@ impl http_types::FutureIncomingResponse<Resource<IncomingResponse>, Resource<Any
 // ---------------------------------------------------------------------------
 
 impl
-    wasi::http::Types<u64, anyhow::Error, Resource<Stream>, Resource<Stream>, Resource<AnyPollable>>
-    for HostState
+    wasi::http::Types<
+        crate::HostBindings,
+        u64,
+        anyhow::Error,
+        Resource<Stream>,
+        Resource<Stream>,
+        Resource<AnyPollable>,
+    > for HostState
 {
     fn http_error_code(
         &mut self,

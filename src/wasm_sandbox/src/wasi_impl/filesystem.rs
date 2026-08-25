@@ -29,7 +29,7 @@ impl From<FsError> for fs_types::ErrorCode {
 // DirectoryEntryStream
 // ---------------------------------------------------------------------------
 
-impl fs_types::DirectoryEntryStream for HostState {
+impl fs_types::DirectoryEntryStream<crate::HostBindings> for HostState {
     type T = u32;
     fn read_directory_entry(
         &mut self,
@@ -64,8 +64,14 @@ impl fs_types::DirectoryEntryStream for HostState {
 // Descriptor
 // ---------------------------------------------------------------------------
 
-impl fs_types::Descriptor<wall_clock::Datetime, u32, Resource<Stream>, Resource<Stream>>
-    for HostState
+impl
+    fs_types::Descriptor<
+        crate::HostBindings,
+        wall_clock::Datetime,
+        u32,
+        Resource<Stream>,
+        Resource<Stream>,
+    > for HostState
 {
     type T = u32;
 
@@ -380,8 +386,13 @@ impl fs_types::Descriptor<wall_clock::Datetime, u32, Resource<Stream>, Resource<
 }
 
 impl
-    wasi::filesystem::Types<wall_clock::Datetime, anyhow::Error, Resource<Stream>, Resource<Stream>>
-    for HostState
+    wasi::filesystem::Types<
+        crate::HostBindings,
+        wall_clock::Datetime,
+        anyhow::Error,
+        Resource<Stream>,
+        Resource<Stream>,
+    > for HostState
 {
     fn filesystem_error_code(
         &mut self,
@@ -391,7 +402,7 @@ impl
     }
 }
 
-impl wasi::filesystem::Preopens<u32> for HostState {
+impl wasi::filesystem::Preopens<crate::HostBindings, u32> for HostState {
     fn get_directories(&mut self) -> HlResult<Vec<(u32, String)>> {
         let Ok(fs) = self.fs.lock() else {
             return Vec::new();

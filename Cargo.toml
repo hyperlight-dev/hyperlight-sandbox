@@ -13,7 +13,7 @@ resolver = "2"
 [workspace.package]
 version = "0.5.0"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.94"
 license = "Apache-2.0"
 
 [workspace.dependencies]
@@ -21,18 +21,17 @@ hyperlight-sandbox = { path = "src/hyperlight_sandbox" }
 hyperlight-javascript-sandbox = { path = "src/javascript_sandbox" }
 hyperlight-wasm-sandbox = { path = "src/wasm_sandbox" }
 hyperlight-sandbox-pyo3-common = { path = "src/sdk/python/pyo3_common" }
-hyperlight-common = { version = "0.15.0", default-features = false }
-hyperlight-component-macro = { version = "0.15.0" }
-hyperlight-host = { version = "0.15.0", default-features = false, features = ["executable_heap"] }
-# https://github.com/jsturtevant/hyperlight-wasm/tree/sandbox-component-bindgen-prs
-hyperlight-wasm = { git = "https://github.com/jsturtevant/hyperlight-wasm", rev = "447c5893fc916f1e9faf9aaac59afc45e6591d1f" }
+hyperlight-common = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4", default-features = false }
+hyperlight-component-macro = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4" }
+hyperlight-host = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4", default-features = false, features = ["executable_heap"] }
+# https://github.com/hyperlight-dev/hyperlight-wasm/pull/520
+hyperlight-wasm = { git = "https://github.com/hyperlight-dev/hyperlight-wasm", rev = "2757fb9ff3e117c1513c325b3b32d3abd9918e9d" }
 pyo3 = { version = "0.29", features = ["extension-module"] }
 
 [patch.crates-io]
-# https://github.com/jsturtevant/hyperlight-1/tree/sandbox-component-bindgen-prs
-hyperlight-common = { git = "https://github.com/jsturtevant/hyperlight-1", rev = "2640a824b59d18e633e706e5639c7da30e7ad5fc", package = "hyperlight-common" }
-hyperlight-component-macro = { git = "https://github.com/jsturtevant/hyperlight-1", rev = "2640a824b59d18e633e706e5639c7da30e7ad5fc", package = "hyperlight-component-macro" }
-hyperlight-component-util = { git = "https://github.com/jsturtevant/hyperlight-1", rev = "2640a824b59d18e633e706e5639c7da30e7ad5fc", package = "hyperlight-component-util" }
-hyperlight-guest = { git = "https://github.com/jsturtevant/hyperlight-1", rev = "2640a824b59d18e633e706e5639c7da30e7ad5fc", package = "hyperlight-guest" }
-hyperlight-guest-bin = { git = "https://github.com/jsturtevant/hyperlight-1", rev = "2640a824b59d18e633e706e5639c7da30e7ad5fc", package = "hyperlight-guest-bin" }
-hyperlight-host = { git = "https://github.com/jsturtevant/hyperlight-1", rev = "2640a824b59d18e633e706e5639c7da30e7ad5fc", package = "hyperlight-host" }
+hyperlight-common = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4" }
+hyperlight-component-macro = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4" }
+hyperlight-component-util = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4" }
+hyperlight-guest = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4" }
+hyperlight-guest-bin = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4" }
+hyperlight-host = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4" }

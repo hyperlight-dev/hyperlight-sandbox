@@ -41,6 +41,7 @@ fn wasi_method_to_http_method(
 
 impl
     wasi::http::OutgoingHandler<
+        crate::HostBindings,
         ErrorCode,
         Resource<FutureIncomingResponse>,
         Resource<OutgoingRequest>,

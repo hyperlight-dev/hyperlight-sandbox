@@ -20,20 +20,20 @@ const MAX_ALLOC_BYTES: u64 = 16 * 1024 * 1024;
 // IO: Error
 // ---------------------------------------------------------------------------
 
-impl wasi::io::error::Error for HostState {
+impl wasi::io::error::Error<crate::HostBindings> for HostState {
     type T = anyhow::Error;
     fn to_debug_string(&mut self, self_: BorrowedResourceGuard<anyhow::Error>) -> HlResult<String> {
         self_.to_string()
     }
 }
 
-impl wasi::io::Error for HostState {}
+impl wasi::io::Error<crate::HostBindings> for HostState {}
 
 // ---------------------------------------------------------------------------
 // IO: Poll
 // ---------------------------------------------------------------------------
 
-impl wasi::io::poll::Pollable for HostState {
+impl wasi::io::poll::Pollable<crate::HostBindings> for HostState {
     type T = Resource<AnyPollable>;
     fn ready(&mut self, self_: BorrowedResourceGuard<Resource<AnyPollable>>) -> HlResult<bool> {
         self_.write().block_on().ready().block_on()
@@ -43,7 +43,7 @@ impl wasi::io::poll::Pollable for HostState {
     }
 }
 
-impl wasi::io::Poll for HostState {
+impl wasi::io::Poll<crate::HostBindings> for HostState {
     fn poll(
         &mut self,
         pollables: Vec<BorrowedResourceGuard<Resource<AnyPollable>>>,
@@ -72,7 +72,7 @@ impl wasi::io::Poll for HostState {
 // IO: Streams
 // ---------------------------------------------------------------------------
 
-impl streams::InputStream<anyhow::Error, Resource<AnyPollable>> for HostState {
+impl streams::InputStream<crate::HostBindings, anyhow::Error, Resource<AnyPollable>> for HostState {
     type T = Resource<Stream>;
     fn read(
         &mut self,
@@ -124,7 +124,14 @@ impl streams::InputStream<anyhow::Error, Resource<AnyPollable>> for HostState {
     }
 }
 
-impl streams::OutputStream<anyhow::Error, Resource<Stream>, Resource<AnyPollable>> for HostState {
+impl
+    streams::OutputStream<
+        crate::HostBindings,
+        anyhow::Error,
+        Resource<Stream>,
+        Resource<AnyPollable>,
+    > for HostState
+{
     type T = Resource<Stream>;
     fn check_write(
         &mut self,
@@ -233,4 +240,4 @@ impl streams::OutputStream<anyhow::Error, Resource<Stream>, Resource<AnyPollable
     }
 }
 
-impl wasi::io::Streams<anyhow::Error, Resource<AnyPollable>> for HostState {}
+impl wasi::io::Streams<crate::HostBindings, anyhow::Error, Resource<AnyPollable>> for HostState {}

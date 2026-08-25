@@ -16,6 +16,8 @@ use hyperlight_wasm::{
 
 mod wasi_impl;
 
+type HostBindings = hyperlight_common::component::Negative;
+
 pub(crate) mod bindings {
     hyperlight_component_macro::host_bindgen!("wit/sandbox-world.wasm");
 }
@@ -44,7 +46,7 @@ pub struct HostState {
 }
 
 #[allow(refining_impl_trait)]
-impl bindings::root::component::RootImports for HostState {
+impl bindings::root::component::RootImports<HostBindings> for HostState {
     type Tools = HostState;
     fn tools(&mut self) -> &mut Self {
         self
@@ -196,7 +198,7 @@ impl bindings::root::component::RootImports for HostState {
     }
 }
 
-impl bindings::hyperlight::sandbox::Tools for HostState {
+impl bindings::hyperlight::sandbox::Tools<HostBindings> for HostState {
     fn dispatch(&mut self, name: String, args_json: String) -> Result<String, String> {
         let args: serde_json::Value = match serde_json::from_str(&args_json) {
             Ok(args) => args,
@@ -249,7 +251,7 @@ impl WasmComponentSandbox {
             .build()
             .context("failed to build ProtoWasmSandbox")?;
 
-        let rt = bindings::register_host_functions(&mut proto, state);
+        let rt = bindings::register_host_functions(&mut proto, state)?;
 
         let wasm_sandbox = proto
             .load_runtime()
@@ -266,7 +268,7 @@ impl WasmComponentSandbox {
     }
 
     fn run_impl(&mut self, code: &str) -> Result<ExecutionResult> {
-        use bindings::hyperlight::sandbox::ExecutorExports;
+        use bindings::hyperlight::sandbox::Executor;
 
         self.fs
             .lock()

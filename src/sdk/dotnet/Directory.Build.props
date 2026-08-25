@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <Version>0.5.0</Version>
+    <Version>0.6.0</Version>
     <Authors>Hyperlight developers</Authors>
     <Company>hyperlight-dev</Company>
     <Copyright>Copyright © Microsoft 2026</Copyright>

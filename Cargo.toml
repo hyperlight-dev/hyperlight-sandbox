@@ -21,17 +21,8 @@ hyperlight-sandbox = { path = "src/hyperlight_sandbox" }
 hyperlight-javascript-sandbox = { path = "src/javascript_sandbox" }
 hyperlight-wasm-sandbox = { path = "src/wasm_sandbox" }
 hyperlight-sandbox-pyo3-common = { path = "src/sdk/python/pyo3_common" }
-hyperlight-common = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4", default-features = false }
-hyperlight-component-macro = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4" }
-hyperlight-host = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4", default-features = false, features = ["executable_heap"] }
-# https://github.com/hyperlight-dev/hyperlight-wasm/pull/520
-hyperlight-wasm = { git = "https://github.com/hyperlight-dev/hyperlight-wasm", rev = "2757fb9ff3e117c1513c325b3b32d3abd9918e9d" }
+hyperlight-common = { version = "0.17.0", default-features = false }
+hyperlight-component-macro = "0.17.0"
+hyperlight-host = { version = "0.17.0", default-features = false, features = ["executable_heap"] }
+hyperlight-wasm = "0.15.0"
 pyo3 = { version = "0.29", features = ["extension-module"] }
-
-[patch.crates-io]
-hyperlight-common = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4" }
-hyperlight-component-macro = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4" }
-hyperlight-component-util = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4" }
-hyperlight-guest = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4" }
-hyperlight-guest-bin = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4" }
-hyperlight-host = { git = "https://github.com/hyperlight-dev/hyperlight", rev = "cfa020441d880d599cc516a050e6cf10236ca5c4" }

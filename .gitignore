@@ -2,6 +2,11 @@ target/
 .venv/
 *.aot
 *.wasm
+# Exception: the compiled WIT artifact is checked in as a build input.
+# host_bindgen! reads this file *before* our build scripts can run (it is
+# consumed by transitive deps like hyperlight-wasm-runtime), so the file
+# must exist from `git clone` time. CI regenerates and diffs to catch drift.
+!src/wasm_sandbox/wit/sandbox-world.wasm
 __pycache__/
 *.so
 *.pyd

@@ -14,6 +14,7 @@ use hyperlight_wasm::{
     LoadedWasmSandbox, SandboxBuilder as HyperlightSandboxBuilder, Snapshot as WasmSnapshot,
 };
 
+pub mod credentials;
 mod wasi_impl;
 
 type HostBindings = hyperlight_common::component::Negative;
@@ -33,8 +34,9 @@ impl Guest for Wasm {
         tools: ToolRegistry,
         network: std::sync::Arc<std::sync::Mutex<NetworkPermissions>>,
         fs: std::sync::Arc<std::sync::Mutex<CapFs>>,
+        credentials: credentials::CredentialRegistry,
     ) -> Result<WasmComponentSandbox> {
-        WasmComponentSandbox::with_tools(config, tools, network, fs)
+        WasmComponentSandbox::with_tools(config, tools, network, fs, credentials)
     }
 }
 
@@ -43,12 +45,18 @@ pub struct HostState {
     pub(crate) fs: Arc<Mutex<CapFs>>,
     pub(crate) network: Arc<Mutex<NetworkPermissions>>,
     pub(crate) active_requests: Arc<AtomicUsize>,
+    pub(crate) credential_registry: credentials::CredentialRegistry,
 }
 
 #[allow(refining_impl_trait)]
 impl bindings::root::component::RootImports<HostBindings> for HostState {
     type Tools = HostState;
     fn tools(&mut self) -> &mut Self {
+        self
+    }
+
+    type Credentials = HostState;
+    fn credentials(&mut self) -> &mut Self {
         self
     }
 
@@ -214,6 +222,68 @@ impl bindings::hyperlight::sandbox::Tools<HostBindings> for HostState {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Scoped credentials — `attach` implementation (commit C).
+//
+// The guest calls `attach(request, credential_id)` to bind a
+// previously-registered credential to an outgoing HTTP request.
+// This records the binding inside the `OutgoingRequest` itself so
+// the outgoing-handler dispatch path can later resolve and inject
+// the token header.
+//
+// Error semantics:
+//   * `Unknown`         — credential id not found in the registry.
+//   * `AlreadyAttached` — the request already has a credential.
+//   * `ScopeMismatch` / `ResolverFailed` — reserved for the
+//     outgoing-handler (commit D/E).
+// ---------------------------------------------------------------------------
+impl
+    bindings::hyperlight::sandbox::Credentials<
+        crate::wasi_impl::resource::Resource<
+            crate::wasi_impl::types::http_outgoing_request::OutgoingRequest,
+        >,
+    > for HostState
+{
+    fn attach(
+        &mut self,
+        request: hyperlight_common::resource::BorrowedResourceGuard<
+            '_,
+            crate::wasi_impl::resource::Resource<
+                crate::wasi_impl::types::http_outgoing_request::OutgoingRequest,
+            >,
+        >,
+        credential: String,
+    ) -> Result<
+        Result<(), bindings::hyperlight::sandbox::credentials::CredentialError>,
+        hyperlight_host::HyperlightError,
+    > {
+        use bindings::hyperlight::sandbox::credentials::CredentialError;
+
+        use crate::wasi_impl::resource::BlockOn;
+
+        // Verify the credential exists in the host-side registry.
+        {
+            let registry = self.credential_registry.lock().map_err(|_| {
+                hyperlight_host::HyperlightError::Error(
+                    "credential registry mutex poisoned".to_string(),
+                )
+            })?;
+            if !registry.contains_key(&credential) {
+                return Ok(Err(CredentialError::Unknown));
+            }
+        }
+
+        // Write the credential binding into the request.
+        let mut guard = request.write().block_on();
+        if guard.attached_credential.is_some() {
+            return Ok(Err(CredentialError::AlreadyAttached));
+        }
+        guard.attached_credential = Some(credential);
+
+        Ok(Ok(()))
+    }
+}
+
 pub struct WasmComponentSandbox {
     sandbox: bindings::RootSandbox<HostState, LoadedWasmSandbox>,
     fs: Arc<Mutex<CapFs>>,
@@ -225,6 +295,7 @@ impl WasmComponentSandbox {
         tools: ToolRegistry,
         network: Arc<Mutex<NetworkPermissions>>,
         fs: Arc<Mutex<CapFs>>,
+        credentials: credentials::CredentialRegistry,
     ) -> Result<Self> {
         // Verify the shared tokio runtime is available before proceeding.
         hyperlight_sandbox::runtime::RUNTIME
@@ -242,6 +313,7 @@ impl WasmComponentSandbox {
             fs: fs.clone(),
             network: network.clone(),
             active_requests: Arc::new(AtomicUsize::new(0)),
+            credential_registry: credentials,
         };
 
         let mut proto = HyperlightSandboxBuilder::new()

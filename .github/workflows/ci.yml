@@ -87,6 +87,15 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           sudo chmod 666 /dev/kvm
 
+      - name: Check WIT artifact is in sync with .wit source
+        # sandbox-world.wasm is the compiled WIT used by host_bindgen!. It
+        # is consumed by transitive deps (hyperlight-wasm-runtime) before
+        # our crate's build scripts run, so it must live in git. Detect any
+        # drift between the committed artifact and the .wit source.
+        run: |
+          just wasm guest-compile-wit
+          git diff --exit-code -- src/wasm_sandbox/wit/sandbox-world.wasm
+
       - name: Build
         run: just wasm build
 

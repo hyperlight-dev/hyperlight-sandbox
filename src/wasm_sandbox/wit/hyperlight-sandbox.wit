@@ -35,6 +35,7 @@ world root {
   import wasi:http/types@0.2.0;
   import wasi:http/outgoing-handler@0.2.0;
   import hyperlight:sandbox/tools;
+  import hyperlight:sandbox/credentials;
 
   export hyperlight:sandbox/executor;
 }
@@ -54,9 +55,54 @@ package hyperlight:sandbox {
     dispatch: func(name: string, args-json: string) -> result<string, string>;
   }
 
+  /// Scoped credential injection for outgoing HTTP requests.
+  ///
+  /// A credential is registered host-side with:
+  ///   * a name (opaque string the guest uses to reference it),
+  ///   * a target scope (URL prefix the credential is bound to),
+  ///   * a header name + value prefix,
+  ///   * a resolver callback that produces the secret value.
+  ///
+  /// The guest never sees the secret. It attaches a credential by name to an
+  /// `outgoing-request` before dispatching it through
+  /// `wasi:http/outgoing-handler`. At dispatch time the host:
+  ///   1. resolves the credential value (resolver callback),
+  ///   2. verifies the request URL is within the credential's target scope,
+  ///   3. injects `<header>: <prefix><value>` into the request,
+  ///   4. then proceeds with the normal `allow_domain` network gate.
+  ///
+  /// Both the credential scope check AND the allow_domain check must pass.
+  /// Credential lookup, scope match, resolver errors and unknown credentials
+  /// all surface as the `credential-error` variant. Secret values are never
+  /// included in error messages.
+  interface credentials {
+    use wasi:http/types@0.2.0.{outgoing-request};
+
+    variant credential-error {
+      /// No credential is registered under this name.
+      unknown,
+      /// The request URL does not fall within the credential's target scope.
+      scope-mismatch,
+      /// The host resolver callback failed. The inner string is a
+      /// host-redacted message safe for logging.
+      resolver-failed(string),
+      /// A credential is already attached to this request.
+      already-attached,
+    }
+
+    /// Attach a registered credential to an outgoing-request.
+    /// The host will inject the credential's header at dispatch time.
+    /// Returns ok on success, credential-error on failure.
+    attach: func(
+      request: borrow<outgoing-request>,
+      credential: string,
+    ) -> result<_, credential-error>;
+  }
+
   /// Minimal world for guests that bring their own WASI shim (e.g. ComponentizeJS).
   world sandbox {
     import tools;
+    import credentials;
     import wasi:filesystem/types@0.2.0;
     import wasi:filesystem/preopens@0.2.0;
     import wasi:http/types@0.2.0;

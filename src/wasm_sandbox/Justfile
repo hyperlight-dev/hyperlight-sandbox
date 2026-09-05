@@ -30,6 +30,13 @@ guest-build-wasm: ensure-tools
 
 guest-compile-wit: ensure-tools
     wasm-tools component wit {{repo-root}}/src/wasm_sandbox/wit/hyperlight-sandbox.wit -w -o {{repo-root}}/src/wasm_sandbox/wit/sandbox-world.wasm
+    # Strip the `producers` custom section: it embeds the wit-component/wasm-tools
+    # version string (e.g. 0.248.0 vs 0.252.0), which is the ONLY thing that differs
+    # between tool versions. Removing it makes the committed artifact byte-stable, so
+    # the CI drift check (just wasm guest-compile-wit + git diff) no longer flaps on a
+    # wasm-tools bump or a contributor's differing local version. wasm-tools buffers
+    # the whole module, so the in-place -o is safe.
+    wasm-tools strip -d producers {{repo-root}}/src/wasm_sandbox/wit/sandbox-world.wasm -o {{repo-root}}/src/wasm_sandbox/wit/sandbox-world.wasm
 
 # Invalidate cargo caches that embed the WIT signature.
 # Without this, cargo won't detect that sandbox-world.wasm changed
@@ -53,14 +60,38 @@ invalidate-wit-caches:
     -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/release/build/hyperlight-wasm-*
     -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target/release/.fingerprint/hyperlight-wasm-*
 
-# Only clean when rust-cache left stale state (fingerprints exist but runtime binary missing).
+# Clean stale hyperlight-wasm caches when ANY of:
+#   1. fingerprints exist but the guest runtime binary is missing (rust-cache restored
+#      .fingerprint/ without the corresponding target/hyperlight-wasm-runtime/ output), OR
+#   2. the WIT source file is newer than the cached host bindings/fingerprints.
+#      hyperlight-wasm-sandbox calls `hyperlight_component_macro::host_bindgen!("wit/sandbox-world.wasm")`
+#      at compile time. Proc-macros cannot emit `cargo:rerun-if-changed`, so when the WIT
+#      changes cargo doesn't notice and the SDKs fail at runtime with
+#      "Host function vector parameter missing length".
 [unix]
 _clean-stale-wasm:
     #!/usr/bin/env bash
+    wit_src="{{repo-root}}/src/wasm_sandbox/wit/hyperlight-sandbox.wit"
     for profile in debug release; do
-        if compgen -G "{{repo-root}}/target/$profile/build/hyperlight-wasm-*" > /dev/null && \
-           [ ! -f "{{repo-root}}/target/hyperlight-wasm-runtime/x86_64-hyperlight-none/$profile/hyperlight-wasm-runtime" ]; then
-            echo "Cleaning stale hyperlight-wasm $profile build artifacts..."
+        if ! compgen -G "{{repo-root}}/target/$profile/build/hyperlight-wasm-*" > /dev/null; then
+            continue
+        fi
+        reason=""
+        runtime="{{repo-root}}/target/hyperlight-wasm-runtime/x86_64-hyperlight-none/$profile/hyperlight-wasm-runtime"
+        if [ ! -f "$runtime" ]; then
+            reason="runtime binary missing"
+        elif [ -f "$wit_src" ]; then
+            for fp in "{{repo-root}}/target/$profile/.fingerprint/hyperlight-wasm-"* \
+                      "{{repo-root}}/target/$profile/.fingerprint/hyperlight-host-"*; do
+                [ -e "$fp" ] || continue
+                if [ "$wit_src" -nt "$fp" ]; then
+                    reason="WIT source newer than cached host bindings"
+                    break
+                fi
+            done
+        fi
+        if [ -n "$reason" ]; then
+            echo "Cleaning stale hyperlight-wasm $profile build artifacts ($reason)..."
             rm -rf {{repo-root}}/target/hyperlight-wasm-runtime {{repo-root}}/target/hls \
                    {{repo-root}}/target/*/build/hyperlight-wasm-* {{repo-root}}/target/*/.fingerprint/hyperlight-wasm-* \
                    {{repo-root}}/target/*/build/hyperlight-host-* {{repo-root}}/target/*/.fingerprint/hyperlight-host-* \
@@ -73,12 +104,26 @@ _clean-stale-wasm:
 
 [windows]
 _clean-stale-wasm:
+    $witSrc = '{{repo-root}}/src/wasm_sandbox/wit/hyperlight-sandbox.wit'; \
+    $witMtime = if (Test-Path $witSrc) { (Get-Item $witSrc).LastWriteTimeUtc } else { $null }; \
     foreach ($profile in @('debug', 'release')) { \
+        $fpDir = '{{repo-root}}/target/' + $profile + '/.fingerprint'; \
         $bp = '{{repo-root}}/target/' + $profile + '/build'; \
         $rp = '{{repo-root}}/target/hyperlight-wasm-runtime/x86_64-hyperlight-none/' + $profile + '/hyperlight-wasm-runtime'; \
-        if ((Get-ChildItem -Path $bp -Filter 'hyperlight-wasm-*' -ErrorAction SilentlyContinue) -and \
-            -not (Test-Path $rp)) { \
-            Write-Host ('Cleaning stale hyperlight-wasm ' + $profile + ' build artifacts...'); \
+        $hlwBuild = @(Get-ChildItem -Path $bp -Filter 'hyperlight-wasm-*' -ErrorAction SilentlyContinue); \
+        if ($hlwBuild.Count -eq 0) { continue }; \
+        $reason = $null; \
+        if (-not (Test-Path $rp)) { \
+            $reason = 'runtime binary missing'; \
+        } elseif ($witMtime) { \
+            $hostFps = @(Get-ChildItem -Path $fpDir -Filter 'hyperlight-wasm-*' -ErrorAction SilentlyContinue) + \
+                       @(Get-ChildItem -Path $fpDir -Filter 'hyperlight-host-*' -ErrorAction SilentlyContinue); \
+            foreach ($fp in $hostFps) { \
+                if ($witMtime -gt $fp.LastWriteTimeUtc) { $reason = 'WIT source newer than cached host bindings'; break }; \
+            }; \
+        }; \
+        if ($reason) { \
+            Write-Host ('Cleaning stale hyperlight-wasm ' + $profile + ' build artifacts (' + $reason + ')...'); \
             Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '{{repo-root}}/target/hyperlight-wasm-runtime','{{repo-root}}/target/hls'; \
             foreach ($t in @('{{repo-root}}/target', '{{repo-root}}/src/sdk/python/wasm_backend/target')) { \
                 foreach ($p in @('debug', 'release')) { \
@@ -91,7 +136,8 @@ _clean-stale-wasm:
             }; \
             break; \
         } \
-    }
+    }; \
+    exit 0
 
 guest-build-aot target=default-target: guest-build-wasm ensure-tools
     hyperlight-wasm-aot compile --component \

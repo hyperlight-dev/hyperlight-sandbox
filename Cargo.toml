@@ -15,11 +15,14 @@ version = "0.6.0"
 edition = "2024"
 rust-version = "1.94"
 license = "Apache-2.0"
+repository = "https://github.com/hyperlight-dev/hyperlight-sandbox"
+keywords = ["hyperlight", "isolation", "sandbox", "wasm"]
+categories = ["virtualization"]
 
 [workspace.dependencies]
-hyperlight-sandbox = { path = "src/hyperlight_sandbox" }
-hyperlight-javascript-sandbox = { path = "src/javascript_sandbox" }
-hyperlight-wasm-sandbox = { path = "src/wasm_sandbox" }
+hyperlight-sandbox = { version = "0.6.0", path = "src/hyperlight_sandbox" }
+hyperlight-javascript-sandbox = { version = "0.6.0", path = "src/javascript_sandbox" }
+hyperlight-wasm-sandbox = { version = "0.6.0", path = "src/wasm_sandbox" }
 hyperlight-sandbox-pyo3-common = { path = "src/sdk/python/pyo3_common" }
 hyperlight-common = { version = "0.17.0", default-features = false }
 hyperlight-component-macro = "0.17.0"

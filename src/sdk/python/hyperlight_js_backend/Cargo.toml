@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "HyperlightJS backend bindings for hyperlight-sandbox"
+publish = false
 
 [lib]
 name = "_native_js"

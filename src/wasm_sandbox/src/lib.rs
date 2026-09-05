@@ -19,7 +19,7 @@ mod wasi_impl;
 type HostBindings = hyperlight_common::component::Negative;
 
 pub(crate) mod bindings {
-    hyperlight_component_macro::host_bindgen!("wit/sandbox-world.wasm");
+    hyperlight_component_macro::host_bindgen!(wit: "wit/hyperlight-sandbox.wit");
 }
 
 #[derive(Debug, Clone, Copy, Default)]

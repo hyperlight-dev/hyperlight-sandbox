@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Shared PyO3 helpers for hyperlight-sandbox backend crates"
+publish = false
 
 [dependencies]
 pyo3.workspace = true

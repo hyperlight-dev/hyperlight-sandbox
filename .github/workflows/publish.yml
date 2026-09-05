@@ -1,4 +1,4 @@
-name: Publish Python SDK & .NET SDK
+name: Publish Rust crates, Python SDK & .NET SDK
 
 on:
   push:
@@ -12,6 +12,7 @@ on:
         type: choice
         options:
           - all
+          - rust
           - python
           - dotnet
         default: all
@@ -20,6 +21,29 @@ permissions:
   contents: read
 
 jobs:
+  # Publish public Rust crates in workspace dependency order.
+  rust-publish:
+    if: ${{ !github.event.act && (github.event_name != 'workflow_dispatch' || inputs.publish_target == 'all' || inputs.publish_target == 'rust') }}
+    name: Publish Rust crates
+    runs-on: ubuntu-latest
+    environment:
+      name: crates-io
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659  # v1.17.0
+        with:
+          cache-key: release
+          rustflags: ""
+
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          cargo publish --locked -p hyperlight-sandbox
+          cargo publish --locked -p hyperlight-wasm-sandbox
+          cargo publish --locked -p hyperlight-javascript-sandbox
+
   # Build all Python packages on Linux for glibc 2.28 and newer.
   build-linux:
     if: ${{ !github.event.act && (github.event_name != 'workflow_dispatch' || inputs.publish_target == 'all' || inputs.publish_target == 'python') }}

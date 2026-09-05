@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Wasm backend bindings for hyperlight-sandbox"
+publish = false
 
 [lib]
 name = "_native_wasm"

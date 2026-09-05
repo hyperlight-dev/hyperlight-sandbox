@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "C-compatible FFI layer for the hyperlight-sandbox .NET SDK"
+publish = false
 
 [lib]
 # cdylib for the .NET P/Invoke shared library.

@@ -186,6 +186,8 @@ impl
         len: u64,
     ) -> HlResult<Result<(), streams::StreamError<anyhow::Error>>> {
         if len > MAX_ALLOC_BYTES {
+            let mut guard = self_.write().block_on();
+            guard.close();
             return Err(streams::StreamError::LastOperationFailed(anyhow::anyhow!(
                 "write-zeroes request exceeds operation limit ({len} > {MAX_ALLOC_BYTES})"
             )));
@@ -199,6 +201,8 @@ impl
         len: u64,
     ) -> HlResult<Result<(), streams::StreamError<anyhow::Error>>> {
         if len > MAX_ALLOC_BYTES {
+            let mut guard = self_.write().block_on();
+            guard.close();
             return Err(streams::StreamError::LastOperationFailed(anyhow::anyhow!(
                 "write-zeroes request exceeds operation limit ({len} > {MAX_ALLOC_BYTES})"
             )));

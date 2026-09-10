@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
 use hyperlight_sandbox::{
-    DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, HttpMethod, Sandbox,
-    SandboxBuilder, SandboxConfig,
+    DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, FilesystemLimits, HttpMethod,
+    Sandbox, SandboxBuilder, SandboxConfig,
 };
 use hyperlight_sandbox_pyo3_common::{
-    PyExecutionResult, build_tool_registry, parse_size, parse_tool_registration,
+    PyExecutionResult, build_tool_registry, parse_filesystem_limits, parse_size,
+    parse_tool_registration,
 };
 use hyperlight_wasm_sandbox::Wasm;
 use pyo3::exceptions::PyRuntimeError;
@@ -30,12 +31,13 @@ pub struct WasmSandbox {
     input_dir: Option<String>,
     output_dir: Option<String>,
     temp_output: bool,
+    filesystem_limits: Option<FilesystemLimits>,
 }
 
 #[pymethods]
 impl WasmSandbox {
     #[new]
-    #[pyo3(signature = (module_path, input_dir=None, output_dir=None, temp_output=false, heap_size=None, stack_size=None))]
+    #[pyo3(signature = (module_path, input_dir=None, output_dir=None, temp_output=false, heap_size=None, stack_size=None, filesystem_limits=None, max_file_size=None, max_total_size=None, max_file_count=None))]
     fn new(
         module_path: &str,
         input_dir: Option<&str>,
@@ -43,6 +45,10 @@ impl WasmSandbox {
         temp_output: bool,
         heap_size: Option<&str>,
         stack_size: Option<&str>,
+        filesystem_limits: Option<&str>,
+        max_file_size: Option<&str>,
+        max_total_size: Option<&str>,
+        max_file_count: Option<usize>,
     ) -> PyResult<Self> {
         Ok(WasmSandbox {
             inner: None,
@@ -62,6 +68,12 @@ impl WasmSandbox {
             input_dir: input_dir.map(|s| s.to_string()),
             output_dir: output_dir.map(|s| s.to_string()),
             temp_output,
+            filesystem_limits: parse_filesystem_limits(
+                filesystem_limits,
+                max_file_size,
+                max_total_size,
+                max_file_count,
+            )?,
         })
     }
 
@@ -93,6 +105,9 @@ impl WasmSandbox {
                 .stack_size(self.config.stack_size)
                 .with_tools(registry)
                 .guest(Wasm);
+            if let Some(limits) = self.filesystem_limits {
+                builder = builder.filesystem_limits(limits);
+            }
             if let Some(ref dir) = self.input_dir {
                 builder = builder.input_dir(dir);
             }

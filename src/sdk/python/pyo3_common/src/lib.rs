@@ -1,10 +1,14 @@
-use hyperlight_sandbox::{ArgType, ToolRegistry, ToolSchema};
-use pyo3::exceptions::{PyRuntimeError, PyTypeError};
+use hyperlight_sandbox::{ArgType, FilesystemLimits, ToolRegistry, ToolSchema};
+use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyModule};
 
 /// Convert a human-readable size string (e.g. `"200Mi"`) to bytes.
 pub fn parse_size(size: &str) -> PyResult<u64> {
+    parse_size_value(size).map_err(PyRuntimeError::new_err)
+}
+
+fn parse_size_value(size: &str) -> Result<u64, String> {
     let size = size.trim();
     let (value, multiplier) = if let Some(value) = size.strip_suffix("Gi") {
         (value, 1024u64.pow(3))
@@ -15,12 +19,65 @@ pub fn parse_size(size: &str) -> PyResult<u64> {
     } else {
         (size, 1)
     };
-    let parsed: u64 = value
-        .parse()
-        .map_err(|e| PyRuntimeError::new_err(format!("invalid size: {e}")))?;
+    let parsed: u64 = value.parse().map_err(|e| format!("invalid size: {e}"))?;
     parsed
         .checked_mul(multiplier)
-        .ok_or_else(|| PyRuntimeError::new_err("invalid size: value is too large"))
+        .ok_or_else(|| "invalid size: value is too large".to_string())
+}
+
+/// Parse the Python filesystem quota arguments into an optional builder override.
+///
+/// Returning `None` preserves the builder's balanced default limits.
+pub fn parse_filesystem_limits(
+    filesystem_limits: Option<&str>,
+    max_file_size: Option<&str>,
+    max_total_size: Option<&str>,
+    max_file_count: Option<usize>,
+) -> PyResult<Option<FilesystemLimits>> {
+    let has_numeric_override =
+        max_file_size.is_some() || max_total_size.is_some() || max_file_count.is_some();
+
+    if let Some(mode) = filesystem_limits {
+        if mode != "unlimited" {
+            return Err(PyValueError::new_err(
+                "filesystem_limits must be 'unlimited' when provided",
+            ));
+        }
+        if has_numeric_override {
+            return Err(PyValueError::new_err(
+                "filesystem_limits='unlimited' cannot be combined with max_file_size, \
+                 max_total_size, or max_file_count",
+            ));
+        }
+        return Ok(Some(FilesystemLimits::unlimited()));
+    }
+
+    if !has_numeric_override {
+        return Ok(None);
+    }
+
+    let defaults = FilesystemLimits::default();
+    let max_file_size = match max_file_size {
+        Some(size) => parse_size_value(size).map_err(PyValueError::new_err)?,
+        None => defaults
+            .max_file_size()
+            .expect("default file size is limited"),
+    };
+    let max_total_size = match max_total_size {
+        Some(size) => parse_size_value(size).map_err(PyValueError::new_err)?,
+        None => defaults
+            .max_total_size()
+            .expect("default total size is limited"),
+    };
+    let max_file_count = max_file_count.unwrap_or_else(|| {
+        defaults
+            .max_file_count()
+            .expect("default file count is limited")
+    });
+
+    FilesystemLimits::new(max_file_size, max_total_size, max_file_count)
+        .map(Some)
+        .map_err(|e| PyValueError::new_err(format!("invalid filesystem limits: {e}")))
 }
 
 /// Wrap an SDK-style tool object (with `.handler` and `.name`) into a plain `**kwargs` callable.
@@ -454,5 +511,20 @@ pub fn parse_tool_registration(
             PyTypeError::new_err("register_tool() expects (name, callable) or a Tool object")
         })?;
         Ok((name, cb))
+    }
+}
+
+#[cfg(test)]
+mod filesystem_limit_tests {
+    use super::*;
+
+    #[test]
+    fn malformed_size_is_rejected() {
+        assert!(parse_size_value("invalid").is_err());
+    }
+
+    #[test]
+    fn overflowing_size_is_rejected() {
+        assert!(parse_size_value("18446744073709551615Gi").is_err());
     }
 }

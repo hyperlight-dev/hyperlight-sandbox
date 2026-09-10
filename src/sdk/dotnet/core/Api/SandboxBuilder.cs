@@ -27,6 +27,7 @@ public sealed class SandboxBuilder
     private string? _inputDir;
     private string? _outputDir;
     private bool _tempOutput;
+    private FilesystemLimitsConfiguration? _filesystemLimits;
     private SandboxBackend _backend = SandboxBackend.Wasm;
 
     /// <summary>
@@ -146,6 +147,74 @@ public sealed class SandboxBuilder
     }
 
     /// <summary>
+    /// Sets finite logical resource limits for the writable filesystem.
+    /// </summary>
+    /// <param name="maxFileSize">
+    /// Maximum logical size of one file, such as <c>"64Mi"</c>, or raw bytes
+    /// as a string.
+    /// </param>
+    /// <param name="maxTotalSize">
+    /// Maximum combined logical size of all files, such as <c>"256Mi"</c>,
+    /// or raw bytes as a string.
+    /// </param>
+    /// <param name="maxFileCount">Maximum number of files.</param>
+    /// <returns>This builder for chaining.</returns>
+    /// <remarks>
+    /// A value of zero is a real finite limit. Calling this method replaces
+    /// any filesystem policy previously configured on this builder.
+    /// </remarks>
+    public SandboxBuilder WithFilesystemLimits(
+        string maxFileSize,
+        string maxTotalSize,
+        ulong maxFileCount)
+    {
+        return WithFilesystemLimits(
+            SizeParser.Parse(maxFileSize),
+            SizeParser.Parse(maxTotalSize),
+            maxFileCount);
+    }
+
+    /// <summary>
+    /// Sets finite logical resource limits for the writable filesystem.
+    /// </summary>
+    /// <param name="maxFileSize">Maximum logical size of one file, in bytes.</param>
+    /// <param name="maxTotalSize">
+    /// Maximum combined logical size of all files, in bytes.
+    /// </param>
+    /// <param name="maxFileCount">Maximum number of files.</param>
+    /// <returns>This builder for chaining.</returns>
+    /// <remarks>
+    /// A value of zero is a real finite limit. Calling this method replaces
+    /// any filesystem policy previously configured on this builder.
+    /// </remarks>
+    public SandboxBuilder WithFilesystemLimits(
+        ulong maxFileSize,
+        ulong maxTotalSize,
+        ulong maxFileCount)
+    {
+        _filesystemLimits = FilesystemLimitsConfiguration.Finite(
+            maxFileSize,
+            maxTotalSize,
+            maxFileCount);
+        return this;
+    }
+
+    /// <summary>
+    /// Removes all logical size and file-count limits from the writable
+    /// filesystem.
+    /// </summary>
+    /// <returns>This builder for chaining.</returns>
+    /// <remarks>
+    /// Calling this method replaces any filesystem policy previously
+    /// configured on this builder.
+    /// </remarks>
+    public SandboxBuilder WithUnlimitedFilesystemLimits()
+    {
+        _filesystemLimits = FilesystemLimitsConfiguration.Unlimited;
+        return this;
+    }
+
+    /// <summary>
     /// Creates a new <see cref="Sandbox"/> with the configured settings.
     /// </summary>
     /// <returns>A new sandbox instance.</returns>
@@ -176,6 +245,29 @@ public sealed class SandboxBuilder
             _inputDir,
             _outputDir,
             _tempOutput,
+            _filesystemLimits,
             _backend);
     }
+}
+
+internal readonly record struct FilesystemLimitsConfiguration(
+    FilesystemLimitsMode Mode,
+    ulong MaxFileSize,
+    ulong MaxTotalSize,
+    ulong MaxFileCount)
+{
+    internal static FilesystemLimitsConfiguration Finite(
+        ulong maxFileSize,
+        ulong maxTotalSize,
+        ulong maxFileCount)
+        => new(FilesystemLimitsMode.Finite, maxFileSize, maxTotalSize, maxFileCount);
+
+    internal static FilesystemLimitsConfiguration Unlimited =>
+        new(FilesystemLimitsMode.Unlimited, 0, 0, 0);
+}
+
+internal enum FilesystemLimitsMode : uint
+{
+    Finite = 0,
+    Unlimited = 1,
 }

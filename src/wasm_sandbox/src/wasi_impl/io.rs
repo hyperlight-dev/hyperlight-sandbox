@@ -155,7 +155,7 @@ impl
         self_: BorrowedResourceGuard<Resource<Stream>>,
         contents: Vec<u8>,
     ) -> HlResult<Result<(), streams::StreamError<anyhow::Error>>> {
-        let mut guard = self_.write_wait_until(Stream::writable).block_on();
+        let mut guard = self_.write_wait_until(Stream::write_ready).block_on();
         guard.write(&contents)?;
         guard.flush()?;
         Ok(())
@@ -178,7 +178,7 @@ impl
         &mut self,
         self_: BorrowedResourceGuard<Resource<Stream>>,
     ) -> HlResult<Resource<AnyPollable>> {
-        self_.poll(|b| b.writable())
+        self_.poll(|b| b.write_ready())
     }
     fn write_zeroes(
         &mut self,
@@ -225,7 +225,7 @@ impl
         src: BorrowedResourceGuard<Resource<Stream>>,
         len: u64,
     ) -> HlResult<Result<u64, streams::StreamError<anyhow::Error>>> {
-        let mut dst_guard = self_.write_wait_until(Stream::writable).block_on();
+        let mut dst_guard = self_.write_wait_until(Stream::write_ready).block_on();
         let mut src_guard = src.write_wait_until(Stream::readable).block_on();
         let len = usize::try_from(len).unwrap_or(usize::MAX);
         dst_guard.splice(&mut src_guard, len).map(|n| n as u64)

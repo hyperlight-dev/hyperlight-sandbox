@@ -55,7 +55,14 @@ impl Stream {
                 }
                 if buf.writable() { Ok(4096) } else { Ok(0) }
             }
-            StreamKind::CapFs { .. } => Ok(65536),
+            StreamKind::CapFs { stream_id, fs } => {
+                let cap_fs = fs.lock().map_err(|_| BufferClosed)?;
+                if cap_fs.has_stream(*stream_id) && cap_fs.is_write_stream(*stream_id) {
+                    Ok(65536)
+                } else {
+                    Err(BufferClosed)
+                }
+            }
         }
     }
 
@@ -67,10 +74,13 @@ impl Stream {
                     return Err(StreamError::Closed);
                 };
                 if cap_fs.has_stream(*stream_id) && cap_fs.is_write_stream(*stream_id) {
-                    cap_fs
-                        .stream_write(*stream_id, data.as_ref())
-                        .map(|_| ())
-                        .map_err(filesystem_error)
+                    match cap_fs.stream_write(*stream_id, data.as_ref()) {
+                        Ok(_) => Ok(()),
+                        Err(error) => {
+                            cap_fs.close_stream(*stream_id);
+                            Err(filesystem_error(error))
+                        }
+                    }
                 } else {
                     Err(StreamError::Closed)
                 }
@@ -79,7 +89,25 @@ impl Stream {
     }
 
     pub fn flush(&mut self) -> Result<(), StreamError> {
-        Ok(())
+        match &self.kind {
+            StreamKind::Buffer(buf) => {
+                if buf.is_closed() {
+                    Err(StreamError::Closed)
+                } else {
+                    Ok(())
+                }
+            }
+            StreamKind::CapFs { stream_id, fs } => {
+                let Ok(cap_fs) = fs.lock() else {
+                    return Err(StreamError::Closed);
+                };
+                if cap_fs.has_stream(*stream_id) && cap_fs.is_write_stream(*stream_id) {
+                    Ok(())
+                } else {
+                    Err(StreamError::Closed)
+                }
+            }
+        }
     }
 
     pub fn splice(&mut self, src: &mut Stream, len: usize) -> Result<usize, StreamError> {
@@ -120,14 +148,14 @@ impl Stream {
         }
     }
 
-    pub fn writable(&self) -> bool {
+    pub fn write_ready(&self) -> bool {
         match &self.kind {
-            StreamKind::Buffer(buf) => buf.writable(),
+            StreamKind::Buffer(buf) => buf.is_closed() || buf.writable(),
             StreamKind::CapFs { stream_id, fs } => {
                 let Ok(cap_fs) = fs.lock() else {
-                    return false;
+                    return true;
                 };
-                cap_fs.has_stream(*stream_id) && cap_fs.is_write_stream(*stream_id)
+                !cap_fs.has_stream(*stream_id) || cap_fs.is_write_stream(*stream_id)
             }
         }
     }
@@ -151,5 +179,46 @@ impl Stream {
             StreamKind::Buffer(buf) => buf.take_data(),
             StreamKind::CapFs { .. } => std::collections::VecDeque::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use hyperlight_sandbox::{DirPerms, FilePerms, FilesystemLimits, OpenFlags};
+
+    use super::*;
+
+    #[test]
+    fn filesystem_write_failure_closes_output_stream() {
+        let output = tempfile::tempdir().unwrap();
+        let mut cap_fs = CapFs::with_limits(FilesystemLimits::new(4, 4, 1).unwrap())
+            .with_output_dir(
+                output.path(),
+                DirPerms::READ | DirPerms::MUTATE,
+                FilePerms::READ | FilePerms::WRITE,
+            )
+            .unwrap();
+        let output_fd = cap_fs
+            .preopens()
+            .into_iter()
+            .find_map(|(fd, name)| (name == "/output").then_some(fd))
+            .unwrap();
+        let file_fd = cap_fs
+            .open_at(output_fd, "limited.bin", OpenFlags::CREATE)
+            .unwrap();
+        let stream_id = cap_fs.create_write_stream(file_fd, 0).unwrap();
+        let cap_fs = Arc::new(Mutex::new(cap_fs));
+        let mut stream = Stream::from_cap_fs(stream_id, cap_fs.clone());
+
+        assert!(matches!(stream.check_write(), Ok(65536)));
+        assert!(matches!(
+            stream.write(b"abcde"),
+            Err(StreamError::LastOperationFailed(_))
+        ));
+        assert!(!cap_fs.lock().unwrap().has_stream(stream_id));
+        assert!(stream.write_ready());
+        assert!(stream.check_write().is_err());
+        assert!(matches!(stream.write(b"x"), Err(StreamError::Closed)));
+        assert!(matches!(stream.flush(), Err(StreamError::Closed)));
     }
 }

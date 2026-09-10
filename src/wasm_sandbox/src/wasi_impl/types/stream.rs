@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use hyperlight_sandbox::CapFs;
+use hyperlight_sandbox::{CapFs, FsError};
 
 use super::buffer::{Buffer, BufferClosed};
 use crate::bindings::wasi;
@@ -30,6 +30,12 @@ impl<E> From<BufferClosed> for wasi::io::streams::StreamError<E> {
     }
 }
 
+type StreamError = wasi::io::streams::StreamError<anyhow::Error>;
+
+fn filesystem_error(error: FsError) -> StreamError {
+    StreamError::LastOperationFailed(anyhow::Error::new(error))
+}
+
 impl Stream {
     pub fn new() -> Self {
         Self::default()
@@ -53,33 +59,33 @@ impl Stream {
         }
     }
 
-    pub fn write(&mut self, data: impl AsRef<[u8]>) -> Result<(), BufferClosed> {
+    pub fn write(&mut self, data: impl AsRef<[u8]>) -> Result<(), StreamError> {
         match &mut self.kind {
-            StreamKind::Buffer(buf) => buf.write(data),
+            StreamKind::Buffer(buf) => buf.write(data).map_err(Into::into),
             StreamKind::CapFs { stream_id, fs } => {
                 let Ok(mut cap_fs) = fs.lock() else {
-                    return Err(BufferClosed);
+                    return Err(StreamError::Closed);
                 };
                 if cap_fs.has_stream(*stream_id) && cap_fs.is_write_stream(*stream_id) {
                     cap_fs
                         .stream_write(*stream_id, data.as_ref())
                         .map(|_| ())
-                        .map_err(|_| BufferClosed)
+                        .map_err(filesystem_error)
                 } else {
-                    Err(BufferClosed)
+                    Err(StreamError::Closed)
                 }
             }
         }
     }
 
-    pub fn flush(&mut self) -> Result<(), BufferClosed> {
+    pub fn flush(&mut self) -> Result<(), StreamError> {
         Ok(())
     }
 
-    pub fn splice(&mut self, src: &mut Stream, len: usize) -> Result<usize, BufferClosed> {
-        let n = self.check_write()? as usize;
+    pub fn splice(&mut self, src: &mut Stream, len: usize) -> Result<usize, StreamError> {
+        let n = self.check_write().map_err(StreamError::from)? as usize;
         let n = n.min(len);
-        let data = src.read(n)?;
+        let data = src.read(n).map_err(StreamError::from)?;
         self.write(&data)?;
         Ok(data.len())
     }

@@ -23,6 +23,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros"]
 url = "2"
 wasmtime-wasi-http = "44.0.2"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
 [dev-dependencies]
 futures-util = "0.3"
 http-body = "1"

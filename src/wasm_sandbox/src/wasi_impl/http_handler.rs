@@ -83,6 +83,67 @@ impl
             }
         };
 
+        // -----------------------------------------------------------------
+        // Scoped credential — scope check & token resolution.
+        //
+        // If a credential is attached to this request, verify that the
+        // request URL falls within the credential's target scope and
+        // resolve the token now so we can inject the header later.
+        //
+        // Scope is enforced BEFORE the network permission check so a
+        // mis-scoped credential is rejected immediately with a clear
+        // error rather than leaking through to the allow-list gate.
+        //
+        // The credential-registry mutex is dropped before the resolver
+        // is invoked — resolvers may perform slow I/O (e.g. an IMDS
+        // round-trip on cache miss) and we do not want to serialise
+        // unrelated credentialed requests behind one slow resolver.
+        // -----------------------------------------------------------------
+        let credential_header: Option<(String, String)> =
+            if let Some(ref cred_id) = request_data.attached_credential {
+                let entry = {
+                    let registry = self.credential_registry.lock().map_err(|_| {
+                        HyperlightError::Error("credential registry mutex poisoned".to_string())
+                    })?;
+                    match registry.get(cred_id) {
+                        Some(e) => e.clone(),
+                        // Defensive: attach() validated this, but the registry
+                        // could have been cleared between attach and dispatch.
+                        None => {
+                            return Ok(Err(ErrorCode::InternalError(Some(
+                                "attached credential not found in registry".to_string(),
+                            ))));
+                        }
+                    }
+                };
+
+                // Scope check: request URL must start with the
+                // credential's target prefix.
+                if !request_url.as_str().starts_with(&entry.target) {
+                    return Ok(Err(ErrorCode::HTTPRequestDenied));
+                }
+
+                // Resolve the token by invoking the registered
+                // callback.  The resolver returns the literal secret
+                // value on success; on failure we surface a fixed,
+                // host-redacted message so the guest never sees the
+                // resolver's diagnostic text (which could contain
+                // secret material).
+                let token = match (entry.resolver)() {
+                    Ok(t) => t,
+                    Err(_diag) => {
+                        return Ok(Err(ErrorCode::InternalError(Some(
+                            "credential resolver failed".to_string(),
+                        ))));
+                    }
+                };
+
+                let header_value = format!("{}{}", entry.prefix, token);
+                Some((entry.header.clone(), header_value))
+            } else {
+                None
+            };
+
         {
             let Ok(network) = self.network.lock() else {
                 return Err(ErrorCode::HTTPRequestDenied);
@@ -103,7 +164,7 @@ impl
         let active_requests = self.active_requests.clone();
 
         // Collect guest headers eagerly in sync context.
-        let guest_headers: Vec<(String, String)> = request_data
+        let mut guest_headers: Vec<(String, String)> = request_data
             .headers
             .read()
             .block_on()
@@ -111,6 +172,14 @@ impl
             .into_iter()
             .map(|(k, v)| (k, String::from_utf8_lossy(&v).into_owned()))
             .collect();
+
+        // Inject the credential header, replacing any guest-set header
+        // with the same name so the guest cannot override the
+        // host-injected token.
+        if let Some((ref name, ref value)) = credential_header {
+            guest_headers.retain(|(k, _)| !k.eq_ignore_ascii_case(name));
+            guest_headers.push((name.clone(), value.clone()));
+        }
 
         let future_response = Resource::new(FutureIncomingResponse::default());
         let future_response_clone = future_response.clone();

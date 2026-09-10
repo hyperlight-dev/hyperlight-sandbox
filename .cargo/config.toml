@@ -1,0 +1,16 @@
+# WIT_WORLD is consumed at COMPILE time by:
+#   - hyperlight_wasm_macro (proc-macro)         -> std::env::var_os("WIT_WORLD").unwrap()
+#   - hyperlight_wasm/build.rs                   -> rerun-if-env-changed=WIT_WORLD
+#   - hyperlight_wasm_runtime/build.rs           -> emits cfg(component) IFF WIT_WORLD is set
+#
+# Without it, hyperlight_wasm_runtime falls back to the legacy flatbuffer-based
+# host-function ABI, while hyperlight-wasm-sandbox (built with WIT_WORLD via the
+# proc-macro's host_bindgen!) uses the component-model ABI. Mixing the two yields
+# "GuestError: Host function vector parameter missing length" at sandbox start.
+#
+# `just wasm test` exports WIT_WORLD via its recipe, but bare `cargo` invocations
+# (e.g. from an IDE or a developer running `cargo test --manifest-path ...`)
+# would otherwise miss it. Cargo looks for `.cargo/config.toml` by walking up the
+# CWD tree, so we put it at the repo root to cover every workspace cargo call.
+[env]
+WIT_WORLD = { value = "src/wasm_sandbox/wit/sandbox-world.wasm", relative = true }

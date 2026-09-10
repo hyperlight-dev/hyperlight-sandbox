@@ -92,9 +92,8 @@ pub fn resolve_maybe_coroutine<'py>(
     }
 
     let asyncio = py.import("asyncio")?;
-    match asyncio.call_method1("run", (obj,)) {
-        Ok(result) => return Ok(result.unbind()),
-        Err(_) => {}
+    if let Ok(result) = asyncio.call_method1("run", (obj,)) {
+        return Ok(result.unbind());
     }
 
     let resolver = PyModule::from_code(
@@ -348,20 +347,14 @@ fn infer_type_from_annotation(
     // Handle Annotated[T, ...] — unwrap to get the base type T.
     // typing.get_origin(ann) is typing.Annotated → typing.get_args(ann)[0] is T.
     let py = annotation.py();
-    if let Ok(typing) = py.import("typing") {
-        if let Ok(origin) = typing.call_method1("get_origin", (&annotation,)) {
-            // Check if origin is typing.Annotated (available as typing.Annotated since 3.9+)
-            if let Ok(annotated_type) = typing.getattr("Annotated") {
-                if origin.is(&annotated_type) {
-                    if let Ok(args) = typing.call_method1("get_args", (&annotation,)) {
-                        // args is a tuple; first element is the base type.
-                        if let Ok(base_type) = args.get_item(0) {
-                            return type_obj_to_arg_type(&base_type);
-                        }
-                    }
-                }
-            }
-        }
+    if let Ok(typing) = py.import("typing")
+        && let Ok(origin) = typing.call_method1("get_origin", (&annotation,))
+        && let Ok(annotated_type) = typing.getattr("Annotated")
+        && origin.is(&annotated_type)
+        && let Ok(args) = typing.call_method1("get_args", (&annotation,))
+        && let Ok(base_type) = args.get_item(0)
+    {
+        return type_obj_to_arg_type(&base_type);
     }
 
     None

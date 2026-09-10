@@ -125,6 +125,7 @@ impl Guest for HyperlightJs {
         tools: ToolRegistry,
         network: std::sync::Arc<std::sync::Mutex<NetworkPermissions>>,
         fs: std::sync::Arc<std::sync::Mutex<CapFs>>,
+        _credentials: hyperlight_sandbox::CredentialRegistry,
     ) -> Result<JsGuestSandbox> {
         JsGuestSandbox::new(config, tools, network, fs)
     }

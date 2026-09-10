@@ -11,6 +11,9 @@ pub struct OutgoingRequest {
     pub headers: Resource<Headers>,
     pub body: Resource<OutgoingBody>,
     body_taken: bool,
+    /// Credential identifier bound via `attach()`. Consumed by the
+    /// outgoing-handler dispatch path to inject the resolved token.
+    pub attached_credential: Option<String>,
 }
 
 impl OutgoingRequest {
@@ -23,6 +26,7 @@ impl OutgoingRequest {
             headers,
             body: Resource::default(),
             body_taken: false,
+            attached_credential: None,
         }
     }
 

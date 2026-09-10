@@ -15,6 +15,7 @@ from wit_world.exports.executor import ExecutionResult
 import wit_world.imports.tools as tools
 import wit_world.imports.outgoing_handler as outgoing_handler
 import wit_world.imports.wasi_http_types as http_types
+import wit_world.imports.credentials as credentials
 
 
 def _call_tool(tool_name: str, **kwargs):
@@ -26,17 +27,30 @@ def _call_tool(tool_name: str, **kwargs):
     return json.loads(result_json)
 
 
-def http_get(url: str) -> dict:
-    """Make an HTTP GET request via WASI-HTTP. Returns {"status": int, "body": str}."""
-    return _http_request("GET", url)
+def http_get(url: str, credential: str = None) -> dict:
+    """Make an HTTP GET request via WASI-HTTP. Returns {"status": int, "body": str}.
+
+    If credential is set, attaches the named credential to the request.
+    The host will inject the credential's header at dispatch time — the
+    guest never sees the secret value.
+    """
+    return _http_request("GET", url, credential=credential)
 
 
-def http_post(url: str, body: str = "", content_type: str = "application/json") -> dict:
-    """Make an HTTP POST request via WASI-HTTP. Returns {"status": int, "body": str}."""
-    return _http_request("POST", url, body=body, content_type=content_type)
+def http_post(url: str, body: str = "", content_type: str = "application/json",
+              credential: str = None) -> dict:
+    """Make an HTTP POST request via WASI-HTTP. Returns {"status": int, "body": str}.
+
+    If credential is set, attaches the named credential to the request.
+    The host will inject the credential's header at dispatch time — the
+    guest never sees the secret value.
+    """
+    return _http_request("POST", url, body=body, content_type=content_type,
+                         credential=credential)
 
 
-def _http_request(method: str, url: str, body: str = "", content_type: str = "") -> dict:
+def _http_request(method: str, url: str, body: str = "", content_type: str = "",
+                  credential: str = None) -> dict:
     """Internal: make an HTTP request via WASI-HTTP outgoing-handler."""
     # Parse URL into scheme, authority, path
     scheme_str, rest = url.split("://", 1) if "://" in url else ("https", url)
@@ -80,6 +94,16 @@ def _http_request(method: str, url: str, body: str = "", content_type: str = "")
 
     req.set_authority(authority)
     req.set_path_with_query(path)
+
+    # Attach credential if specified — the host resolves the secret
+    # and injects the header at dispatch time.
+    if credential is not None:
+        try:
+            credentials.attach(req, credential)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to attach credential '{credential}': {e}"
+            ) from e
 
     # Write body if present
     if body:
@@ -138,6 +162,23 @@ def _http_request(method: str, url: str, body: str = "", content_type: str = "")
     return {"status": status, "body": body_text}
 
 
+def attach_credential(request, credential_id: str):
+    """Attach a registered credential to an outgoing-request by name.
+
+    Low-level helper for guests building WASI-HTTP requests manually.
+    Most callers should use the `credential=` kwarg on `http_get`/`http_post`
+    instead.
+
+    Raises RuntimeError if the credential is unknown or already attached.
+    """
+    try:
+        credentials.attach(request, credential_id)
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to attach credential '{credential_id}': {e}"
+        ) from e
+
+
 class Executor:
     """Implements the WIT executor interface for componentize-py.
 
@@ -156,10 +197,10 @@ class Executor:
         and treats ``restore`` (not the next ``run``) as the action
         that makes ``counter`` undefined.
 
-    Host-provided helpers (``call_tool``, ``http_get``, ``http_post``)
-    are seeded once on construction. Guest code may shadow them
-    locally, but the originals are restored by ``snapshot``/``restore``
-    along with the rest of the namespace.
+    Host-provided helpers (``call_tool``, ``http_get``, ``http_post``,
+    ``attach_credential``) are seeded once on construction. Guest code
+    may shadow them locally, but the originals are restored by
+    ``snapshot``/``restore`` along with the rest of the namespace.
     """
 
     def __init__(self) -> None:
@@ -168,6 +209,7 @@ class Executor:
             "call_tool": _call_tool,
             "http_get": http_get,
             "http_post": http_post,
+            "attach_credential": attach_credential,
         }
 
     def run(self, code: str) -> ExecutionResult:

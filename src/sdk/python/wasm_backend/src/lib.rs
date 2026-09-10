@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use hyperlight_sandbox::{
-    DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, HttpMethod, Sandbox,
+    DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, HttpMethod, ResolverFn, Sandbox,
     SandboxBuilder, SandboxConfig,
 };
 use hyperlight_sandbox_pyo3_common::{
@@ -16,6 +17,45 @@ type WasmSnapshotInner = hyperlight_sandbox::Snapshot<<
     <Wasm as hyperlight_sandbox::Guest>::Sandbox as hyperlight_sandbox::GuestSandbox
 >::SnapshotData>;
 
+/// Buffered credential registration for lazy sandbox init.
+struct PendingCredential {
+    id: String,
+    target: String,
+    header: String,
+    prefix: String,
+    resolver: ResolverFn,
+}
+
+/// Wrap a Python callable as a [`ResolverFn`] suitable for storage in
+/// the credential registry.
+///
+/// On each invocation the wrapper re-acquires the Python GIL, calls
+/// the supplied callable with no arguments, and extracts the result
+/// as a Python `str`.  Exceptions are mapped to a redacted Rust error
+/// — only the exception **type name** is surfaced, never the message
+/// (which may contain secret material assembled by user code).
+fn python_callable_to_resolver(callable: Py<PyAny>) -> ResolverFn {
+    Arc::new(move || -> Result<String, String> {
+        Python::attach(|py| {
+            let bound = callable.bind(py);
+            match bound.call0() {
+                Ok(result) => result
+                    .extract::<String>()
+                    .map_err(|_| "credential resolver did not return a str".to_string()),
+                Err(err) => {
+                    let type_name = err
+                        .get_type(py)
+                        .qualname()
+                        .ok()
+                        .and_then(|n| n.extract::<String>().ok())
+                        .unwrap_or_else(|| "Exception".to_string());
+                    Err(format!("python resolver raised {type_name}"))
+                }
+            }
+        })
+    })
+}
+
 #[pyclass]
 pub struct PySnapshot {
     inner: WasmSnapshotInner,
@@ -26,6 +66,7 @@ pub struct WasmSandbox {
     inner: Option<WasmSandboxInner>,
     tools: HashMap<String, Py<PyAny>>,
     pending_networks: Vec<(String, Option<Vec<String>>)>,
+    pending_credentials: Vec<PendingCredential>,
     config: SandboxConfig,
     input_dir: Option<String>,
     output_dir: Option<String>,
@@ -48,6 +89,7 @@ impl WasmSandbox {
             inner: None,
             tools: HashMap::new(),
             pending_networks: Vec::new(),
+            pending_credentials: Vec::new(),
             config: SandboxConfig {
                 module_path: module_path.to_string(),
                 heap_size: match heap_size {
@@ -115,6 +157,19 @@ impl WasmSandbox {
                     .allow_domain(&target, methods)
                     .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
             }
+            for cred in std::mem::take(&mut self.pending_credentials) {
+                sandbox
+                    .register_credential(
+                        cred.id,
+                        hyperlight_sandbox::CredentialEntry {
+                            target: cred.target,
+                            header: cred.header,
+                            prefix: cred.prefix,
+                            resolver: cred.resolver,
+                        },
+                    )
+                    .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+            }
             self.inner = Some(sandbox);
         }
         let sandbox = self.inner.as_mut().unwrap();
@@ -161,6 +216,52 @@ impl WasmSandbox {
         sandbox
             .restore(&snapshot.inner)
             .map_err(|e| PyRuntimeError::new_err(format!("Restore failed: {e}")))?;
+        Ok(())
+    }
+
+    /// Register a scoped credential for outgoing HTTP requests.
+    ///
+    /// Must be called before `run()`. The credential can then be
+    /// attached to individual requests by guest code via WIT `attach`.
+    ///
+    /// `resolver` is a Python callable that takes no arguments and
+    /// returns the secret token as a `str`. It is invoked synchronously
+    /// from the WASI HTTP dispatch path on every credentialed request,
+    /// so it must be fast and thread-safe; long-running token fetches
+    /// should be memoised by the caller.
+    #[pyo3(signature = (id, target, header, prefix, resolver))]
+    fn register_credential(
+        &mut self,
+        id: &str,
+        target: &str,
+        header: &str,
+        prefix: &str,
+        resolver: Py<PyAny>,
+    ) -> PyResult<()> {
+        let resolver_fn = python_callable_to_resolver(resolver);
+        if let Some(sandbox) = self.inner.as_ref() {
+            // Register directly on the live sandbox.
+            sandbox
+                .register_credential(
+                    id,
+                    hyperlight_sandbox::CredentialEntry {
+                        target: target.to_string(),
+                        header: header.to_string(),
+                        prefix: prefix.to_string(),
+                        resolver: resolver_fn,
+                    },
+                )
+                .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        } else {
+            // Buffer for later — will be applied when sandbox initialises.
+            self.pending_credentials.push(PendingCredential {
+                id: id.to_string(),
+                target: target.to_string(),
+                header: header.to_string(),
+                prefix: prefix.to_string(),
+                resolver: resolver_fn,
+            });
+        }
         Ok(())
     }
 

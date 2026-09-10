@@ -3,6 +3,7 @@
 extern crate alloc;
 
 pub mod cap_fs;
+pub mod credentials;
 pub mod http;
 pub mod network;
 pub mod runtime;
@@ -17,6 +18,7 @@ pub use cap_fs::{
     CapFs, DescriptorFlags, DescriptorStat, DescriptorType, Dir, DirPerms, FilePerms, FsError,
     OpenFlags,
 };
+pub use credentials::{CredentialEntry, CredentialRegistry, ResolverFn};
 pub use network::{HttpMethod, MethodFilter, NetworkPermission, NetworkPermissions};
 use serde::{Deserialize, Serialize};
 pub use tools::{ArgType, ToolRegistry, ToolSchema};
@@ -114,6 +116,7 @@ pub trait Guest: Sized {
         tools: ToolRegistry,
         network: std::sync::Arc<std::sync::Mutex<NetworkPermissions>>,
         fs: std::sync::Arc<std::sync::Mutex<CapFs>>,
+        credentials: CredentialRegistry,
     ) -> Result<Self::Sandbox>;
 }
 
@@ -138,6 +141,7 @@ pub struct Sandbox<G: Guest> {
     inner: G::Sandbox,
     network: std::sync::Arc<std::sync::Mutex<NetworkPermissions>>,
     fs: std::sync::Arc<std::sync::Mutex<CapFs>>,
+    credentials: CredentialRegistry,
 }
 
 impl<G: Guest> Sandbox<G> {
@@ -145,8 +149,20 @@ impl<G: Guest> Sandbox<G> {
     pub fn new(guest: G, config: SandboxConfig, tools: ToolRegistry) -> Result<Self> {
         let network = std::sync::Arc::new(std::sync::Mutex::new(NetworkPermissions::new()));
         let fs = std::sync::Arc::new(std::sync::Mutex::new(CapFs::new()));
-        let inner = guest.build(config, tools, network.clone(), fs.clone())?;
-        Ok(Self { inner, network, fs })
+        let credentials = credentials::empty_registry();
+        let inner = guest.build(
+            config,
+            tools,
+            network.clone(),
+            fs.clone(),
+            credentials.clone(),
+        )?;
+        Ok(Self {
+            inner,
+            network,
+            fs,
+            credentials,
+        })
     }
 
     /// Create a sandbox with a read-only input directory.
@@ -159,8 +175,20 @@ impl<G: Guest> Sandbox<G> {
         let network = std::sync::Arc::new(std::sync::Mutex::new(NetworkPermissions::new()));
         let fs = CapFs::new().with_input(input_dir)?;
         let fs = std::sync::Arc::new(std::sync::Mutex::new(fs));
-        let inner = guest.build(config, tools, network.clone(), fs.clone())?;
-        Ok(Self { inner, network, fs })
+        let credentials = credentials::empty_registry();
+        let inner = guest.build(
+            config,
+            tools,
+            network.clone(),
+            fs.clone(),
+            credentials.clone(),
+        )?;
+        Ok(Self {
+            inner,
+            network,
+            fs,
+            credentials,
+        })
     }
 
     /// Execute guest code.
@@ -211,6 +239,24 @@ impl<G: Guest> Sandbox<G> {
             .lock()
             .map_err(|_| anyhow::anyhow!("network mutex poisoned"))?
             .allow_domain(target, methods)
+    }
+
+    /// Register a scoped credential that guests can later `attach` to
+    /// outgoing requests.
+    ///
+    /// Must be called before `run()`. Credentials are immutable once
+    /// registered and persist for the lifetime of the sandbox.
+    pub fn register_credential(&self, id: impl Into<String>, entry: CredentialEntry) -> Result<()> {
+        let id = id.into();
+        let mut registry = self
+            .credentials
+            .lock()
+            .map_err(|_| anyhow::anyhow!("credential registry mutex poisoned"))?;
+        if registry.contains_key(&id) {
+            anyhow::bail!("credential '{}' already registered", id);
+        }
+        registry.insert(id, entry);
+        Ok(())
     }
 }
 
@@ -350,9 +396,19 @@ where
             None => vfs,
         };
         let fs = std::sync::Arc::new(std::sync::Mutex::new(vfs));
-        let inner = self
-            .guest
-            .build(self.config, self.tools, network.clone(), fs.clone())?;
-        Ok(Sandbox { inner, network, fs })
+        let credentials = credentials::empty_registry();
+        let inner = self.guest.build(
+            self.config,
+            self.tools,
+            network.clone(),
+            fs.clone(),
+            credentials.clone(),
+        )?;
+        Ok(Sandbox {
+            inner,
+            network,
+            fs,
+            credentials,
+        })
     }
 }

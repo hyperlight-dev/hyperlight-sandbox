@@ -6,7 +6,8 @@ Bump the version in **all** manifest files. For example, to go from `0.1.0` → 
 
 ### Rust (Cargo)
 
-- `Cargo.toml` — `[workspace.package] version`
+- `Cargo.toml` — `[workspace.package] version` and the versions for local crates in
+  `[workspace.dependencies]`
 
 All other workspace member crates inherit the version automatically.
 
@@ -48,3 +49,6 @@ git push --tags
 ```
 
 Replace `v0.2.0` with the version you are releasing.
+
+The publish workflow releases the public Rust crates to crates.io in dependency order,
+followed independently by the Python and .NET packages.

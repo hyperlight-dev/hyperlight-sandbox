@@ -331,10 +331,6 @@ impl GuestSandbox for WasmComponentSandbox {
     }
 
     fn restore(&mut self, snapshot: &Snapshot<WasmSnapshot>) -> Result<()> {
-        self.fs
-            .lock()
-            .map_err(|_| anyhow::anyhow!("filesystem mutex poisoned"))?
-            .prepare_for_run()?;
         self.sandbox
             .sb
             .restore(snapshot.snapshot().clone())

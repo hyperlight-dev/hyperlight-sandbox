@@ -428,10 +428,6 @@ impl GuestSandbox for JsGuestSandbox {
     }
 
     fn restore(&mut self, snapshot: &Snapshot<JsSnapshot>) -> Result<()> {
-        self.files
-            .lock()
-            .map_err(|_| anyhow::anyhow!("filesystem mutex poisoned"))?
-            .prepare_for_run()?;
         self.sandbox
             .restore(snapshot.snapshot().clone())
             .map_err(|e| anyhow::anyhow!("restore failed: {e}"))

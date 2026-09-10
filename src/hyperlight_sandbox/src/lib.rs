@@ -179,7 +179,11 @@ impl<G: Guest> Sandbox<G> {
         &mut self,
         snapshot: &Snapshot<<G::Sandbox as GuestSandbox>::SnapshotData>,
     ) -> Result<()> {
-        self.inner.restore(snapshot)
+        self.inner.restore(snapshot)?;
+        self.fs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("filesystem mutex poisoned during snapshot restore"))?
+            .prepare_for_run()
     }
 
     /// List top-level filenames in the output directory (without reading contents).
@@ -360,5 +364,64 @@ where
             .guest
             .build(self.config, self.tools, network.clone(), fs.clone())?;
         Ok(Sandbox { inner, network, fs })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestGuest;
+
+    struct TestGuestSandbox;
+
+    impl Guest for TestGuest {
+        type Sandbox = TestGuestSandbox;
+
+        fn build(
+            self,
+            _config: SandboxConfig,
+            _tools: ToolRegistry,
+            _network: std::sync::Arc<std::sync::Mutex<NetworkPermissions>>,
+            _fs: std::sync::Arc<std::sync::Mutex<CapFs>>,
+        ) -> Result<Self::Sandbox> {
+            Ok(TestGuestSandbox)
+        }
+    }
+
+    impl GuestSandbox for TestGuestSandbox {
+        type SnapshotData = ();
+
+        fn run(&mut self, _code: &str) -> Result<ExecutionResult> {
+            unreachable!("test backend does not execute guest code")
+        }
+
+        fn snapshot(&mut self) -> Result<Snapshot<Self::SnapshotData>> {
+            Ok(Snapshot::new("test", std::sync::Arc::new(())))
+        }
+
+        fn restore(&mut self, _snapshot: &Snapshot<Self::SnapshotData>) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn restore_clears_output_for_external_guest_backends() {
+        let output = tempfile::tempdir().unwrap();
+        let mut sandbox = SandboxBuilder::new()
+            .output_dir(
+                output.path(),
+                DirPerms::READ | DirPerms::MUTATE,
+                FilePerms::READ | FilePerms::WRITE,
+            )
+            .guest(TestGuest)
+            .build()
+            .unwrap();
+        let snapshot = sandbox.snapshot().unwrap();
+        std::fs::write(output.path().join("stale.txt"), b"stale").unwrap();
+
+        sandbox.restore(&snapshot).unwrap();
+
+        assert!(!output.path().join("stale.txt").exists());
     }
 }

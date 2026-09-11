@@ -24,43 +24,6 @@ hyperlight-sandbox provides a unified API across multiple isolation backends. Al
 - **Network allow listing** -- Network traffic is off by default; allow specific domains and HTTP verbs with `allow_domain()`
 
 For a more in depth walkthrough, see the overview slide deck in `docs/end-user-overview-slides.md` (or run `just slides` to view in the browser).
-
-### Writable filesystem limits
-
-Writable output is bounded by default to 5 MiB per file, 20 MiB of cumulative
-logical file size, and 20 files per sandbox. Logical size includes sparse
-holes, so a guest cannot bypass the limit by writing a small buffer at a very
-large offset. Hosts can configure larger limits or explicitly opt out through
-their SDK.
-
-These library limits do not measure physical blocks, metadata, compression, or
-deduplication. Deployments running hostile or multi-tenant workloads should
-also place output directories on isolated, quota-controlled storage and prevent
-other host processes from modifying them during guest execution.
-
-Rust hosts can override the defaults on the builder:
-
-```rust
-use hyperlight_sandbox::{FilesystemLimits, SandboxBuilder};
-use hyperlight_wasm_sandbox::Wasm;
-
-let limits = FilesystemLimits::new(
-    128 * 1024 * 1024,
-    512 * 1024 * 1024,
-    2_048,
-)?;
-
-let sandbox = SandboxBuilder::new()
-    .filesystem_limits(limits)
-    .module_path("guest.aot")
-    .temp_output()
-    .guest(Wasm)
-    .build()?;
-```
-
-Use `FilesystemLimits::unlimited()` only when the host provides equivalent
-resource controls and intentionally accepts unbounded logical output.
-
 ### Use Cases
 
 - **File Processing**: Process provided files and return a summarized report
@@ -231,6 +194,42 @@ console.log('10 + 20 = ' + sum);
 ```
 
 See [examples](./src/javascript_sandbox/examples/) for file I/O and network demos.
+
+### Writable filesystem limits
+
+Writable output is bounded by default to 5 MiB per file, 20 MiB of cumulative
+logical file size, and 20 files per sandbox. Logical size includes sparse
+holes, so a guest cannot bypass the limit by writing a small buffer at a very
+large offset. Hosts can configure larger limits or explicitly opt out through
+their SDK.
+
+These library limits do not measure physical blocks, metadata, compression, or
+deduplication. Deployments running hostile or multi-tenant workloads should
+also place output directories on isolated, quota-controlled storage and prevent
+other host processes from modifying them during guest execution.
+
+Rust hosts can override the defaults on the builder:
+
+```rust
+use hyperlight_sandbox::{FilesystemLimits, SandboxBuilder};
+use hyperlight_wasm_sandbox::Wasm;
+
+let limits = FilesystemLimits::new(
+    128 * 1024 * 1024,
+    512 * 1024 * 1024,
+    2_048,
+)?;
+
+let sandbox = SandboxBuilder::new()
+    .filesystem_limits(limits)
+    .module_path("guest.aot")
+    .temp_output()
+    .guest(Wasm)
+    .build()?;
+```
+
+Use `FilesystemLimits::unlimited()` only when the host provides equivalent
+resource controls and intentionally accepts unbounded logical output.
 
 ## Building
 

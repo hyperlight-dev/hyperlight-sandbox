@@ -10,7 +10,7 @@ import platform
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from importlib import metadata
-from typing import Any
+from typing import Any, Literal
 
 from ._module_resolver import DEFAULT_MODULE_REF, resolve_module_path
 
@@ -83,7 +83,12 @@ class ExecutionResult:
 
 @dataclass
 class SandboxEnvironment:
-    """Configuration for creating a sandbox."""
+    """Configuration for creating a sandbox.
+
+    Filesystem quotas use human-readable binary size strings such as ``"64Mi"``.
+    Leave all quota fields unset to use balanced backend defaults, or set
+    ``filesystem_limits="unlimited"`` to explicitly disable filesystem quotas.
+    """
 
     input_dir: str | None = None
     output_dir: str | None = None
@@ -93,10 +98,20 @@ class SandboxEnvironment:
     module_path: str | None = None
     heap_size: str = field(default_factory=lambda: _DEFAULT_HEAP_SIZE)
     stack_size: str = field(default_factory=lambda: _DEFAULT_STACK_SIZE)
+    filesystem_limits: Literal["unlimited"] | None = None
+    max_file_size: str | None = None
+    max_total_size: str | None = None
+    max_file_count: int | None = None
 
 
 class Sandbox:
-    """Stable Python API over swappable Hyperlight backends."""
+    """Stable Python API over swappable Hyperlight backends.
+
+    ``max_file_size`` and ``max_total_size`` accept binary size strings such as
+    ``"64Mi"``. Partial numeric overrides retain balanced defaults for omitted
+    values. Use ``filesystem_limits="unlimited"`` to explicitly disable all
+    filesystem quotas; it cannot be combined with numeric overrides.
+    """
 
     def __init__(
         self,
@@ -109,7 +124,30 @@ class Sandbox:
         module_path: str | None = None,
         heap_size: str | None = None,
         stack_size: str | None = None,
+        filesystem_limits: Literal["unlimited"] | None = None,
+        max_file_size: str | None = None,
+        max_total_size: str | None = None,
+        max_file_count: int | None = None,
     ) -> None:
+        numeric_limits = (max_file_size, max_total_size, max_file_count)
+        if filesystem_limits is not None and filesystem_limits != "unlimited":
+            raise ValueError("filesystem_limits must be 'unlimited' when provided")
+        if filesystem_limits == "unlimited" and any(value is not None for value in numeric_limits):
+            raise ValueError(
+                "filesystem_limits='unlimited' cannot be combined with max_file_size, max_total_size, or max_file_count"
+            )
+        for name, value in (
+            ("max_file_size", max_file_size),
+            ("max_total_size", max_total_size),
+        ):
+            if value is not None and not isinstance(value, str):
+                raise TypeError(f"{name} must be a size string")
+        if max_file_count is not None:
+            if isinstance(max_file_count, bool) or not isinstance(max_file_count, int):
+                raise TypeError("max_file_count must be an integer")
+            if max_file_count < 0:
+                raise ValueError("max_file_count must be non-negative")
+
         if heap_size is None:
             heap_size = _DEFAULT_HEAP_SIZE
         if stack_size is None:
@@ -129,6 +167,14 @@ class Sandbox:
             kwargs["output_dir"] = output_dir
         if temp_output:
             kwargs["temp_output"] = True
+        if filesystem_limits is not None:
+            kwargs["filesystem_limits"] = filesystem_limits
+        if max_file_size is not None:
+            kwargs["max_file_size"] = max_file_size
+        if max_total_size is not None:
+            kwargs["max_total_size"] = max_total_size
+        if max_file_count is not None:
+            kwargs["max_file_count"] = max_file_count
 
         if normalized_backend == "wasm":
             resolved_module_path = resolve_module_path(module=effective_module, module_path=module_path)
@@ -218,6 +264,10 @@ class CodeExecutionTool:
                 module_path=self.environment.module_path,
                 heap_size=self.environment.heap_size,
                 stack_size=self.environment.stack_size,
+                filesystem_limits=self.environment.filesystem_limits,
+                max_file_size=self.environment.max_file_size,
+                max_total_size=self.environment.max_total_size,
+                max_file_count=self.environment.max_file_count,
             )
             for tool_fn in self.tools:
                 self._sandbox.register_tool(tool_fn)

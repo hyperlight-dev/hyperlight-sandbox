@@ -5,6 +5,14 @@ use hyperlight_sandbox::{CapFs, FsError};
 use super::buffer::{Buffer, BufferClosed};
 use crate::bindings::wasi;
 
+/// Buffered write permit. WASI caps `blocking-write-and-flush` at 4096 bytes,
+/// but does not require `check-write` to return that amount. [WASI definition](https://github.com/WebAssembly/wasi-io/blob/3983fe1feab6b3a3b4e5c47c8b13daaf22266f00/wit/streams.wit#L124-L165).
+const BUFFER_WRITE_PERMIT_BYTES: u64 = 4 * 1024;
+
+/// Filesystem write permit selected by this implementation; WASI does not set
+/// this size. [Wasmtime also selects its filesystem capacity](https://github.com/bytecodealliance/wasmtime/blob/6a64085f21432164e55c9c6b553c21717b54329a/crates/wasi/src/p2/filesystem.rs#L276-L277).
+const FILESYSTEM_WRITE_PERMIT_BYTES: u64 = 64 * 1024;
+
 #[derive(Default)]
 pub struct Stream {
     kind: StreamKind,
@@ -53,12 +61,16 @@ impl Stream {
                 if buf.is_closed() {
                     return Err(BufferClosed);
                 }
-                if buf.writable() { Ok(4096) } else { Ok(0) }
+                if buf.writable() {
+                    Ok(BUFFER_WRITE_PERMIT_BYTES)
+                } else {
+                    Ok(0)
+                }
             }
             StreamKind::CapFs { stream_id, fs } => {
                 let cap_fs = fs.lock().map_err(|_| BufferClosed)?;
                 if cap_fs.has_stream(*stream_id) && cap_fs.is_write_stream(*stream_id) {
-                    Ok(65536)
+                    Ok(FILESYSTEM_WRITE_PERMIT_BYTES)
                 } else {
                     Err(BufferClosed)
                 }
@@ -210,7 +222,10 @@ mod tests {
         let cap_fs = Arc::new(Mutex::new(cap_fs));
         let mut stream = Stream::from_cap_fs(stream_id, cap_fs.clone());
 
-        assert!(matches!(stream.check_write(), Ok(65536)));
+        assert!(matches!(
+            stream.check_write(),
+            Ok(FILESYSTEM_WRITE_PERMIT_BYTES)
+        ));
         assert!(matches!(
             stream.write(b"abcde"),
             Err(StreamError::LastOperationFailed(_))

@@ -1908,7 +1908,7 @@ dependencies = [
 
 [[package]]
 name = "hyperlight-javascript-sandbox"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "hyperlight-js",
@@ -1986,7 +1986,7 @@ dependencies = [
 
 [[package]]
 name = "hyperlight-sandbox"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "bitflags 2.13.0",
@@ -2011,7 +2011,7 @@ dependencies = [
 
 [[package]]
 name = "hyperlight-sandbox-backend-hyperlight-js"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "hyperlight-javascript-sandbox",
  "hyperlight-sandbox",
@@ -2021,7 +2021,7 @@ dependencies = [
 
 [[package]]
 name = "hyperlight-sandbox-backend-wasm"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "hyperlight-sandbox",
  "hyperlight-sandbox-pyo3-common",
@@ -2031,7 +2031,7 @@ dependencies = [
 
 [[package]]
 name = "hyperlight-sandbox-dotnet-ffi"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "hyperlight-javascript-sandbox",
@@ -2046,7 +2046,7 @@ dependencies = [
 
 [[package]]
 name = "hyperlight-sandbox-pyo3-common"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "hyperlight-sandbox",
@@ -2120,7 +2120,7 @@ dependencies = [
 
 [[package]]
 name = "hyperlight-wasm-sandbox"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "bytes",

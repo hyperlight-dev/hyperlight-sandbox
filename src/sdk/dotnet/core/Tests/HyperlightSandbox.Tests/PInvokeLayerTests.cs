@@ -224,4 +224,45 @@ public class PInvokeLayerTests
     {
         SafeNativeMethods.hyperlight_sandbox_free(IntPtr.Zero);
     }
+
+    [Fact]
+    public void SetFilesystemLimits_ZeroFiniteValues_Succeeds()
+    {
+        using var handle = CreateSandboxHandle();
+        var result = SafeNativeMethods.hyperlight_sandbox_set_filesystem_limits(
+            handle, 0, 0, 0, 0);
+
+        result.ThrowIfError();
+    }
+
+    [Fact]
+    public void SetFilesystemLimits_InvalidMode_ThrowsArgumentException()
+    {
+        using var handle = CreateSandboxHandle();
+        var result = SafeNativeMethods.hyperlight_sandbox_set_filesystem_limits(
+            handle, 2, 0, 0, 0);
+
+        Assert.Throws<ArgumentException>(() => result.ThrowIfError());
+    }
+
+    private static SandboxSafeHandle CreateSandboxHandle()
+    {
+        var modulePath = Marshal.StringToCoTaskMemUTF8("/tmp/test.wasm");
+        try
+        {
+            var result = SafeNativeMethods.hyperlight_sandbox_create(new FFISandboxOptions
+            {
+                module_path = modulePath,
+                heap_size = 0,
+                stack_size = 0,
+                backend = 0,
+            });
+            result.ThrowIfError();
+            return new SandboxSafeHandle(result.value);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(modulePath);
+        }
+    }
 }

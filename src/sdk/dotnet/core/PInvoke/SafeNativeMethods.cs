@@ -169,6 +169,19 @@ internal static partial class SafeNativeMethods
         SandboxSafeHandle handle,
         [MarshalAs(UnmanagedType.I1)] bool enabled);
 
+    /// <summary>
+    /// Sets the writable filesystem quota policy.
+    /// Mode 0 is finite and mode 1 is unlimited.
+    /// </summary>
+    [LibraryImport(LibName)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial FFIResult hyperlight_sandbox_set_filesystem_limits(
+        SandboxSafeHandle handle,
+        uint mode,
+        ulong maxFileSize,
+        ulong maxTotalSize,
+        ulong maxFileCount);
+
     /// <summary>Adds a domain to the network allowlist.</summary>
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

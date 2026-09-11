@@ -26,8 +26,8 @@ use std::ptr::NonNull;
 use anyhow::Result;
 use hyperlight_javascript_sandbox::HyperlightJs;
 use hyperlight_sandbox::{
-    DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, GuestSandbox, HttpMethod, Sandbox,
-    SandboxBuilder, SandboxConfig, ToolRegistry, ToolSchema,
+    DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, FilesystemLimits, GuestSandbox,
+    HttpMethod, Sandbox, SandboxBuilder, SandboxConfig, ToolRegistry, ToolSchema,
 };
 use hyperlight_wasm_sandbox::Wasm;
 use log::{debug, error};
@@ -136,6 +136,16 @@ pub enum FFIBackend {
     JavaScript = 1,
 }
 
+/// Filesystem limit policy discriminant.
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FFIFilesystemLimitsMode {
+    /// Apply the supplied finite values. Zero is a valid finite value.
+    Finite = 0,
+    /// Disable all filesystem quotas. Value arguments must be zero.
+    Unlimited = 1,
+}
+
 // ---------------------------------------------------------------------------
 // Tool callback type
 // ---------------------------------------------------------------------------
@@ -217,6 +227,8 @@ struct SandboxState {
     output_dir: Option<String>,
     /// Whether to use a temporary output directory.
     temp_output: bool,
+    /// Logical resource limits for the writable filesystem.
+    filesystem_limits: FilesystemLimits,
 }
 
 // ---------------------------------------------------------------------------
@@ -632,6 +644,7 @@ pub unsafe extern "C" fn hyperlight_sandbox_create(options: FFISandboxOptions) -
         input_dir: None,
         output_dir: None,
         temp_output: false,
+        filesystem_limits: FilesystemLimits::default(),
     };
 
     let handle = Box::into_raw(Box::new(state));
@@ -749,6 +762,80 @@ pub unsafe extern "C" fn hyperlight_sandbox_set_temp_output(
         );
     }
     state.temp_output = enabled;
+    FFIResult::success_null()
+}
+
+/// Sets logical resource limits for the writable filesystem.
+///
+/// Must be called before the first `run()`. A call replaces the entire
+/// previously configured policy.
+///
+/// * `mode = 0` applies the three finite values. Zero is a real finite limit.
+/// * `mode = 1` disables all limits and requires all value arguments to be zero.
+///
+/// # Safety
+///
+/// `handle` must be a valid sandbox handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hyperlight_sandbox_set_filesystem_limits(
+    handle: *mut SandboxState,
+    mode: u32,
+    max_file_size: u64,
+    max_total_size: u64,
+    max_file_count: u64,
+) -> FFIResult {
+    let state = match unsafe { deref_handle_mut(handle, "sandbox") } {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    if state.inner.is_some() {
+        return FFIResult::error(
+            FFIErrorCode::InvalidArgument,
+            safe_cstring("Cannot set filesystem limits after sandbox has been initialized"),
+        );
+    }
+
+    let limits = match mode {
+        mode if mode == FFIFilesystemLimitsMode::Finite as u32 => {
+            let max_file_count = match usize::try_from(max_file_count) {
+                Ok(value) => value,
+                Err(_) => {
+                    return FFIResult::error(
+                        FFIErrorCode::InvalidArgument,
+                        safe_cstring("max_file_count exceeds the platform usize range"),
+                    );
+                }
+            };
+            match FilesystemLimits::new(max_file_size, max_total_size, max_file_count) {
+                Ok(limits) => limits,
+                Err(error) => {
+                    return FFIResult::error(
+                        FFIErrorCode::InvalidArgument,
+                        safe_cstring(error.to_string()),
+                    );
+                }
+            }
+        }
+        mode if mode == FFIFilesystemLimitsMode::Unlimited as u32 => {
+            if max_file_size != 0 || max_total_size != 0 || max_file_count != 0 {
+                return FFIResult::error(
+                    FFIErrorCode::InvalidArgument,
+                    safe_cstring("Unlimited filesystem mode requires all limit values to be zero"),
+                );
+            }
+            FilesystemLimits::unlimited()
+        }
+        other => {
+            return FFIResult::error(
+                FFIErrorCode::InvalidArgument,
+                safe_cstring(format!(
+                    "Invalid filesystem limits mode: {other}. Use 0 (finite) or 1 (unlimited)."
+                )),
+            );
+        }
+    };
+
+    state.filesystem_limits = limits;
     FFIResult::success_null()
 }
 
@@ -918,6 +1005,7 @@ fn ensure_initialized(state: &mut SandboxState) -> Result<()> {
                 .module_path(&state.config.module_path)
                 .heap_size(state.config.heap_size)
                 .stack_size(state.config.stack_size)
+                .filesystem_limits(state.filesystem_limits)
                 .with_tools(registry)
                 .guest(Wasm);
 
@@ -945,6 +1033,7 @@ fn ensure_initialized(state: &mut SandboxState) -> Result<()> {
             let mut builder = SandboxBuilder::new()
                 .heap_size(state.config.heap_size)
                 .stack_size(state.config.stack_size)
+                .filesystem_limits(state.filesystem_limits)
                 .with_tools(registry)
                 .guest(HyperlightJs);
 
@@ -1746,6 +1835,98 @@ mod tests {
         let result = unsafe { hyperlight_sandbox_set_temp_output(ptr::null_mut(), true) };
         assert!(!result.is_success);
         unsafe { hyperlight_sandbox_free_string(result.value) };
+    }
+
+    // -----------------------------------------------------------------------
+    // Configuration: set_filesystem_limits
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn filesystem_limits_default_to_shared_defaults() {
+        let handle = create_test_handle();
+        let state = unsafe { &*handle };
+        assert_eq!(state.filesystem_limits, FilesystemLimits::default());
+        unsafe { hyperlight_sandbox_free(handle) };
+    }
+
+    #[test]
+    fn set_filesystem_limits_finite_accepts_zero_values() {
+        let handle = create_test_handle();
+        let result = unsafe { hyperlight_sandbox_set_filesystem_limits(handle, 0, 0, 0, 0) };
+        assert!(result.is_success);
+
+        let state = unsafe { &*handle };
+        assert_eq!(state.filesystem_limits.max_file_size(), Some(0));
+        assert_eq!(state.filesystem_limits.max_total_size(), Some(0));
+        assert_eq!(state.filesystem_limits.max_file_count(), Some(0));
+        unsafe { hyperlight_sandbox_free(handle) };
+    }
+
+    #[test]
+    fn set_filesystem_limits_unlimited_succeeds() {
+        let handle = create_test_handle();
+        let result = unsafe { hyperlight_sandbox_set_filesystem_limits(handle, 1, 0, 0, 0) };
+        assert!(result.is_success);
+
+        let state = unsafe { &*handle };
+        assert_eq!(state.filesystem_limits, FilesystemLimits::unlimited());
+        unsafe { hyperlight_sandbox_free(handle) };
+    }
+
+    #[test]
+    fn set_filesystem_limits_replaces_previous_policy() {
+        let handle = create_test_handle();
+        let first = unsafe { hyperlight_sandbox_set_filesystem_limits(handle, 0, 1, 2, 3) };
+        assert!(first.is_success);
+        let second = unsafe { hyperlight_sandbox_set_filesystem_limits(handle, 0, 4, 5, 6) };
+        assert!(second.is_success);
+
+        let state = unsafe { &*handle };
+        assert_eq!(state.filesystem_limits.max_file_size(), Some(4));
+        assert_eq!(state.filesystem_limits.max_total_size(), Some(5));
+        assert_eq!(state.filesystem_limits.max_file_count(), Some(6));
+        unsafe { hyperlight_sandbox_free(handle) };
+    }
+
+    #[test]
+    fn set_filesystem_limits_rejects_invalid_mode() {
+        let handle = create_test_handle();
+        let result = unsafe { hyperlight_sandbox_set_filesystem_limits(handle, 2, 0, 0, 0) };
+        assert!(!result.is_success);
+        assert_eq!(result.error_code, FFIErrorCode::InvalidArgument as u32);
+        unsafe { hyperlight_sandbox_free_string(result.value) };
+        unsafe { hyperlight_sandbox_free(handle) };
+    }
+
+    #[test]
+    fn set_filesystem_limits_rejects_null_handle() {
+        let result =
+            unsafe { hyperlight_sandbox_set_filesystem_limits(ptr::null_mut(), 0, 1, 2, 3) };
+        assert!(!result.is_success);
+        assert_eq!(result.error_code, FFIErrorCode::InvalidArgument as u32);
+        unsafe { hyperlight_sandbox_free_string(result.value) };
+    }
+
+    #[test]
+    fn set_filesystem_limits_rejects_unlimited_values() {
+        let handle = create_test_handle();
+        let result = unsafe { hyperlight_sandbox_set_filesystem_limits(handle, 1, 1, 0, 0) };
+        assert!(!result.is_success);
+        assert_eq!(result.error_code, FFIErrorCode::InvalidArgument as u32);
+        unsafe { hyperlight_sandbox_free_string(result.value) };
+        unsafe { hyperlight_sandbox_free(handle) };
+    }
+
+    #[test]
+    fn set_filesystem_limits_rejects_oversized_file_limit() {
+        let handle = create_test_handle();
+        let result = unsafe {
+            hyperlight_sandbox_set_filesystem_limits(handle, 0, i64::MAX as u64 + 1, 0, 0)
+        };
+        assert!(!result.is_success);
+        assert_eq!(result.error_code, FFIErrorCode::InvalidArgument as u32);
+        unsafe { hyperlight_sandbox_free_string(result.value) };
+        unsafe { hyperlight_sandbox_free(handle) };
     }
 
     // -----------------------------------------------------------------------

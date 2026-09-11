@@ -121,6 +121,52 @@ public class SandboxBuilderTests
     }
 
     [Fact]
+    public void WithFilesystemLimits_StringValues_Works()
+    {
+        using var sandbox = new SandboxBuilder()
+            .WithModulePath("/tmp/test.wasm")
+            .WithFilesystemLimits("64Mi", "256Mi", 1024)
+            .Build();
+
+        Assert.NotNull(sandbox);
+    }
+
+    [Fact]
+    public void WithFilesystemLimits_ZeroValues_AreFiniteLimits()
+    {
+        using var sandbox = new SandboxBuilder()
+            .WithModulePath("/tmp/test.wasm")
+            .WithFilesystemLimits(0, 0, 0)
+            .Build();
+
+        Assert.NotNull(sandbox);
+    }
+
+    [Fact]
+    public void WithUnlimitedFilesystemLimits_Works()
+    {
+        using var sandbox = new SandboxBuilder()
+            .WithModulePath("/tmp/test.wasm")
+            .WithUnlimitedFilesystemLimits()
+            .Build();
+
+        Assert.NotNull(sandbox);
+    }
+
+    [Fact]
+    public void FilesystemPolicy_LastCallReplacesPriorPolicy()
+    {
+        using var sandbox = new SandboxBuilder()
+            .WithModulePath("/tmp/test.wasm")
+            .WithFilesystemLimits(1, 2, 3)
+            .WithUnlimitedFilesystemLimits()
+            .WithFilesystemLimits(4, 5, 6)
+            .Build();
+
+        Assert.NotNull(sandbox);
+    }
+
+    [Fact]
     public void ChainedConfiguration_AllOptions_Works()
     {
         using var sandbox = new SandboxBuilder()

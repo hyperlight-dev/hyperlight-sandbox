@@ -49,6 +49,7 @@ public sealed class Sandbox : IDisposable
         string? inputDir,
         string? outputDir,
         bool tempOutput,
+        FilesystemLimitsConfiguration? filesystemLimits,
         SandboxBackend backend = SandboxBackend.Wasm)
     {
         // Pin the module path string for the FFI call duration (null for JS backend).
@@ -76,6 +77,17 @@ public sealed class Sandbox : IDisposable
             {
                 Marshal.FreeCoTaskMem(modulePathPtr);
             }
+        }
+
+        if (filesystemLimits is { } limits)
+        {
+            var r = SafeNativeMethods.hyperlight_sandbox_set_filesystem_limits(
+                _handle,
+                (uint)limits.Mode,
+                limits.MaxFileSize,
+                limits.MaxTotalSize,
+                limits.MaxFileCount);
+            r.ThrowIfError();
         }
 
         // Apply optional configuration.

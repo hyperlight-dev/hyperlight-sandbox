@@ -126,6 +126,7 @@ examples target=default-target:
 
 test target=default-target:
     cargo test --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --test http_wasm_integration -- --nocapture
+    cargo test --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --test filesystem_quota -- --nocapture
 
 lint:
     cargo clippy -p hyperlight-wasm-sandbox --all-targets -- -D warnings

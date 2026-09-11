@@ -148,22 +148,16 @@ impl
         contents: Vec<u8>,
     ) -> HlResult<Result<(), streams::StreamError<anyhow::Error>>> {
         let mut guard = self_.write().block_on();
-        guard
-            .write(&contents)
-            .map_err(|_| streams::StreamError::Closed)
+        guard.write(&contents)
     }
     fn blocking_write_and_flush(
         &mut self,
         self_: BorrowedResourceGuard<Resource<Stream>>,
         contents: Vec<u8>,
     ) -> HlResult<Result<(), streams::StreamError<anyhow::Error>>> {
-        let mut guard = self_.write_wait_until(Stream::writable).block_on();
-        if guard.write(&contents).is_err() {
-            return Err(streams::StreamError::Closed);
-        }
-        if guard.flush().is_err() {
-            return Err(streams::StreamError::Closed);
-        }
+        let mut guard = self_.write_wait_until(Stream::write_ready).block_on();
+        guard.write(&contents)?;
+        guard.flush()?;
         Ok(())
     }
     fn flush(
@@ -171,45 +165,51 @@ impl
         self_: BorrowedResourceGuard<Resource<Stream>>,
     ) -> HlResult<Result<(), streams::StreamError<anyhow::Error>>> {
         let mut guard = self_.write().block_on();
-        guard.flush().map_err(|_| streams::StreamError::Closed)
+        guard.flush()
     }
     fn blocking_flush(
         &mut self,
         self_: BorrowedResourceGuard<Resource<Stream>>,
     ) -> HlResult<Result<(), streams::StreamError<anyhow::Error>>> {
         let mut guard = self_.write().block_on();
-        guard.flush().map_err(|_| streams::StreamError::Closed)
+        guard.flush()
     }
     fn subscribe(
         &mut self,
         self_: BorrowedResourceGuard<Resource<Stream>>,
     ) -> HlResult<Resource<AnyPollable>> {
-        self_.poll(|b| b.writable())
+        self_.poll(|b| b.write_ready())
     }
     fn write_zeroes(
         &mut self,
         self_: BorrowedResourceGuard<Resource<Stream>>,
         len: u64,
     ) -> HlResult<Result<(), streams::StreamError<anyhow::Error>>> {
-        let capped = len.min(MAX_ALLOC_BYTES) as usize;
+        if len > MAX_ALLOC_BYTES {
+            let mut guard = self_.write().block_on();
+            guard.close();
+            return Err(streams::StreamError::LastOperationFailed(anyhow::anyhow!(
+                "write-zeroes request exceeds operation limit ({len} > {MAX_ALLOC_BYTES})"
+            )));
+        }
         let mut guard = self_.write().block_on();
-        guard
-            .write(vec![0; capped])
-            .map_err(|_| streams::StreamError::Closed)
+        guard.write(vec![0; len as usize])
     }
     fn blocking_write_zeroes_and_flush(
         &mut self,
         self_: BorrowedResourceGuard<Resource<Stream>>,
         len: u64,
     ) -> HlResult<Result<(), streams::StreamError<anyhow::Error>>> {
-        let capped = len.min(MAX_ALLOC_BYTES) as usize;
+        if len > MAX_ALLOC_BYTES {
+            let mut guard = self_.write().block_on();
+            guard.close();
+            return Err(streams::StreamError::LastOperationFailed(anyhow::anyhow!(
+                "write-zeroes request exceeds operation limit ({len} > {MAX_ALLOC_BYTES})"
+            )));
+        }
         let mut guard = self_.write().block_on();
-        if guard.write(vec![0; capped]).is_err() {
-            return Err(streams::StreamError::Closed);
-        }
-        if guard.flush().is_err() {
-            return Err(streams::StreamError::Closed);
-        }
+        guard.write(vec![0; len as usize])?;
+        guard.flush()?;
         Ok(())
     }
     fn splice(
@@ -220,10 +220,8 @@ impl
     ) -> HlResult<Result<u64, streams::StreamError<anyhow::Error>>> {
         let mut dst_guard = self_.write().block_on();
         let mut src_guard = src.write().block_on();
-        dst_guard
-            .splice(&mut src_guard, len as usize)
-            .map(|n| n as u64)
-            .map_err(|_| streams::StreamError::Closed)
+        let len = usize::try_from(len).unwrap_or(usize::MAX);
+        dst_guard.splice(&mut src_guard, len).map(|n| n as u64)
     }
     fn blocking_splice(
         &mut self,
@@ -231,12 +229,10 @@ impl
         src: BorrowedResourceGuard<Resource<Stream>>,
         len: u64,
     ) -> HlResult<Result<u64, streams::StreamError<anyhow::Error>>> {
-        let mut dst_guard = self_.write_wait_until(Stream::writable).block_on();
+        let mut dst_guard = self_.write_wait_until(Stream::write_ready).block_on();
         let mut src_guard = src.write_wait_until(Stream::readable).block_on();
-        dst_guard
-            .splice(&mut src_guard, len as usize)
-            .map(|n| n as u64)
-            .map_err(|_| streams::StreamError::Closed)
+        let len = usize::try_from(len).unwrap_or(usize::MAX);
+        dst_guard.splice(&mut src_guard, len).map(|n| n as u64)
     }
 }
 

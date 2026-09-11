@@ -11,12 +11,14 @@
 //!
 //! * **Output** — default temp directory or host-provided with explicit
 //!   permissions, exposed as a writable WASI preopen.  Wiped clean after
-//!   each run.
+//!   each run. Logical output size and file count are bounded by
+//!   [`FilesystemLimits`] before host filesystem mutation.
 //!
 //! Snapshots only capture runtime state — input is immutable and output is
 //! ephemeral, so no filesystem state needs to be saved or restored.
 
 use std::collections::HashMap;
+use std::fmt;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -39,7 +41,97 @@ pub enum FsError {
     NotPermitted,
     NoEntry,
     InvalidPath,
+    FileTooLarge,
+    QuotaExceeded,
+    Overflow,
     Io(String),
+}
+
+impl fmt::Display for FsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BadDescriptor => f.write_str("bad file descriptor"),
+            Self::NotPermitted => f.write_str("operation not permitted"),
+            Self::NoEntry => f.write_str("file or directory not found"),
+            Self::InvalidPath => f.write_str("invalid path"),
+            Self::FileTooLarge => f.write_str("file exceeds logical size limit"),
+            Self::QuotaExceeded => f.write_str("filesystem quota exceeded"),
+            Self::Overflow => f.write_str("filesystem offset overflow"),
+            Self::Io(message) => write!(f, "filesystem I/O error: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for FsError {}
+
+// ---------------------------------------------------------------------------
+// Filesystem limits
+// ---------------------------------------------------------------------------
+
+pub const DEFAULT_MAX_FILE_SIZE: u64 = 5 * 1024 * 1024;
+pub const DEFAULT_MAX_TOTAL_SIZE: u64 = 20 * 1024 * 1024;
+pub const DEFAULT_MAX_FILE_COUNT: usize = 20;
+
+/// Logical resource limits for the writable filesystem.
+///
+/// Logical size includes sparse holes. These limits do not measure physical
+/// blocks, filesystem metadata, compression, or deduplication; deployments
+/// that require physical resource isolation should also use host filesystem or
+/// container quotas.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FilesystemLimits {
+    max_file_size: Option<u64>,
+    max_total_size: Option<u64>,
+    max_file_count: Option<usize>,
+}
+
+impl FilesystemLimits {
+    pub fn new(max_file_size: u64, max_total_size: u64, max_file_count: usize) -> Result<Self> {
+        if max_file_size > i64::MAX as u64 {
+            anyhow::bail!("max_file_size must not exceed {}", i64::MAX);
+        }
+        Ok(Self {
+            max_file_size: Some(max_file_size),
+            max_total_size: Some(max_total_size),
+            max_file_count: Some(max_file_count),
+        })
+    }
+
+    pub const fn unlimited() -> Self {
+        Self {
+            max_file_size: None,
+            max_total_size: None,
+            max_file_count: None,
+        }
+    }
+
+    pub const fn max_file_size(self) -> Option<u64> {
+        self.max_file_size
+    }
+
+    pub const fn max_total_size(self) -> Option<u64> {
+        self.max_total_size
+    }
+
+    pub const fn max_file_count(self) -> Option<usize> {
+        self.max_file_count
+    }
+
+    fn is_unlimited(self) -> bool {
+        self.max_file_size.is_none()
+            && self.max_total_size.is_none()
+            && self.max_file_count.is_none()
+    }
+}
+
+impl Default for FilesystemLimits {
+    fn default() -> Self {
+        Self {
+            max_file_size: Some(DEFAULT_MAX_FILE_SIZE),
+            max_total_size: Some(DEFAULT_MAX_TOTAL_SIZE),
+            max_file_count: Some(DEFAULT_MAX_FILE_COUNT),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +242,7 @@ struct StreamState {
     file_fd: u32,
     offset: u64,
     is_write: bool,
+    append: bool,
 }
 
 #[derive(Clone)]
@@ -167,6 +260,12 @@ struct DirStreamState {
 struct PreopenEntry {
     dir: Dir,
     guest_path: String,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct FilesystemUsage {
+    logical_bytes: u64,
+    file_count: usize,
 }
 
 /// Capability-based virtual filesystem.
@@ -187,6 +286,9 @@ pub struct CapFs {
     output_path: Option<PathBuf>,
     // Owns the output temp dir when using the default.
     _output_tmp: Option<tempfile::TempDir>,
+    limits: FilesystemLimits,
+    output_usage: FilesystemUsage,
+    accounting_valid: bool,
 }
 
 impl Default for CapFs {
@@ -199,8 +301,14 @@ impl CapFs {
     /// Create an empty filesystem with no preopens.
     ///
     /// Use [`with_input`], [`with_temp_output`], or [`with_output_dir`] to add
-    /// directories. Without any preopens the guest sees no filesystem.
+    /// directories. Without any preopens the guest sees no filesystem. Writable
+    /// output uses [`FilesystemLimits::default`].
     pub fn new() -> Self {
+        Self::with_limits(FilesystemLimits::default())
+    }
+
+    /// Create an empty filesystem with an explicit writable-output policy.
+    pub fn with_limits(limits: FilesystemLimits) -> Self {
         Self {
             preopen_dirs: HashMap::new(),
             output_fd: None,
@@ -210,7 +318,22 @@ impl CapFs {
             next_handle: FIRST_PREOPEN_FD,
             output_path: None,
             _output_tmp: None,
+            limits,
+            output_usage: FilesystemUsage::default(),
+            accounting_valid: true,
         }
+    }
+
+    pub fn filesystem_limits(&self) -> FilesystemLimits {
+        self.limits
+    }
+
+    pub fn set_filesystem_limits(&mut self, limits: FilesystemLimits) -> Result<()> {
+        if self.output_fd.is_some() {
+            anyhow::bail!("filesystem limits must be configured before the output directory");
+        }
+        self.limits = limits;
+        Ok(())
     }
 
     /// Add a read-only input directory preopen (`/input`).
@@ -237,6 +360,9 @@ impl CapFs {
 
     /// Add a writable output directory preopen (`/output`) backed by a temp dir.
     pub fn with_temp_output(mut self) -> Result<Self> {
+        if self.output_fd.is_some() {
+            anyhow::bail!("output directory is already configured");
+        }
         let output_tmp = tempfile::tempdir().context("failed to create output temp dir")?;
         let output_cap = CapDir::open_ambient_dir(output_tmp.path(), ambient_authority())
             .context("failed to open output temp dir")?;
@@ -257,6 +383,7 @@ impl CapFs {
         self.output_fd = Some(fd);
         self.output_path = Some(output_tmp.path().to_path_buf());
         self._output_tmp = Some(output_tmp);
+        self.resynchronize_output()?;
         Ok(self)
     }
 
@@ -267,6 +394,9 @@ impl CapFs {
         dir_perms: DirPerms,
         file_perms: FilePerms,
     ) -> Result<Self> {
+        if self.output_fd.is_some() {
+            anyhow::bail!("output directory is already configured");
+        }
         let output_cap = CapDir::open_ambient_dir(output_path.as_ref(), ambient_authority())
             .with_context(|| {
                 format!(
@@ -286,6 +416,7 @@ impl CapFs {
         );
         self.output_fd = Some(fd);
         self.output_path = Some(output_path.as_ref().to_path_buf());
+        self.resynchronize_output()?;
         Ok(self)
     }
 
@@ -294,6 +425,8 @@ impl CapFs {
     // -----------------------------------------------------------------------
 
     pub fn write_output_path(&mut self, path: &str, data: Vec<u8>) -> Result<()> {
+        self.ensure_accounting_valid()
+            .map_err(|error| anyhow::anyhow!(error))?;
         let key = Self::normalize_path(path, "output")?;
         let output_fd = self
             .output_fd
@@ -305,26 +438,47 @@ impl CapFs {
         if !output.dir.file_perms().contains(FilePerms::WRITE) {
             anyhow::bail!("write permission denied on output files");
         }
-        let mut file = output
-            .dir
-            .cap_std()
-            .create(&key)
-            .with_context(|| format!("failed to create output file: {key}"))?;
-        file.write_all(&data)
-            .with_context(|| format!("failed to write output file: {key}"))?;
-
-        if self.find_file_in_dir(output_fd, &key).is_none() {
-            let fd = self
-                .alloc_handle()
-                .map_err(|err| anyhow::anyhow!("{err:?}"))?;
-            self.open_files.insert(
-                fd,
-                FileEntry {
-                    name: key,
-                    dir_fd: output_fd,
-                },
-            );
+        let metadata = match output.dir.cap_std().symlink_metadata(&key) {
+            Ok(metadata) => Some(metadata),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(anyhow::anyhow!(
+                    "failed to inspect output file {key}: {error}"
+                ));
+            }
+        };
+        if metadata.as_ref().is_some_and(|meta| !meta.is_file()) {
+            anyhow::bail!("output path is not a regular file: {key}");
         }
+        let existed = metadata.as_ref().is_some_and(|meta| meta.is_file());
+        let old_size = metadata.as_ref().map_or(0, |meta| meta.len());
+        let new_size = u64::try_from(data.len()).map_err(|_| FsError::Overflow)?;
+        self.validate_mutation(old_size, new_size, !existed)
+            .map_err(|error| anyhow::anyhow!(error))?;
+
+        let mut file = match output.dir.cap_std().create(&key) {
+            Ok(file) => file,
+            Err(error) => {
+                let reconcile_error = self.resynchronize_output().err();
+                return Err(match reconcile_error {
+                    Some(reconcile_error) => anyhow::anyhow!(
+                        "failed to create output file {key}: {error}; failed to reconcile quota: {reconcile_error}"
+                    ),
+                    None => anyhow::anyhow!("failed to create output file {key}: {error}"),
+                });
+            }
+        };
+        if let Err(error) = file.write_all(&data) {
+            let reconcile_error = self.resynchronize_output().err();
+            return Err(match reconcile_error {
+                Some(reconcile_error) => anyhow::anyhow!(
+                    "failed to write output file {key}: {error}; failed to reconcile quota: {reconcile_error}"
+                ),
+                None => anyhow::anyhow!("failed to write output file {key}: {error}"),
+            });
+        }
+        self.apply_mutation(old_size, new_size, !existed)
+            .map_err(|error| anyhow::anyhow!(error))?;
         Ok(())
     }
 
@@ -409,41 +563,35 @@ impl CapFs {
     }
 
     /// Wipe output files and reset all handles/streams. Input is untouched.
-    pub fn clear_output_files(&mut self) {
+    pub fn clear_output_files(&mut self) -> Result<()> {
         let Some(output_fd) = self.output_fd else {
-            return;
+            return Ok(());
         };
-        if let Some(output) = self.preopen_dirs.get(&output_fd) {
-            let dir = output.dir.cap_std();
-            if let Ok(entries) = dir.entries() {
-                for entry in entries.flatten() {
-                    let _ = dir.remove_file(entry.file_name());
-                }
-            }
+        let Some(output) = self.preopen_dirs.get(&output_fd).cloned() else {
+            return Ok(());
+        };
+        self.reset_output_handles(output_fd);
+        if let Err(error) = Self::remove_output_files(output.dir.cap_std()) {
+            let reconcile_error = self.resynchronize_output().err();
+            return Err(match reconcile_error {
+                Some(reconcile_error) => anyhow::anyhow!(
+                    "failed to clear output files: {error}; failed to reconcile quota: {reconcile_error}"
+                ),
+                None => error,
+            });
         }
-        self.open_files.retain(|_, e| e.dir_fd != output_fd);
-        self.streams.clear();
-        self.dir_streams.clear();
-        let min_handle = self
-            .preopen_dirs
-            .keys()
-            .copied()
-            .max()
-            .map(|h| h + 1)
-            .unwrap_or(FIRST_PREOPEN_FD);
-        self.next_handle = self
-            .open_files
-            .keys()
-            .copied()
-            .max()
-            .map(|h| h + 1)
-            .unwrap_or(min_handle)
-            .max(min_handle);
+        self.resynchronize_output()?;
+        Ok(())
     }
 
     /// Clear output directory. Input is host-managed and left untouched.
-    pub fn clear(&mut self) {
-        self.clear_output_files();
+    pub fn clear(&mut self) -> Result<()> {
+        self.clear_output_files()
+    }
+
+    /// Prepare the writable filesystem for a new guest execution.
+    pub fn prepare_for_run(&mut self) -> Result<()> {
+        self.clear_output_files()
     }
 
     // -----------------------------------------------------------------------
@@ -577,7 +725,10 @@ impl CapFs {
     const MAX_READ_BYTES: usize = 16 * 1024 * 1024; // 16 MiB
 
     pub fn open_at(&mut self, dir_fd: u32, path: &str, flags: OpenFlags) -> Result<u32, FsError> {
-        let dir = self.get_dir(dir_fd).ok_or(FsError::BadDescriptor)?;
+        let dir = self
+            .get_dir(dir_fd)
+            .cloned()
+            .ok_or(FsError::BadDescriptor)?;
 
         if path.is_empty()
             || path == "."
@@ -585,6 +736,7 @@ impl CapFs {
             || path.contains('/')
             || path.contains('\\')
             || path.contains('\0')
+            || (cfg!(windows) && path.contains(':'))
         {
             return Err(FsError::InvalidPath);
         }
@@ -598,7 +750,23 @@ impl CapFs {
 
         if let Some(fd) = self.find_file_in_dir(dir_fd, path) {
             if truncate {
-                let _ = dir.cap_std().create(path);
+                if self.output_fd == Some(dir_fd) {
+                    self.ensure_accounting_valid()?;
+                }
+                let old_size = dir
+                    .cap_std()
+                    .metadata(path)
+                    .map_err(|error| FsError::Io(error.to_string()))?
+                    .len();
+                if let Err(error) = dir.cap_std().create(path) {
+                    if self.output_fd == Some(dir_fd) {
+                        let _ = self.resynchronize_output();
+                    }
+                    return Err(FsError::Io(error.to_string()));
+                }
+                if self.output_fd == Some(dir_fd) {
+                    self.apply_mutation(old_size, 0, false)?;
+                }
             }
             return Ok(fd);
         }
@@ -610,10 +778,28 @@ impl CapFs {
         if self.open_files.len() >= Self::MAX_OPEN_FILES {
             return Err(FsError::Io("too many open files".into()));
         }
-        if !exists || truncate {
+        let old_size = if exists {
             dir.cap_std()
-                .create(path)
-                .map_err(|e| FsError::Io(e.to_string()))?;
+                .metadata(path)
+                .map_err(|error| FsError::Io(error.to_string()))?
+                .len()
+        } else {
+            0
+        };
+        if self.output_fd == Some(dir_fd) {
+            self.ensure_accounting_valid()?;
+            self.validate_mutation(old_size, if truncate { 0 } else { old_size }, !exists)?;
+        }
+        if !exists || truncate {
+            if let Err(error) = dir.cap_std().create(path) {
+                if self.output_fd == Some(dir_fd) {
+                    let _ = self.resynchronize_output();
+                }
+                return Err(FsError::Io(error.to_string()));
+            }
+            if self.output_fd == Some(dir_fd) {
+                self.apply_mutation(old_size, 0, !exists)?;
+            }
         }
 
         let fd = self.alloc_handle()?;
@@ -630,6 +816,7 @@ impl CapFs {
     /// Close an open file handle, freeing the descriptor.
     pub fn close_file(&mut self, fd: u32) {
         self.open_files.remove(&fd);
+        self.streams.retain(|_, stream| stream.file_fd != fd);
     }
 
     /// Close a stream handle, freeing the descriptor.
@@ -675,8 +862,15 @@ impl CapFs {
     }
 
     pub fn write_file(&mut self, fd: u32, offset: u64, buffer: &[u8]) -> Result<u64, FsError> {
-        let entry = self.open_files.get(&fd).ok_or(FsError::BadDescriptor)?;
-        let dir = self.get_dir(entry.dir_fd).ok_or(FsError::BadDescriptor)?;
+        let entry = self
+            .open_files
+            .get(&fd)
+            .cloned()
+            .ok_or(FsError::BadDescriptor)?;
+        let dir = self
+            .get_dir(entry.dir_fd)
+            .cloned()
+            .ok_or(FsError::BadDescriptor)?;
         if !dir.file_perms().contains(FilePerms::WRITE) {
             return Err(FsError::NotPermitted);
         }
@@ -686,23 +880,34 @@ impl CapFs {
             .cap_std()
             .open_with(&entry.name, &opts)
             .map_err(|e| FsError::Io(e.to_string()))?;
+        if buffer.is_empty() {
+            return Ok(0);
+        }
 
         let file_size = file
             .metadata()
             .map_err(|e| FsError::Io(e.to_string()))?
             .len();
         let new_end = offset
-            .checked_add(buffer.len() as u64)
-            .ok_or(FsError::Io("integer overflow".into()))?;
-        if new_end > file_size {
-            file.set_len(new_end)
-                .map_err(|e| FsError::Io(e.to_string()))?;
+            .checked_add(u64::try_from(buffer.len()).map_err(|_| FsError::Overflow)?)
+            .ok_or(FsError::Overflow)?;
+        let prospective_size = file_size.max(new_end);
+        if self.output_fd == Some(entry.dir_fd) {
+            self.ensure_accounting_valid()?;
+            self.validate_mutation(file_size, prospective_size, false)?;
         }
         file.seek(SeekFrom::Start(offset))
             .map_err(|e| FsError::Io(e.to_string()))?;
-        file.write_all(buffer)
-            .map_err(|e| FsError::Io(e.to_string()))?;
-        Ok(buffer.len() as u64)
+        if let Err(error) = file.write_all(buffer) {
+            if self.output_fd == Some(entry.dir_fd) {
+                let _ = self.resynchronize_output();
+            }
+            return Err(FsError::Io(error.to_string()));
+        }
+        if self.output_fd == Some(entry.dir_fd) {
+            self.apply_mutation(file_size, prospective_size, false)?;
+        }
+        u64::try_from(buffer.len()).map_err(|_| FsError::Overflow)
     }
 
     // -----------------------------------------------------------------------
@@ -723,6 +928,7 @@ impl CapFs {
                 file_fd,
                 offset,
                 is_write: false,
+                append: false,
             },
         );
         Ok(id)
@@ -742,14 +948,30 @@ impl CapFs {
                 file_fd,
                 offset,
                 is_write: true,
+                append: false,
             },
         );
         Ok(id)
     }
 
     pub fn create_append_stream(&mut self, file_fd: u32) -> Result<u32, FsError> {
-        let size = self.file_size(file_fd).ok_or(FsError::BadDescriptor)?;
-        self.create_write_stream(file_fd, size)
+        if !self.is_file(file_fd) {
+            return Err(FsError::BadDescriptor);
+        }
+        if !self.file_has_perms(file_fd, FilePerms::WRITE) {
+            return Err(FsError::NotPermitted);
+        }
+        let id = self.alloc_handle()?;
+        self.streams.insert(
+            id,
+            StreamState {
+                file_fd,
+                offset: 0,
+                is_write: true,
+                append: true,
+            },
+        );
+        Ok(id)
     }
 
     pub fn stream_read(&mut self, stream_id: u32, len: u64) -> Result<Vec<u8>, FsError> {
@@ -797,13 +1019,17 @@ impl CapFs {
     pub fn stream_write(&mut self, stream_id: u32, buffer: &[u8]) -> Result<u64, FsError> {
         let stream = self.streams.get(&stream_id).ok_or(FsError::BadDescriptor)?;
         let file_fd = stream.file_fd;
-        let offset = stream.offset;
+        let offset = if stream.append {
+            self.file_size(file_fd).ok_or(FsError::BadDescriptor)?
+        } else {
+            stream.offset
+        };
         let written = self.write_file(file_fd, offset, buffer)?;
         let stream = self
             .streams
             .get_mut(&stream_id)
             .ok_or(FsError::BadDescriptor)?;
-        stream.offset = stream.offset.saturating_add(written);
+        stream.offset = offset.checked_add(written).ok_or(FsError::Overflow)?;
         Ok(written)
     }
 
@@ -899,8 +1125,292 @@ impl CapFs {
                     "path contains unsupported separator: {trimmed}"
                 ));
             }
+            if cfg!(windows) && component.contains(':') {
+                return Err(anyhow::anyhow!(
+                    "path contains unsupported Windows stream separator: {trimmed}"
+                ));
+            }
         }
         Ok(normalized.to_string())
+    }
+
+    fn ensure_accounting_valid(&self) -> Result<(), FsError> {
+        if self.accounting_valid {
+            Ok(())
+        } else {
+            Err(FsError::Io(
+                "filesystem quota accounting requires resynchronization".into(),
+            ))
+        }
+    }
+
+    fn validate_mutation(
+        &self,
+        old_size: u64,
+        new_size: u64,
+        creates_file: bool,
+    ) -> Result<(), FsError> {
+        self.ensure_accounting_valid()?;
+        if self.limits.is_unlimited() {
+            return Ok(());
+        }
+        if let Some(max_file_size) = self.limits.max_file_size
+            && new_size > max_file_size
+        {
+            return Err(FsError::FileTooLarge);
+        }
+        let logical_bytes = self
+            .output_usage
+            .logical_bytes
+            .checked_sub(old_size)
+            .and_then(|current| current.checked_add(new_size))
+            .ok_or(FsError::Overflow)?;
+        if let Some(max_total_size) = self.limits.max_total_size
+            && logical_bytes > max_total_size
+        {
+            return Err(FsError::QuotaExceeded);
+        }
+        let file_count = self
+            .output_usage
+            .file_count
+            .checked_add(usize::from(creates_file))
+            .ok_or(FsError::Overflow)?;
+        if let Some(max_file_count) = self.limits.max_file_count
+            && file_count > max_file_count
+        {
+            return Err(FsError::QuotaExceeded);
+        }
+        Ok(())
+    }
+
+    fn apply_mutation(
+        &mut self,
+        old_size: u64,
+        new_size: u64,
+        creates_file: bool,
+    ) -> Result<(), FsError> {
+        if self.limits.is_unlimited() {
+            return Ok(());
+        }
+        let Some(logical_bytes) = self
+            .output_usage
+            .logical_bytes
+            .checked_sub(old_size)
+            .and_then(|current| current.checked_add(new_size))
+        else {
+            self.accounting_valid = false;
+            return Err(FsError::Overflow);
+        };
+        self.output_usage.logical_bytes = logical_bytes;
+        if creates_file {
+            let Some(file_count) = self.output_usage.file_count.checked_add(1) else {
+                self.accounting_valid = false;
+                return Err(FsError::Overflow);
+            };
+            self.output_usage.file_count = file_count;
+        }
+        Ok(())
+    }
+
+    fn resynchronize_output(&mut self) -> Result<()> {
+        let usage = match self.scan_output_usage() {
+            Ok(usage) => usage,
+            Err(error) => {
+                self.accounting_valid = false;
+                return Err(error);
+            }
+        };
+        if let Err(error) = self.validate_scanned_usage(usage) {
+            self.accounting_valid = false;
+            return Err(anyhow::anyhow!(error));
+        }
+        self.output_usage = usage;
+        self.accounting_valid = true;
+        Ok(())
+    }
+
+    fn validate_scanned_usage(&self, usage: FilesystemUsage) -> Result<(), FsError> {
+        if let Some(max_total_size) = self.limits.max_total_size
+            && usage.logical_bytes > max_total_size
+        {
+            return Err(FsError::QuotaExceeded);
+        }
+        if let Some(max_file_count) = self.limits.max_file_count
+            && usage.file_count > max_file_count
+        {
+            return Err(FsError::QuotaExceeded);
+        }
+        Ok(())
+    }
+
+    const MAX_SCAN_ENTRIES: usize = 100_000;
+    const MAX_SCAN_DEPTH: usize = 64;
+
+    fn scan_output_usage(&self) -> Result<FilesystemUsage> {
+        let Some(output_fd) = self.output_fd else {
+            return Ok(FilesystemUsage::default());
+        };
+        let output = self
+            .preopen_dirs
+            .get(&output_fd)
+            .ok_or_else(|| anyhow::anyhow!("output directory capability is missing"))?;
+        let mut usage = FilesystemUsage::default();
+        let mut visited = 0usize;
+        self.scan_output_dir(output.dir.cap_std(), 0, &mut visited, &mut usage)?;
+        Ok(usage)
+    }
+
+    fn scan_output_dir(
+        &self,
+        dir: &CapDir,
+        depth: usize,
+        visited: &mut usize,
+        usage: &mut FilesystemUsage,
+    ) -> Result<()> {
+        if depth > Self::MAX_SCAN_DEPTH {
+            anyhow::bail!("output directory exceeds maximum traversal depth");
+        }
+        for entry in dir.entries().context("failed to scan output directory")? {
+            let entry = entry.context("failed to read output directory entry")?;
+            *visited = visited
+                .checked_add(1)
+                .ok_or_else(|| anyhow::anyhow!("output traversal counter overflow"))?;
+            if *visited > Self::MAX_SCAN_ENTRIES {
+                anyhow::bail!("output directory exceeds traversal entry limit");
+            }
+            let name = entry.file_name();
+            let metadata = dir
+                .symlink_metadata(&name)
+                .context("failed to read output entry metadata")?;
+            if metadata.file_type().is_symlink() {
+                anyhow::bail!("symbolic links are not supported in output directories");
+            }
+            if metadata.is_dir() {
+                let child = dir
+                    .open_dir(&name)
+                    .context("failed to open nested output directory")?;
+                self.scan_output_dir(&child, depth + 1, visited, usage)?;
+            } else if metadata.is_file() {
+                let metadata = Self::validated_output_metadata(dir, &name, metadata)?;
+                if let Some(max_file_size) = self.limits.max_file_size
+                    && metadata.len() > max_file_size
+                {
+                    return Err(anyhow::anyhow!(FsError::FileTooLarge));
+                }
+                if !self.limits.is_unlimited() {
+                    usage.logical_bytes = usage
+                        .logical_bytes
+                        .checked_add(metadata.len())
+                        .ok_or(FsError::Overflow)?;
+                    usage.file_count = usage.file_count.checked_add(1).ok_or(FsError::Overflow)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn remove_output_files(root: &CapDir) -> Result<()> {
+        let mut visited = 0usize;
+        Self::remove_output_dir_files(root, 0, &mut visited)
+    }
+
+    fn remove_output_dir_files(dir: &CapDir, depth: usize, visited: &mut usize) -> Result<()> {
+        if depth > Self::MAX_SCAN_DEPTH {
+            anyhow::bail!("output directory exceeds maximum traversal depth");
+        }
+        for entry in dir.entries().context("failed to scan output directory")? {
+            let entry = entry.context("failed to read output directory entry")?;
+            *visited = visited
+                .checked_add(1)
+                .ok_or_else(|| anyhow::anyhow!("output traversal counter overflow"))?;
+            if *visited > Self::MAX_SCAN_ENTRIES {
+                anyhow::bail!("output directory exceeds traversal entry limit");
+            }
+            let file_type = entry
+                .file_type()
+                .context("failed to read output entry type")?;
+            if file_type.is_dir() && !file_type.is_symlink() {
+                let child = dir
+                    .open_dir(entry.file_name())
+                    .context("failed to open nested output directory")?;
+                Self::remove_output_dir_files(&child, depth + 1, visited)?;
+            } else {
+                dir.remove_file(entry.file_name())
+                    .context("failed to remove output file")?;
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    fn validated_output_metadata(
+        dir: &CapDir,
+        name: &std::ffi::OsStr,
+        _metadata: cap_std::fs::Metadata,
+    ) -> Result<cap_std::fs::Metadata> {
+        use std::mem::MaybeUninit;
+        use std::os::windows::io::AsRawHandle;
+
+        use windows_sys::Win32::Storage::FileSystem::{
+            BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+        };
+
+        let file = dir
+            .open(name)
+            .context("failed to open output file for accounting")?;
+        let metadata = file
+            .metadata()
+            .context("failed to read handle-based output metadata")?;
+        let mut info = MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+        let result =
+            unsafe { GetFileInformationByHandle(file.as_raw_handle() as _, info.as_mut_ptr()) };
+        if result == 0 {
+            return Err(std::io::Error::last_os_error())
+                .context("failed to read output file link count");
+        }
+        let info = unsafe { info.assume_init() };
+        if info.nNumberOfLinks > 1 {
+            anyhow::bail!("hard-linked files are not supported in output directories");
+        }
+        Ok(metadata)
+    }
+
+    #[cfg(not(windows))]
+    fn validated_output_metadata(
+        _dir: &CapDir,
+        _name: &std::ffi::OsStr,
+        metadata: cap_std::fs::Metadata,
+    ) -> Result<cap_std::fs::Metadata> {
+        #[cfg(unix)]
+        {
+            use cap_std::fs::MetadataExt;
+
+            if metadata.nlink() > 1 {
+                anyhow::bail!("hard-linked files are not supported in output directories");
+            }
+        }
+        Ok(metadata)
+    }
+
+    fn reset_output_handles(&mut self, output_fd: u32) {
+        self.open_files.retain(|_, entry| entry.dir_fd != output_fd);
+        self.streams.clear();
+        self.dir_streams.clear();
+        let min_handle = self
+            .preopen_dirs
+            .keys()
+            .copied()
+            .max()
+            .map(|handle| handle + 1)
+            .unwrap_or(FIRST_PREOPEN_FD);
+        self.next_handle = self
+            .open_files
+            .keys()
+            .copied()
+            .max()
+            .map(|handle| handle + 1)
+            .unwrap_or(min_handle)
+            .max(min_handle);
     }
 
     fn alloc_handle(&mut self) -> Result<u32, FsError> {
@@ -933,6 +1443,23 @@ mod tests {
             )
             .unwrap();
         (fs, input, output)
+    }
+
+    fn limited_output_fs(
+        max_file_size: u64,
+        max_total_size: u64,
+        max_file_count: usize,
+    ) -> (CapFs, tempfile::TempDir) {
+        let output = tempfile::tempdir().unwrap();
+        let limits = FilesystemLimits::new(max_file_size, max_total_size, max_file_count).unwrap();
+        let fs = CapFs::with_limits(limits)
+            .with_output_dir(
+                output.path(),
+                DirPerms::READ | DirPerms::MUTATE,
+                FilePerms::READ | FilePerms::WRITE,
+            )
+            .unwrap();
+        (fs, output)
     }
 
     /// Helper: write a file directly into the input dir (simulates host setup).
@@ -992,13 +1519,388 @@ mod tests {
     }
 
     #[test]
+    fn write_file_enforces_logical_file_size_before_mutation() {
+        let (mut fs, output) = limited_output_fs(8, 32, 4);
+        let output_fd = preopen_fd(&fs, "/output");
+        let fd = fs
+            .open_at(output_fd, "bounded.bin", OpenFlags::CREATE)
+            .unwrap();
+
+        fs.write_file(fd, 7, b"x").unwrap();
+        assert_eq!(
+            std::fs::metadata(output.path().join("bounded.bin"))
+                .unwrap()
+                .len(),
+            8
+        );
+
+        assert_eq!(fs.write_file(fd, 8, b"x"), Err(FsError::FileTooLarge));
+        assert_eq!(
+            std::fs::metadata(output.path().join("bounded.bin"))
+                .unwrap()
+                .len(),
+            8
+        );
+    }
+
+    #[test]
+    fn write_file_rejects_offset_overflow() {
+        let (mut fs, output) = limited_output_fs(8, 32, 4);
+        let output_fd = preopen_fd(&fs, "/output");
+        let fd = fs
+            .open_at(output_fd, "overflow.bin", OpenFlags::CREATE)
+            .unwrap();
+
+        assert_eq!(fs.write_file(fd, u64::MAX, b"x"), Err(FsError::Overflow));
+        assert_eq!(
+            std::fs::metadata(output.path().join("overflow.bin"))
+                .unwrap()
+                .len(),
+            0
+        );
+    }
+
+    #[test]
+    fn empty_write_is_a_noop() {
+        let (mut fs, output) = limited_output_fs(8, 32, 4);
+        let output_fd = preopen_fd(&fs, "/output");
+        let fd = fs
+            .open_at(output_fd, "empty.bin", OpenFlags::CREATE)
+            .unwrap();
+        let stream = fs.create_write_stream(fd, u64::MAX).unwrap();
+
+        assert_eq!(fs.stream_write(stream, b"").unwrap(), 0);
+        assert_eq!(
+            std::fs::metadata(output.path().join("empty.bin"))
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(fs.streams[&stream].offset, u64::MAX);
+        assert_eq!(fs.output_usage.logical_bytes, 0);
+    }
+
+    #[test]
+    fn cumulative_quota_counts_growth_not_rewrites() {
+        let (mut fs, output) = limited_output_fs(8, 10, 4);
+        let output_fd = preopen_fd(&fs, "/output");
+        let first = fs
+            .open_at(output_fd, "first.bin", OpenFlags::CREATE)
+            .unwrap();
+        let second = fs
+            .open_at(output_fd, "second.bin", OpenFlags::CREATE)
+            .unwrap();
+
+        fs.write_file(first, 0, b"12345678").unwrap();
+        fs.write_file(first, 0, b"abcdefgh").unwrap();
+        fs.write_file(second, 0, b"12").unwrap();
+        assert_eq!(fs.write_file(second, 2, b"3"), Err(FsError::QuotaExceeded));
+
+        assert_eq!(
+            std::fs::read(output.path().join("first.bin")).unwrap(),
+            b"abcdefgh"
+        );
+        assert_eq!(
+            std::fs::read(output.path().join("second.bin")).unwrap(),
+            b"12"
+        );
+        assert_eq!(fs.output_usage.logical_bytes, 10);
+    }
+
+    #[test]
+    fn file_count_quota_survives_descriptor_close() {
+        let (mut fs, _output) = limited_output_fs(8, 32, 1);
+        let output_fd = preopen_fd(&fs, "/output");
+        let fd = fs
+            .open_at(output_fd, "first.bin", OpenFlags::CREATE)
+            .unwrap();
+        fs.close_file(fd);
+
+        assert_eq!(
+            fs.open_at(output_fd, "second.bin", OpenFlags::CREATE),
+            Err(FsError::QuotaExceeded)
+        );
+    }
+
+    #[test]
+    fn interleaved_append_streams_use_current_eof() {
+        let (mut fs, output) = limited_output_fs(8, 32, 4);
+        let output_fd = preopen_fd(&fs, "/output");
+        let fd = fs
+            .open_at(output_fd, "append.bin", OpenFlags::CREATE)
+            .unwrap();
+        let first = fs.create_append_stream(fd).unwrap();
+        let second = fs.create_append_stream(fd).unwrap();
+
+        fs.stream_write(first, b"ab").unwrap();
+        fs.stream_write(second, b"cd").unwrap();
+
+        assert_eq!(
+            std::fs::read(output.path().join("append.bin")).unwrap(),
+            b"abcd"
+        );
+        assert_eq!(fs.output_usage.logical_bytes, 4);
+    }
+
+    #[test]
+    fn host_write_replaces_file_and_releases_quota() {
+        let (mut fs, _output) = limited_output_fs(8, 8, 2);
+        fs.write_output_path("/output/value.bin", b"12345678".to_vec())
+            .unwrap();
+        fs.write_output_path("/output/value.bin", b"12".to_vec())
+            .unwrap();
+        fs.write_output_path("/output/other.bin", b"123456".to_vec())
+            .unwrap();
+        assert_eq!(fs.output_usage.logical_bytes, 8);
+    }
+
+    #[test]
+    fn truncate_releases_logical_byte_quota() {
+        let (mut fs, _output) = limited_output_fs(8, 8, 2);
+        let output_fd = preopen_fd(&fs, "/output");
+        let first = fs
+            .open_at(output_fd, "first.bin", OpenFlags::CREATE)
+            .unwrap();
+        fs.write_file(first, 0, b"12345678").unwrap();
+
+        fs.open_at(output_fd, "first.bin", OpenFlags::TRUNCATE)
+            .unwrap();
+        let second = fs
+            .open_at(output_fd, "second.bin", OpenFlags::CREATE)
+            .unwrap();
+        fs.write_file(second, 0, b"12345678").unwrap();
+
+        assert_eq!(fs.output_usage.logical_bytes, 8);
+    }
+
+    #[test]
+    fn existing_output_over_limit_is_rejected() {
+        let output = tempfile::tempdir().unwrap();
+        host_write_output(&output, "large.bin", b"123456789");
+        let limits = FilesystemLimits::new(8, 32, 4).unwrap();
+
+        assert!(
+            CapFs::with_limits(limits)
+                .with_output_dir(
+                    output.path(),
+                    DirPerms::READ | DirPerms::MUTATE,
+                    FilePerms::READ | FilePerms::WRITE,
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn unlimited_limits_allow_large_logical_offsets() {
+        let output = tempfile::tempdir().unwrap();
+        let mut fs = CapFs::with_limits(FilesystemLimits::unlimited())
+            .with_output_dir(
+                output.path(),
+                DirPerms::READ | DirPerms::MUTATE,
+                FilePerms::READ | FilePerms::WRITE,
+            )
+            .unwrap();
+        let output_fd = preopen_fd(&fs, "/output");
+        let fd = fs
+            .open_at(output_fd, "sparse.bin", OpenFlags::CREATE)
+            .unwrap();
+
+        fs.write_file(fd, 1024, b"x").unwrap();
+
+        assert_eq!(
+            std::fs::metadata(output.path().join("sparse.bin"))
+                .unwrap()
+                .len(),
+            1025
+        );
+    }
+
+    #[test]
+    fn zero_limits_disallow_output_files() {
+        let (mut fs, _output) = limited_output_fs(0, 0, 0);
+        let output_fd = preopen_fd(&fs, "/output");
+
+        assert_eq!(
+            fs.open_at(output_fd, "blocked.bin", OpenFlags::CREATE),
+            Err(FsError::QuotaExceeded)
+        );
+    }
+
+    #[test]
+    fn repeated_output_registration_is_rejected() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let fs = CapFs::new()
+            .with_output_dir(
+                first.path(),
+                DirPerms::READ | DirPerms::MUTATE,
+                FilePerms::READ | FilePerms::WRITE,
+            )
+            .unwrap();
+
+        assert!(
+            fs.with_output_dir(
+                second.path(),
+                DirPerms::READ | DirPerms::MUTATE,
+                FilePerms::READ | FilePerms::WRITE,
+            )
+            .is_err()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hard_linked_output_is_rejected() {
+        let output = tempfile::tempdir().unwrap();
+        host_write_output(&output, "first.bin", b"data");
+        std::fs::hard_link(
+            output.path().join("first.bin"),
+            output.path().join("second.bin"),
+        )
+        .unwrap();
+
+        assert!(
+            CapFs::new()
+                .with_output_dir(
+                    output.path(),
+                    DirPerms::READ | DirPerms::MUTATE,
+                    FilePerms::READ | FilePerms::WRITE,
+                )
+                .is_err()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hard_linked_output_is_rejected_with_unlimited_limits() {
+        let output = tempfile::tempdir().unwrap();
+        host_write_output(&output, "first.bin", b"data");
+        std::fs::hard_link(
+            output.path().join("first.bin"),
+            output.path().join("second.bin"),
+        )
+        .unwrap();
+
+        assert!(
+            CapFs::with_limits(FilesystemLimits::unlimited())
+                .with_output_dir(
+                    output.path(),
+                    DirPerms::READ | DirPerms::MUTATE,
+                    FilePerms::READ | FilePerms::WRITE,
+                )
+                .is_err()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symbolic_linked_output_is_rejected_with_unlimited_limits() {
+        use std::os::unix::fs::symlink;
+
+        let output = tempfile::tempdir().unwrap();
+        host_write_output(&output, "target.bin", b"data");
+        symlink(
+            output.path().join("target.bin"),
+            output.path().join("link.bin"),
+        )
+        .unwrap();
+
+        assert!(
+            CapFs::with_limits(FilesystemLimits::unlimited())
+                .with_output_dir(
+                    output.path(),
+                    DirPerms::READ | DirPerms::MUTATE,
+                    FilePerms::READ | FilePerms::WRITE,
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn failed_create_does_not_consume_handle() {
+        let (mut fs, output) = limited_output_fs(8, 32, 4);
+        std::fs::create_dir(output.path().join("directory")).unwrap();
+        let output_fd = preopen_fd(&fs, "/output");
+        let next_handle = fs.next_handle;
+
+        assert!(
+            fs.open_at(output_fd, "directory", OpenFlags::TRUNCATE)
+                .is_err()
+        );
+        assert_eq!(fs.next_handle, next_handle);
+    }
+
+    #[test]
+    fn host_write_rejects_directory_without_invalidating_accounting() {
+        let (mut fs, output) = limited_output_fs(8, 32, 4);
+        std::fs::create_dir(output.path().join("directory")).unwrap();
+
+        assert!(
+            fs.write_output_path("/output/directory", b"data".to_vec())
+                .is_err()
+        );
+        assert!(fs.accounting_valid);
+        assert_eq!(fs.output_usage.logical_bytes, 0);
+        assert_eq!(fs.output_usage.file_count, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn successful_reconciliation_survives_cleanup_failure() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (mut fs, output) = limited_output_fs(8, 32, 4);
+        host_write_output(&output, "locked.bin", b"data");
+        let original_permissions = std::fs::metadata(output.path()).unwrap().permissions();
+        std::fs::set_permissions(output.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let result = fs.clear_output_files();
+
+        std::fs::set_permissions(output.path(), original_permissions).unwrap();
+        assert!(result.is_err());
+        assert!(fs.accounting_valid);
+        assert_eq!(fs.output_usage.logical_bytes, 4);
+        assert_eq!(fs.output_usage.file_count, 1);
+    }
+
+    #[test]
+    fn closing_file_invalidates_dependent_streams() {
+        let (mut fs, _output) = limited_output_fs(8, 32, 4);
+        let output_fd = preopen_fd(&fs, "/output");
+        let fd = fs
+            .open_at(output_fd, "stream.bin", OpenFlags::CREATE)
+            .unwrap();
+        let stream = fs.create_write_stream(fd, 0).unwrap();
+
+        fs.close_file(fd);
+
+        assert!(!fs.has_stream(stream));
+        assert_eq!(fs.stream_write(stream, b"x"), Err(FsError::BadDescriptor));
+    }
+
+    #[test]
+    fn clear_output_removes_nested_files_and_resets_usage() {
+        let (mut fs, output) = limited_output_fs(8, 32, 4);
+        std::fs::create_dir(output.path().join("nested")).unwrap();
+        fs.write_output_path("/output/nested/value.bin", b"1234".to_vec())
+            .unwrap();
+
+        fs.clear_output_files().unwrap();
+
+        assert!(!output.path().join("nested/value.bin").exists());
+        assert!(output.path().join("nested").is_dir());
+        assert_eq!(fs.output_usage.logical_bytes, 0);
+        assert_eq!(fs.output_usage.file_count, 0);
+    }
+
+    #[test]
     fn clear_output_preserves_input() {
         let (mut fs, input, _o) = test_fs();
         host_write_input(&input, "keep.txt", b"input");
         fs.write_output_path("/output/gone.txt", b"output".to_vec())
             .unwrap();
 
-        fs.clear_output_files();
+        fs.clear_output_files().unwrap();
 
         let input_fd = preopen_fd(&fs, "/input");
         let fd = fs
@@ -1133,6 +2035,22 @@ mod tests {
         assert!(
             fs.open_at(output_fd, "file-name_v2.tar.gz", OpenFlags::CREATE)
                 .is_ok()
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_paths_reject_alternate_data_streams() {
+        let (mut fs, _input, _output) = test_fs();
+        let output_fd = preopen_fd(&fs, "/output");
+
+        assert_eq!(
+            fs.open_at(output_fd, "file.txt:stream", OpenFlags::CREATE),
+            Err(FsError::InvalidPath)
+        );
+        assert!(
+            fs.write_output_path("/output/file.txt:stream", b"data".to_vec())
+                .is_err()
         );
     }
 

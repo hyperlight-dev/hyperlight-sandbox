@@ -370,7 +370,7 @@ impl JsGuestSandbox {
         self.files
             .lock()
             .map_err(|_| anyhow::anyhow!("filesystem mutex poisoned"))?
-            .clear_output_files();
+            .prepare_for_run()?;
 
         let request = serde_json::to_string(code)?;
 

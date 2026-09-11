@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 pub use cap_fs::{
-    CapFs, DescriptorFlags, DescriptorStat, DescriptorType, Dir, DirPerms, FilePerms, FsError,
-    OpenFlags,
+    CapFs, DescriptorFlags, DescriptorStat, DescriptorType, Dir, DirPerms, FilePerms,
+    FilesystemLimits, FsError, OpenFlags,
 };
 pub use network::{HttpMethod, MethodFilter, NetworkPermission, NetworkPermissions};
 use serde::{Deserialize, Serialize};
@@ -183,11 +183,12 @@ impl<G: Guest> Sandbox<G> {
         self.fs
             .lock()
             .map_err(|_| anyhow::anyhow!("filesystem mutex poisoned during snapshot restore"))?
-            .clear_output_files();
-        Ok(())
+            .prepare_for_run()
     }
 
-    /// List filenames in the output directory (without reading contents).
+    /// List top-level filenames in the output directory (without reading contents).
+    ///
+    /// Nested files written through host-side backend bridges are not included.
     pub fn get_output_files(&self) -> Result<Vec<String>> {
         Ok(self
             .fs
@@ -238,6 +239,7 @@ pub struct SandboxBuilder<G = NoGuest> {
     input_dir: Option<PathBuf>,
     output_dir: Option<(PathBuf, DirPerms, FilePerms)>,
     temp_output: bool,
+    filesystem_limits: FilesystemLimits,
 }
 
 impl SandboxBuilder<NoGuest> {
@@ -255,6 +257,7 @@ impl Default for SandboxBuilder<NoGuest> {
             input_dir: None,
             output_dir: None,
             temp_output: false,
+            filesystem_limits: FilesystemLimits::default(),
         }
     }
 }
@@ -314,6 +317,12 @@ impl<G> SandboxBuilder<G> {
         self.temp_output = true;
         self
     }
+
+    /// Configure logical resource limits for the writable filesystem.
+    pub fn filesystem_limits(mut self, limits: FilesystemLimits) -> Self {
+        self.filesystem_limits = limits;
+        self
+    }
 }
 
 impl SandboxBuilder<NoGuest> {
@@ -328,6 +337,7 @@ impl SandboxBuilder<NoGuest> {
             input_dir: self.input_dir,
             output_dir: self.output_dir,
             temp_output: self.temp_output,
+            filesystem_limits: self.filesystem_limits,
         }
     }
 }
@@ -338,7 +348,7 @@ where
 {
     pub fn build(self) -> Result<Sandbox<G>> {
         let network = std::sync::Arc::new(std::sync::Mutex::new(NetworkPermissions::new()));
-        let mut vfs = CapFs::new();
+        let mut vfs = CapFs::with_limits(self.filesystem_limits);
         if let Some(input_dir) = &self.input_dir {
             vfs = vfs.with_input(input_dir)?;
         }
@@ -354,5 +364,64 @@ where
             .guest
             .build(self.config, self.tools, network.clone(), fs.clone())?;
         Ok(Sandbox { inner, network, fs })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestGuest;
+
+    struct TestGuestSandbox;
+
+    impl Guest for TestGuest {
+        type Sandbox = TestGuestSandbox;
+
+        fn build(
+            self,
+            _config: SandboxConfig,
+            _tools: ToolRegistry,
+            _network: std::sync::Arc<std::sync::Mutex<NetworkPermissions>>,
+            _fs: std::sync::Arc<std::sync::Mutex<CapFs>>,
+        ) -> Result<Self::Sandbox> {
+            Ok(TestGuestSandbox)
+        }
+    }
+
+    impl GuestSandbox for TestGuestSandbox {
+        type SnapshotData = ();
+
+        fn run(&mut self, _code: &str) -> Result<ExecutionResult> {
+            unreachable!("test backend does not execute guest code")
+        }
+
+        fn snapshot(&mut self) -> Result<Snapshot<Self::SnapshotData>> {
+            Ok(Snapshot::new("test", std::sync::Arc::new(())))
+        }
+
+        fn restore(&mut self, _snapshot: &Snapshot<Self::SnapshotData>) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn restore_clears_output_for_external_guest_backends() {
+        let output = tempfile::tempdir().unwrap();
+        let mut sandbox = SandboxBuilder::new()
+            .output_dir(
+                output.path(),
+                DirPerms::READ | DirPerms::MUTATE,
+                FilePerms::READ | FilePerms::WRITE,
+            )
+            .guest(TestGuest)
+            .build()
+            .unwrap();
+        let snapshot = sandbox.snapshot().unwrap();
+        std::fs::write(output.path().join("stale.txt"), b"stale").unwrap();
+
+        sandbox.restore(&snapshot).unwrap();
+
+        assert!(!output.path().join("stale.txt").exists());
     }
 }

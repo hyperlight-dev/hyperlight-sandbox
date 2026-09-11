@@ -19,7 +19,25 @@ impl From<FsError> for fs_types::ErrorCode {
             FsError::BadDescriptor => fs_types::ErrorCode::BadDescriptor,
             FsError::NotPermitted => fs_types::ErrorCode::NotPermitted,
             FsError::NoEntry => fs_types::ErrorCode::NoEntry,
-            FsError::InvalidPath => fs_types::ErrorCode::NoEntry,
+            FsError::InvalidPath => fs_types::ErrorCode::Invalid,
+            FsError::FileTooLarge => fs_types::ErrorCode::FileTooLarge,
+            FsError::QuotaExceeded => fs_types::ErrorCode::Quota,
+            FsError::Overflow => fs_types::ErrorCode::Overflow,
+            FsError::Io(_) => fs_types::ErrorCode::Io,
+        }
+    }
+}
+
+impl From<&FsError> for fs_types::ErrorCode {
+    fn from(e: &FsError) -> Self {
+        match e {
+            FsError::BadDescriptor => fs_types::ErrorCode::BadDescriptor,
+            FsError::NotPermitted => fs_types::ErrorCode::NotPermitted,
+            FsError::NoEntry => fs_types::ErrorCode::NoEntry,
+            FsError::InvalidPath => fs_types::ErrorCode::Invalid,
+            FsError::FileTooLarge => fs_types::ErrorCode::FileTooLarge,
+            FsError::QuotaExceeded => fs_types::ErrorCode::Quota,
+            FsError::Overflow => fs_types::ErrorCode::Overflow,
             FsError::Io(_) => fs_types::ErrorCode::Io,
         }
     }
@@ -398,7 +416,7 @@ impl
         &mut self,
         err: BorrowedResourceGuard<anyhow::Error>,
     ) -> HlResult<Option<fs_types::ErrorCode>> {
-        None
+        err.downcast_ref::<FsError>().map(Into::into)
     }
 }
 
@@ -411,5 +429,30 @@ impl wasi::filesystem::Preopens<crate::HostBindings, u32> for HostState {
             .into_iter()
             .map(|(fd, name)| (fd, name.to_string()))
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_quota_errors_to_specific_wasi_codes() {
+        assert_eq!(
+            fs_types::ErrorCode::from(FsError::FileTooLarge),
+            fs_types::ErrorCode::FileTooLarge
+        );
+        assert_eq!(
+            fs_types::ErrorCode::from(FsError::QuotaExceeded),
+            fs_types::ErrorCode::Quota
+        );
+        assert_eq!(
+            fs_types::ErrorCode::from(FsError::Overflow),
+            fs_types::ErrorCode::Overflow
+        );
+        assert_eq!(
+            fs_types::ErrorCode::from(FsError::InvalidPath),
+            fs_types::ErrorCode::Invalid
+        );
     }
 }

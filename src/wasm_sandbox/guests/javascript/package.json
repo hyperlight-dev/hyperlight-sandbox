@@ -7,7 +7,7 @@
     "build": "node build.js"
   },
   "devDependencies": {
-    "@bytecodealliance/componentize-js": "^0.22.0",
+    "@bytecodealliance/componentize-js": "^0.23.0",
     "@bytecodealliance/jco": "^1.32.1"
   }
 }

@@ -71,7 +71,7 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
 
       - name: Install Python
-        run: uv python install 3.10 3.11 3.12 3.13 3.14
+        run: uv python install 3.10 3.11 3.12 3.13 3.14 3.15
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
@@ -87,7 +87,7 @@ jobs:
 
       - name: Build all Python packages
         run: |
-          export INTERPRETERS="--interpreter $(uv python find 3.10) $(uv python find 3.11) $(uv python find 3.12) $(uv python find 3.13) $(uv python find 3.14)"
+          export INTERPRETERS="--interpreter $(uv python find 3.10) $(uv python find 3.11) $(uv python find 3.12) $(uv python find 3.13) $(uv python find 3.14) $(uv python find 3.15)"
           just python-dist
 
       - name: Verify manylinux compatibility
@@ -123,7 +123,7 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
 
       - name: Install Python
-        run: uv python install 3.10 3.11 3.12 3.13 3.14
+        run: uv python install 3.10 3.11 3.12 3.13 3.14 3.15
 
       - name: Install just
         run: cargo install --locked just
@@ -134,7 +134,7 @@ jobs:
       - name: Build backend wheels
         shell: pwsh
         run: |
-          $interps = "3.10", "3.11", "3.12", "3.13", "3.14" | ForEach-Object { & uv python find $_ }
+          $interps = "3.10", "3.11", "3.12", "3.13", "3.14", "3.15" | ForEach-Object { & uv python find $_ }
           $env:INTERPRETERS = "--interpreter $($interps -join ' ')"
           just python-dist-backends
 

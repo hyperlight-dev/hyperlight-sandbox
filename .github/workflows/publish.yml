@@ -83,7 +83,7 @@ jobs:
         run: cargo install --locked just
 
       - name: Install clang
-        run: dnf install -y clang libffi-devel
+        run: dnf install -y clang
 
       - name: Build all Python packages
         run: |

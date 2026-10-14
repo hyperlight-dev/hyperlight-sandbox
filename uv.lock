@@ -607,7 +607,6 @@ dev = [
     { name = "hyperlight-sandbox-python-guest" },
     { name = "maturin" },
     { name = "ruff" },
-    { name = "twine" },
 ]
 
 [package.metadata]
@@ -636,7 +635,6 @@ dev = [
     { name = "hyperlight-sandbox-python-guest", editable = "src/sdk/python/wasm_guests/python_guest" },
     { name = "maturin", specifier = ">=1.15.0,<2.0" },
     { name = "ruff", specifier = ">=0.16.6" },
-    { name = "twine" },
 ]
 
 [[package]]

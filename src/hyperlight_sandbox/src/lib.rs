@@ -121,7 +121,8 @@ pub trait GuestSandbox: Send {
     type SnapshotData: Send + Sync + 'static;
     /// Execute guest code.
     ///
-    /// Output files under `/output` persist across executions. Input files are
+    /// Output file contents under `/output` persist across executions, but open
+    /// guest file handles are reset before each execution. Input files are
     /// read-only and managed by the host.
     fn run(&mut self, code: &str) -> Result<ExecutionResult>;
     /// Capture a snapshot of the guest runtime state.
@@ -165,8 +166,9 @@ impl<G: Guest> Sandbox<G> {
 
     /// Execute guest code.
     ///
-    /// Output files under `/output` persist across runs until a snapshot is
-    /// restored. Input files are read-only and managed by the host.
+    /// Output file contents under `/output` persist across runs until a snapshot
+    /// is restored, but open guest file handles are reset before each run. Input
+    /// files are read-only and managed by the host.
     pub fn run(&mut self, code: &str) -> Result<ExecutionResult> {
         self.inner.run(code)
     }

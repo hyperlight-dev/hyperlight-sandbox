@@ -29,6 +29,16 @@ fn quota_sandbox(
         .expect("failed to create sandbox")
 }
 
+fn unlimited_sandbox() -> hyperlight_sandbox::Sandbox<Wasm> {
+    SandboxBuilder::new()
+        .guest(Wasm)
+        .module_path(python_guest_path())
+        .temp_output()
+        .filesystem_limits(FilesystemLimits::unlimited())
+        .build()
+        .expect("failed to create sandbox")
+}
+
 #[test]
 fn guest_wasi_write_within_quota_succeeds() {
     let mut sandbox = quota_sandbox(4, 4, 1);
@@ -92,6 +102,58 @@ with open('/output/guest-created.txt') as file:
         .expect("second sandbox run failed");
     assert_eq!(second.exit_code, 0, "stderr: {}", second.stderr);
     assert_eq!(second.stdout.trim(), "from guest");
+}
+
+#[test]
+fn filesystem_handles_are_reset_between_runs() {
+    let mut sandbox = unlimited_sandbox();
+
+    for prefix in ["first", "second"] {
+        let code = format!(
+            r#"
+for i in range(600):
+    with open(f'/output/{prefix}-{{i}}.txt', 'w'):
+        pass
+"#
+        );
+        let result = sandbox.run(&code).expect("sandbox run failed");
+        assert_eq!(result.exit_code, 0, "stderr: {}", result.stderr);
+    }
+}
+
+#[test]
+fn host_deleted_output_can_be_recreated_by_guest() {
+    let mut sandbox = unlimited_sandbox();
+    let output_dir = sandbox
+        .output_path()
+        .expect("output path failed")
+        .expect("missing output path");
+
+    let first = sandbox
+        .run(
+            r#"
+with open('/output/recreated.txt', 'w') as file:
+    file.write('first')
+"#,
+        )
+        .expect("first sandbox run failed");
+    assert_eq!(first.exit_code, 0, "stderr: {}", first.stderr);
+    std::fs::remove_file(output_dir.join("recreated.txt")).expect("failed to remove guest output");
+
+    let second = sandbox
+        .run(
+            r#"
+with open('/output/recreated.txt', 'w') as file:
+    file.write('second')
+"#,
+        )
+        .expect("second sandbox run failed");
+    assert_eq!(second.exit_code, 0, "stderr: {}", second.stderr);
+    assert_eq!(
+        std::fs::read_to_string(output_dir.join("recreated.txt"))
+            .expect("failed to read recreated output"),
+        "second"
+    );
 }
 
 #[test]

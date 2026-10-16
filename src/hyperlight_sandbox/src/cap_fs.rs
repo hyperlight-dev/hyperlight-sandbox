@@ -11,9 +11,9 @@
 //!
 //! * **Output** — default temp directory or host-provided with explicit
 //!   permissions, exposed as a writable WASI preopen. Contents persist across
-//!   runs until explicitly cleared or a snapshot is restored. Logical output
-//!   size and file count are bounded by [`FilesystemLimits`] before host
-//!   filesystem mutation.
+//!   runs until explicitly cleared or a snapshot is restored, while guest file
+//!   handles are reset before each run. Logical output size and file count are
+//!   bounded by [`FilesystemLimits`] before host filesystem mutation.
 //!
 //! Snapshots only capture runtime state. Restoring a snapshot clears output so
 //! the sandbox returns to a known filesystem state.
@@ -590,8 +590,14 @@ impl CapFs {
         self.clear_output_files()
     }
 
-    /// Reconcile and validate writable filesystem usage before guest execution.
+    /// Reset guest handles, then reconcile and validate writable filesystem usage.
     pub fn prepare_for_run(&mut self) -> Result<()> {
+        if let Some(output_fd) = self.output_fd {
+            // Hyperlight does not yet notify the host when guest-owned resources
+            // are dropped (hyperlight-dev/hyperlight-wasm#560), so run boundaries
+            // remain the safe point for releasing stale filesystem handles.
+            self.reset_output_handles(output_fd);
+        }
         self.resynchronize_output()
     }
 
@@ -1714,6 +1720,28 @@ mod tests {
             fs.write_output_path("/output/third.bin", b"x".to_vec())
                 .is_err()
         );
+    }
+
+    #[test]
+    fn prepare_for_run_preserves_files_and_resets_handles() {
+        let (mut fs, output) = limited_output_fs(8, 32, 2);
+        let output_fd = preopen_fd(&fs, "/output");
+        let file_fd = fs
+            .open_at(output_fd, "persisted.bin", OpenFlags::CREATE)
+            .unwrap();
+        fs.write_file(file_fd, 0, b"data").unwrap();
+        let stream_id = fs.create_write_stream(file_fd, 0).unwrap();
+        let dir_stream_id = fs.create_dir_stream(output_fd).unwrap();
+
+        fs.prepare_for_run().unwrap();
+
+        assert_eq!(
+            std::fs::read(output.path().join("persisted.bin")).unwrap(),
+            b"data"
+        );
+        assert!(!fs.is_file(file_fd));
+        assert!(!fs.has_stream(stream_id));
+        assert!(!fs.has_dir_stream(dir_stream_id));
     }
 
     #[test]

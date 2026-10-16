@@ -44,7 +44,8 @@ backend package.
 ## Snapshot Semantics
 
 - `snapshot()` captures guest runtime state.
-- Output files under `/output` persist across `run()` calls.
+- Output file contents under `/output` persist across `run()` calls, but open
+  file handles must be reopened in each run.
 - `restore()` rewinds runtime state and clears output files.
 
 ## Build

@@ -95,6 +95,39 @@ with open('/output/guest-created.txt') as file:
 }
 
 #[test]
+fn restore_explicitly_clears_persisted_output() {
+    let mut sandbox = quota_sandbox(32, 64, 4);
+    let snapshot = sandbox.snapshot().expect("failed to snapshot sandbox");
+    let output_dir = sandbox
+        .output_path()
+        .expect("output path failed")
+        .expect("missing output path");
+
+    let result = sandbox
+        .run(
+            r#"
+with open('/output/persisted.txt', 'w') as file:
+    file.write('persisted')
+"#,
+        )
+        .expect("sandbox run failed");
+    assert_eq!(result.exit_code, 0, "stderr: {}", result.stderr);
+    assert!(output_dir.join("persisted.txt").exists());
+
+    sandbox
+        .restore(&snapshot)
+        .expect("failed to restore sandbox");
+
+    assert!(!output_dir.join("persisted.txt").exists());
+    assert!(
+        sandbox
+            .get_output_files()
+            .expect("failed to list output files")
+            .is_empty()
+    );
+}
+
+#[test]
 fn host_changes_over_quota_fail_before_guest_entry() {
     let mut sandbox = quota_sandbox(4, 4, 1);
     let output_dir = sandbox

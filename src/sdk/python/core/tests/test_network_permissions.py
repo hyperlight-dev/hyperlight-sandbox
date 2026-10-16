@@ -45,13 +45,30 @@ class TestPendingNetworkPermissions(unittest.TestCase):
         cls.server_connection.close()
         cls.server_process.close()
 
-    def test_invalid_method_is_rejected_without_discarding_valid_rule(self):
-        cases = {
-            "wasm": f"print(http_get('{self.url}')['status'])",
-            "hyperlight-js": (f"const response = await fetch('{self.url}'); console.log(response.status);"),
+    def backend_cases(self):
+        return {
+            "wasm": {
+                "get": f"print(http_get('{self.url}')['status'])",
+                "plain": "print('plain')",
+            },
+            "hyperlight-js": {
+                "get": f"const response = await fetch('{self.url}'); console.log(response.status);",
+                "plain": "console.log('plain');",
+            },
         }
 
-        for backend, code in cases.items():
+    def test_valid_queued_rule_works_on_first_run(self):
+        for backend, code in self.backend_cases().items():
+            with self.subTest(backend=backend):
+                sandbox = Sandbox(backend=backend)
+                sandbox.allow_domain(self.url, methods=["GET"])
+
+                result = sandbox.run(code["get"])
+                self.assertEqual(result.exit_code, 0, result.stderr)
+                self.assertIn("200", result.stdout)
+
+    def test_invalid_queued_method_does_not_discard_valid_rule(self):
+        for backend, code in self.backend_cases().items():
             with self.subTest(backend=backend):
                 sandbox = Sandbox(backend=backend)
                 sandbox.allow_domain(self.url, methods=["GET"])
@@ -59,9 +76,25 @@ class TestPendingNetworkPermissions(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "invalid HTTP method: PROPFIND"):
                     sandbox.allow_domain(self.url, methods=["PROPFIND"])
 
-                result = sandbox.run(code)
+                result = sandbox.run(code["plain"])
+                self.assertEqual(result.exit_code, 0, result.stderr)
+                self.assertIn("plain", result.stdout)
+
+                result = sandbox.run(code["get"])
                 self.assertEqual(result.exit_code, 0, result.stderr)
                 self.assertIn("200", result.stdout)
+
+    def test_invalid_method_is_rejected_after_initialization(self):
+        for backend, code in self.backend_cases().items():
+            with self.subTest(backend=backend):
+                sandbox = Sandbox(backend=backend)
+
+                result = sandbox.run(code["plain"])
+                self.assertEqual(result.exit_code, 0, result.stderr)
+                self.assertIn("plain", result.stdout)
+
+                with self.assertRaisesRegex(RuntimeError, "invalid HTTP method: PROPFIND"):
+                    sandbox.allow_domain(self.url, methods=["PROPFIND"])
 
 
 if __name__ == "__main__":

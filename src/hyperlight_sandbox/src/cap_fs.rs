@@ -10,12 +10,13 @@
 //!   the directory before creating the sandbox; the guest can only read.
 //!
 //! * **Output** — default temp directory or host-provided with explicit
-//!   permissions, exposed as a writable WASI preopen.  Wiped clean after
-//!   each run. Logical output size and file count are bounded by
-//!   [`FilesystemLimits`] before host filesystem mutation.
+//!   permissions, exposed as a writable WASI preopen. Contents persist across
+//!   runs until explicitly cleared or a snapshot is restored. Logical output
+//!   size and file count are bounded by [`FilesystemLimits`] before host
+//!   filesystem mutation.
 //!
-//! Snapshots only capture runtime state — input is immutable and output is
-//! ephemeral, so no filesystem state needs to be saved or restored.
+//! Snapshots only capture runtime state. Restoring a snapshot clears output so
+//! the sandbox returns to a known filesystem state.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -270,7 +271,7 @@ struct FilesystemUsage {
 
 /// Capability-based virtual filesystem.
 ///
-/// Input is read-only and shared across snapshots; output is ephemeral.
+/// Input is read-only and shared across snapshots; output persists across runs.
 pub struct CapFs {
     // Preopened directories keyed by fd.
     preopen_dirs: HashMap<u32, PreopenEntry>,
@@ -589,9 +590,9 @@ impl CapFs {
         self.clear_output_files()
     }
 
-    /// Prepare the writable filesystem for a new guest execution.
+    /// Reconcile and validate writable filesystem usage before guest execution.
     pub fn prepare_for_run(&mut self) -> Result<()> {
-        self.clear_output_files()
+        self.resynchronize_output()
     }
 
     // -----------------------------------------------------------------------
@@ -1424,7 +1425,7 @@ impl CapFs {
 }
 
 // No Clone — snapshots don't need filesystem state. Input is immutable
-// (shared via Arc) and output is ephemeral (wiped each run).
+// (shared via Arc) and output persists across runs.
 
 #[cfg(test)]
 mod tests {
@@ -1688,6 +1689,44 @@ mod tests {
                 )
                 .is_err()
         );
+    }
+
+    #[test]
+    fn prepare_for_run_preserves_output_and_reconciles_host_changes() {
+        let (mut fs, output) = limited_output_fs(8, 8, 2);
+        fs.write_output_path("/output/guest.bin", b"1234".to_vec())
+            .unwrap();
+        host_write_output(&output, "host.bin", b"12");
+
+        fs.prepare_for_run().unwrap();
+
+        assert_eq!(
+            std::fs::read(output.path().join("guest.bin")).unwrap(),
+            b"1234"
+        );
+        assert_eq!(
+            std::fs::read(output.path().join("host.bin")).unwrap(),
+            b"12"
+        );
+        assert_eq!(fs.output_usage.logical_bytes, 6);
+        assert_eq!(fs.output_usage.file_count, 2);
+        assert!(
+            fs.write_output_path("/output/third.bin", b"x".to_vec())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn prepare_for_run_rejects_host_changes_over_quota() {
+        let (mut fs, output) = limited_output_fs(8, 4, 2);
+        host_write_output(&output, "too-large.bin", b"12345");
+
+        assert!(fs.prepare_for_run().is_err());
+        assert_eq!(
+            std::fs::read(output.path().join("too-large.bin")).unwrap(),
+            b"12345"
+        );
+        assert!(!fs.accounting_valid);
     }
 
     #[test]

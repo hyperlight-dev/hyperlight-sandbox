@@ -186,8 +186,8 @@ print(f"transformed: {text.upper()}")
     assert_eq!(host_file, "TRANSFORM ME");
     println!("OK: output written to explicit dir, visible on host filesystem");
 
-    // ── 6: Output is wiped between runs ─────────────────────────────
-    separator("Test 6: Output is ephemeral (wiped between runs)");
+    // ── 6: Output persists between runs ─────────────────────────────
+    separator("Test 6: Output persists between runs");
     let mut sandbox = SandboxBuilder::new()
         .guest(Wasm)
         .module_path(python_guest_path())
@@ -221,14 +221,14 @@ print('wrote run2')
     assert_eq!(result.exit_code, 0, "stderr: {}", result.stderr);
     let second = sandbox.get_output_files().unwrap();
     assert!(
-        !second.contains(&"run1.txt".to_string()),
-        "run1.txt should be wiped"
+        second.contains(&"run1.txt".to_string()),
+        "run1.txt should persist"
     );
     assert!(
         second.contains(&"run2.txt".to_string()),
         "run2.txt should exist"
     );
-    println!("OK: output files wiped between runs");
+    println!("OK: output files persist between runs");
 
     // ── 7: Input is read-only (guest cannot write) ──────────────────
     separator("Test 7: Input is read-only");

@@ -121,8 +121,8 @@ pub trait GuestSandbox: Send {
     type SnapshotData: Send + Sync + 'static;
     /// Execute guest code.
     ///
-    /// Output files under `/output` are wiped before each execution.
-    /// Input files are read-only and managed by the host.
+    /// Output files under `/output` persist across executions. Input files are
+    /// read-only and managed by the host.
     fn run(&mut self, code: &str) -> Result<ExecutionResult>;
     /// Capture a snapshot of the guest runtime state.
     fn snapshot(&mut self) -> Result<Snapshot<Self::SnapshotData>>;
@@ -165,8 +165,8 @@ impl<G: Guest> Sandbox<G> {
 
     /// Execute guest code.
     ///
-    /// Output files under `/output` are cleared before each run. Input files
-    /// persist until `clear_files` is called.
+    /// Output files under `/output` persist across runs until a snapshot is
+    /// restored. Input files are read-only and managed by the host.
     pub fn run(&mut self, code: &str) -> Result<ExecutionResult> {
         self.inner.run(code)
     }
@@ -183,7 +183,7 @@ impl<G: Guest> Sandbox<G> {
         self.fs
             .lock()
             .map_err(|_| anyhow::anyhow!("filesystem mutex poisoned during snapshot restore"))?
-            .prepare_for_run()
+            .clear_output_files()
     }
 
     /// List top-level filenames in the output directory (without reading contents).
@@ -406,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn restore_clears_output_for_external_guest_backends() {
+    fn restore_explicitly_clears_output_for_external_guest_backends() {
         let output = tempfile::tempdir().unwrap();
         let mut sandbox = SandboxBuilder::new()
             .output_dir(

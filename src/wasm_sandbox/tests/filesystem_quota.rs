@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use hyperlight_sandbox::{FilesystemLimits, SandboxBuilder};
+use hyperlight_sandbox::{DirPerms, FilePerms, FilesystemLimits, SandboxBuilder};
 use hyperlight_wasm_sandbox::Wasm;
 
 fn python_guest_path() -> String {
@@ -50,6 +50,69 @@ with open('/output/allowed.bin', 'wb') as file:
     assert_eq!(
         std::fs::read(output_dir.join("allowed.bin")).expect("failed to read guest output"),
         b"abcd"
+    );
+}
+
+#[test]
+fn output_persists_across_runs() {
+    let output = tempfile::tempdir().expect("failed to create output directory");
+    std::fs::write(output.path().join("host-staged.txt"), b"from host")
+        .expect("failed to stage host output");
+    let mut sandbox = SandboxBuilder::new()
+        .guest(Wasm)
+        .module_path(python_guest_path())
+        .output_dir(
+            output.path(),
+            DirPerms::READ | DirPerms::MUTATE,
+            FilePerms::READ | FilePerms::WRITE,
+        )
+        .build()
+        .expect("failed to create sandbox");
+
+    let first = sandbox
+        .run(
+            r#"
+with open('/output/host-staged.txt') as file:
+    print(file.read())
+with open('/output/guest-created.txt', 'w') as file:
+    file.write('from guest')
+"#,
+        )
+        .expect("first sandbox run failed");
+    assert_eq!(first.exit_code, 0, "stderr: {}", first.stderr);
+    assert_eq!(first.stdout.trim(), "from host");
+
+    let second = sandbox
+        .run(
+            r#"
+with open('/output/guest-created.txt') as file:
+    print(file.read())
+"#,
+        )
+        .expect("second sandbox run failed");
+    assert_eq!(second.exit_code, 0, "stderr: {}", second.stderr);
+    assert_eq!(second.stdout.trim(), "from guest");
+}
+
+#[test]
+fn host_changes_over_quota_fail_before_guest_entry() {
+    let mut sandbox = quota_sandbox(4, 4, 1);
+    let output_dir = sandbox
+        .output_path()
+        .expect("output path failed")
+        .expect("missing output path");
+    std::fs::write(output_dir.join("host-staged.bin"), b"12345")
+        .expect("failed to stage over-quota output");
+
+    let error = sandbox
+        .run("print('guest entered')")
+        .expect_err("over-quota output should reject the run");
+
+    assert!(
+        error
+            .to_string()
+            .contains("file exceeds logical size limit"),
+        "unexpected error: {error:#}"
     );
 }
 

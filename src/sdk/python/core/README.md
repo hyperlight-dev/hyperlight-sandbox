@@ -43,9 +43,9 @@ backend package.
 
 ## Snapshot Semantics
 
-- `snapshot()` captures guest runtime state and backend-managed sandbox files.
-- `restore()` rewinds both runtime state and sandbox file state to the snapshot point.
-- Output files under `/output` are ephemeral per `run()` and are cleared before each execution.
+- `snapshot()` captures guest runtime state.
+- Output files under `/output` persist across `run()` calls.
+- `restore()` rewinds runtime state and clears output files.
 
 ## Build
 

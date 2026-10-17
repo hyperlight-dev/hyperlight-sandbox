@@ -2114,6 +2114,7 @@ dependencies = [
  "anyhow",
  "hyperlight-javascript-sandbox",
  "hyperlight-sandbox",
+ "hyperlight-unikraft-sandbox",
  "hyperlight-wasm-sandbox",
  "libc",
  "log",

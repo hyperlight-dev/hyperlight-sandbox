@@ -7,7 +7,7 @@ A .NET 8.0 SDK for running code in secure, sandboxed environments using [hyperli
 - **Secure code execution** — run untrusted code in an isolated sandbox
 - **Tool dispatch** — register .NET functions callable from guest code via `call_tool()`
 - **Typed tool registration** — auto-serialize/deserialize with `Func<TArgs, TResult>`
-- **Two backends** — Wasm (Python/JS guests) and built-in JavaScript (QuickJS)
+- **Three backends** — Wasm (Python/JS guests), built-in JavaScript (QuickJS), and Unikraft (full CPython with numpy/pandas in a micro-VM)
 - **Snapshot/restore** — checkpoint and rewind sandbox state (200x faster warm starts)
 - **Filesystem isolation** — read-only input dirs, writable output dirs, temp output
 - **Network allowlists** — per-domain HTTP access control with method filtering
@@ -97,6 +97,27 @@ using var sandbox = new SandboxBuilder()
     .WithJavaScriptModule()
     .Build();
 ```
+
+### Unikraft Backend
+
+Run full CPython, with native extensions such as numpy and pandas, from a
+hyperlight-unikraft rootfs image (the `agent` image the `hluk` CLI caches,
+e.g. `~/.cache/hluk/rootfs/ghcr.io/hyperlight-dev/hyperlight-unikraft/agent/initrd-v0.18.0.cpio`):
+
+```csharp
+using var sandbox = new SandboxBuilder()
+    .WithBackend(SandboxBackend.Unikraft)
+    .WithModulePath(rootfsPath)
+    .Build();
+
+var result = sandbox.Run("import numpy; print(numpy.arange(10).sum())");
+```
+
+`WithScratchSize("2Gi")` sets the guest memory (heap and stack sizes are
+refused for this backend); `WithNativeNetwork()` lets guest sockets reach
+the allowed hosts. See the
+[repository README](../../../README.md#unikraft-sandbox) for how it differs
+from the other backends.
 
 ### Snapshot/Restore
 
@@ -250,10 +271,12 @@ just dotnet copilot-sdk-example       # Run Copilot SDK example
 
 | Method | Description |
 |--------|-------------|
-| `WithModulePath(string)` | Path to `.wasm`/`.aot` guest (required for Wasm) |
+| `WithModulePath(string)` | Path to `.wasm`/`.aot` guest (required for Wasm), or the rootfs image (required for Unikraft) |
 | `WithPythonModule()` | Use the bundled Python guest from `Hyperlight.HyperlightSandbox.Guest.Python` |
 | `WithJavaScriptModule()` | Use the bundled JavaScript guest from `Hyperlight.HyperlightSandbox.Guest.JavaScript` |
-| `WithBackend(SandboxBackend)` | `Wasm` (default) or `JavaScript` |
+| `WithBackend(SandboxBackend)` | `Wasm` (default), `JavaScript` or `Unikraft` |
+| `WithScratchSize(string\|ulong)` | Unikraft only: guest memory (e.g. `"2Gi"`), instead of heap/stack sizes |
+| `WithNativeNetwork()` | Unikraft only: guest sockets may reach `AllowDomain` hosts |
 | `WithHeapSize(string\|ulong)` | Guest heap size (e.g. `"50Mi"`, default: platform-dependent) |
 | `WithStackSize(string\|ulong)` | Guest stack size (e.g. `"35Mi"`, default: platform-dependent) |
 | `WithInputDir(string)` | Read-only `/input` directory |

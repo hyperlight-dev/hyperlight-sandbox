@@ -83,8 +83,8 @@ with open(os.path.join(output_dir, "upper.txt")) as f:
     assert f.read() == "SHOUT"
 print("OK: output visible on host filesystem")
 
-# -- Test 6: Output wiped between runs --------------------------------
-separator("Test 6: Output is ephemeral")
+# -- Test 6: Output persists between runs -----------------------------
+separator("Test 6: Output persists between runs")
 sandbox = Sandbox(backend="wasm", module="javascript_guest.path", temp_output=True)
 result = sandbox.run("write_file('/output/run1.txt', 'first');")
 outputs = sandbox.get_output_files()
@@ -92,9 +92,9 @@ assert "run1.txt" in outputs, "run1.txt should exist"
 
 result = sandbox.run("write_file('/output/run2.txt', 'second');")
 outputs = sandbox.get_output_files()
-assert "run1.txt" not in outputs, "run1 should be wiped"
+assert "run1.txt" in outputs, "run1 should persist"
 assert "run2.txt" in outputs
-print("OK: output wiped between runs")
+print("OK: output persists between runs")
 
 # -- Test 7: Input is read-only ---------------------------------------
 separator("Test 7: Input is read-only")

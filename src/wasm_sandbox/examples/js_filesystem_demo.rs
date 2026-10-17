@@ -155,8 +155,8 @@ console.log('done');
     assert_eq!(host_file, "TRANSFORM ME");
     println!("OK: output visible on host filesystem");
 
-    // ── 6: Output wiped between runs ────────────────────────────────
-    separator("Test 6: Output is ephemeral");
+    // ── 6: Output persists between runs ─────────────────────────────
+    separator("Test 6: Output persists between runs");
     let mut sandbox = SandboxBuilder::new()
         .guest(Wasm)
         .module_path(javascript_guest_path())
@@ -176,11 +176,11 @@ console.log('done');
     assert_eq!(result.exit_code, 0);
     let second = sandbox.get_output_files().unwrap();
     assert!(
-        !second.contains(&"run1.txt".to_string()),
-        "run1 should be wiped"
+        second.contains(&"run1.txt".to_string()),
+        "run1 should persist"
     );
     assert!(second.contains(&"run2.txt".to_string()));
-    println!("OK: output wiped between runs");
+    println!("OK: output persists between runs");
 
     // ── 7: Input is read-only ───────────────────────────────────────
     separator("Test 7: Input is read-only");

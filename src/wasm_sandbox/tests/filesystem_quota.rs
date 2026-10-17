@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use hyperlight_sandbox::{FilesystemLimits, SandboxBuilder};
+use hyperlight_sandbox::{DirPerms, FilePerms, FilesystemLimits, SandboxBuilder};
 use hyperlight_wasm_sandbox::Wasm;
 
 fn python_guest_path() -> String {
@@ -29,6 +29,16 @@ fn quota_sandbox(
         .expect("failed to create sandbox")
 }
 
+fn unlimited_sandbox() -> hyperlight_sandbox::Sandbox<Wasm> {
+    SandboxBuilder::new()
+        .guest(Wasm)
+        .module_path(python_guest_path())
+        .temp_output()
+        .filesystem_limits(FilesystemLimits::unlimited())
+        .build()
+        .expect("failed to create sandbox")
+}
+
 #[test]
 fn guest_wasi_write_within_quota_succeeds() {
     let mut sandbox = quota_sandbox(4, 4, 1);
@@ -50,6 +60,154 @@ with open('/output/allowed.bin', 'wb') as file:
     assert_eq!(
         std::fs::read(output_dir.join("allowed.bin")).expect("failed to read guest output"),
         b"abcd"
+    );
+}
+
+#[test]
+fn output_persists_across_runs() {
+    let output = tempfile::tempdir().expect("failed to create output directory");
+    std::fs::write(output.path().join("host-staged.txt"), b"from host")
+        .expect("failed to stage host output");
+    let mut sandbox = SandboxBuilder::new()
+        .guest(Wasm)
+        .module_path(python_guest_path())
+        .output_dir(
+            output.path(),
+            DirPerms::READ | DirPerms::MUTATE,
+            FilePerms::READ | FilePerms::WRITE,
+        )
+        .build()
+        .expect("failed to create sandbox");
+
+    let first = sandbox
+        .run(
+            r#"
+with open('/output/host-staged.txt') as file:
+    print(file.read())
+with open('/output/guest-created.txt', 'w') as file:
+    file.write('from guest')
+"#,
+        )
+        .expect("first sandbox run failed");
+    assert_eq!(first.exit_code, 0, "stderr: {}", first.stderr);
+    assert_eq!(first.stdout.trim(), "from host");
+
+    let second = sandbox
+        .run(
+            r#"
+with open('/output/guest-created.txt') as file:
+    print(file.read())
+"#,
+        )
+        .expect("second sandbox run failed");
+    assert_eq!(second.exit_code, 0, "stderr: {}", second.stderr);
+    assert_eq!(second.stdout.trim(), "from guest");
+}
+
+#[test]
+fn filesystem_handles_are_reset_between_runs() {
+    let mut sandbox = unlimited_sandbox();
+
+    for prefix in ["first", "second"] {
+        let code = format!(
+            r#"
+for i in range(600):
+    with open(f'/output/{prefix}-{{i}}.txt', 'w'):
+        pass
+"#
+        );
+        let result = sandbox.run(&code).expect("sandbox run failed");
+        assert_eq!(result.exit_code, 0, "stderr: {}", result.stderr);
+    }
+}
+
+#[test]
+fn host_deleted_output_can_be_recreated_by_guest() {
+    let mut sandbox = unlimited_sandbox();
+    let output_dir = sandbox
+        .output_path()
+        .expect("output path failed")
+        .expect("missing output path");
+
+    let first = sandbox
+        .run(
+            r#"
+with open('/output/recreated.txt', 'w') as file:
+    file.write('first')
+"#,
+        )
+        .expect("first sandbox run failed");
+    assert_eq!(first.exit_code, 0, "stderr: {}", first.stderr);
+    std::fs::remove_file(output_dir.join("recreated.txt")).expect("failed to remove guest output");
+
+    let second = sandbox
+        .run(
+            r#"
+with open('/output/recreated.txt', 'w') as file:
+    file.write('second')
+"#,
+        )
+        .expect("second sandbox run failed");
+    assert_eq!(second.exit_code, 0, "stderr: {}", second.stderr);
+    assert_eq!(
+        std::fs::read_to_string(output_dir.join("recreated.txt"))
+            .expect("failed to read recreated output"),
+        "second"
+    );
+}
+
+#[test]
+fn restore_explicitly_clears_persisted_output() {
+    let mut sandbox = quota_sandbox(32, 64, 4);
+    let snapshot = sandbox.snapshot().expect("failed to snapshot sandbox");
+    let output_dir = sandbox
+        .output_path()
+        .expect("output path failed")
+        .expect("missing output path");
+
+    let result = sandbox
+        .run(
+            r#"
+with open('/output/persisted.txt', 'w') as file:
+    file.write('persisted')
+"#,
+        )
+        .expect("sandbox run failed");
+    assert_eq!(result.exit_code, 0, "stderr: {}", result.stderr);
+    assert!(output_dir.join("persisted.txt").exists());
+
+    sandbox
+        .restore(&snapshot)
+        .expect("failed to restore sandbox");
+
+    assert!(!output_dir.join("persisted.txt").exists());
+    assert!(
+        sandbox
+            .get_output_files()
+            .expect("failed to list output files")
+            .is_empty()
+    );
+}
+
+#[test]
+fn host_changes_over_quota_fail_before_guest_entry() {
+    let mut sandbox = quota_sandbox(4, 4, 1);
+    let output_dir = sandbox
+        .output_path()
+        .expect("output path failed")
+        .expect("missing output path");
+    std::fs::write(output_dir.join("host-staged.bin"), b"12345")
+        .expect("failed to stage over-quota output");
+
+    let error = sandbox
+        .run("print('guest entered')")
+        .expect_err("over-quota output should reject the run");
+
+    assert!(
+        error
+            .to_string()
+            .contains("file exceeds logical size limit"),
+        "unexpected error: {error:#}"
     );
 }
 

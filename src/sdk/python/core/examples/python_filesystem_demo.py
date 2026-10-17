@@ -100,8 +100,8 @@ with open(os.path.join(output_dir, "upper.txt")) as f:
     assert f.read() == "TRANSFORM ME"
 print("OK: output written to explicit dir, visible on host")
 
-# -- Test 6: Output is ephemeral --------------------------------------
-separator("Test 6: Output is ephemeral (wiped between runs)")
+# -- Test 6: Output persists between runs -----------------------------
+separator("Test 6: Output persists between runs")
 sandbox = Sandbox(temp_output=True)
 
 result = sandbox.run("""
@@ -117,9 +117,9 @@ with open('/output/run2.txt', 'w') as f:
 """)
 assert result.exit_code == 0, f"stderr: {result.stderr}"
 outputs = sandbox.get_output_files()
-assert "run1.txt" not in outputs, "run1.txt should be wiped"
+assert "run1.txt" in outputs, "run1.txt should persist"
 assert "run2.txt" in outputs
-print("OK: output wiped between runs")
+print("OK: output persists between runs")
 
 # -- Test 7: Input is read-only ---------------------------------------
 separator("Test 7: Input is read-only")

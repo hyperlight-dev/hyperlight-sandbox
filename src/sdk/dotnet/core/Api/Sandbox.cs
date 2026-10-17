@@ -50,7 +50,9 @@ public sealed class Sandbox : IDisposable
         string? outputDir,
         bool tempOutput,
         FilesystemLimitsConfiguration? filesystemLimits,
-        SandboxBackend backend = SandboxBackend.Wasm)
+        SandboxBackend backend = SandboxBackend.Wasm,
+        bool nativeNetwork = false,
+        ulong scratchSize = 0)
     {
         // Pin the module path string for the FFI call duration (null for JS backend).
         var modulePathPtr = modulePath != null
@@ -108,6 +110,18 @@ public sealed class Sandbox : IDisposable
         if (tempOutput)
         {
             var r = SafeNativeMethods.hyperlight_sandbox_set_temp_output(_handle, true);
+            r.ThrowIfError();
+        }
+
+        if (scratchSize > 0)
+        {
+            var r = SafeNativeMethods.hyperlight_sandbox_set_scratch_size(_handle, scratchSize);
+            r.ThrowIfError();
+        }
+
+        if (nativeNetwork)
+        {
+            var r = SafeNativeMethods.hyperlight_sandbox_set_native_network(_handle, true);
             r.ThrowIfError();
         }
     }

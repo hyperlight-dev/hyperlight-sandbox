@@ -35,6 +35,62 @@ public class CodeExecutionToolTests
     }
 
     [Fact]
+    public void Create_WithUnikraftBackend_Succeeds()
+    {
+        // The rootfs is only opened when the sandbox first runs.
+        using var tool = new CodeExecutionTool(
+            new SandboxBuilder()
+                .WithBackend(SandboxBackend.Unikraft)
+                .WithModulePath("/tmp/test-rootfs.cpio"));
+
+        Assert.NotNull(tool);
+    }
+
+    [Fact]
+    public void Execute_WithUnikraftBackend_RunsPython()
+    {
+        // Needs KVM (or MSHV / WHP) and the python image the hluk CLI
+        // caches; without the image there is nothing to run.
+        var rootfs = CachedUnikraftRootfs("python");
+        if (rootfs is null)
+        {
+            return;
+        }
+
+        using var tool = new CodeExecutionTool(
+            new SandboxBuilder()
+                .WithBackend(SandboxBackend.Unikraft)
+                .WithModulePath(rootfs));
+        tool.RegisterTool("add", (string json) => "5");
+
+        var first = tool.Execute("x = 1\nprint(call_tool('add', a=2, b=3))");
+        Assert.Equal(0, first.ExitCode);
+        Assert.Equal("5", first.Stdout.Trim());
+
+        // Each execution starts from the initialized snapshot.
+        var second = tool.Execute("print('x' in globals())");
+        Assert.Equal("False", second.Stdout.Trim());
+    }
+
+    private static string? CachedUnikraftRootfs(string runtime)
+    {
+        var cache = Environment.GetEnvironmentVariable("HLUK_CACHE_DIR");
+        if (string.IsNullOrEmpty(cache))
+        {
+            var xdg = Environment.GetEnvironmentVariable("XDG_CACHE_HOME");
+            cache = !string.IsNullOrEmpty(xdg)
+                ? Path.Combine(xdg, "hluk")
+                : OperatingSystem.IsWindows()
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "hluk")
+                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "hluk");
+        }
+
+        var path = Path.Combine(
+            cache, "rootfs", "ghcr.io", "hyperlight-dev", "hyperlight-unikraft", runtime, "initrd-v0.18.0.cpio");
+        return File.Exists(path) ? path : null;
+    }
+
+    [Fact]
     public void Create_NullBuilder_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() =>
@@ -63,6 +119,7 @@ public class CodeExecutionToolTests
     [Theory]
     [InlineData(SandboxBackend.Wasm, "None")]
     [InlineData(SandboxBackend.JavaScript, "void 0;")]
+    [InlineData(SandboxBackend.Unikraft, "None")]
     public void InitializationCodeFor_UsesBackendNoOp(
         SandboxBackend backend,
         string expectedCode)

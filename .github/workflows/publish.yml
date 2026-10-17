@@ -93,7 +93,7 @@ jobs:
 
       - name: Verify manylinux compatibility
         run: |
-          for wheel in dist/pythonsdk/{wasm_backend,hyperlight_js_backend}/*.whl; do
+          for wheel in dist/pythonsdk/{wasm_backend,hyperlight_js_backend,unikraft_backend}/*.whl; do
             case "$wheel" in
               *-manylinux_2_28_x86_64.whl) ;;
               *)

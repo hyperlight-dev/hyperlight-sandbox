@@ -2088,6 +2088,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyperlight-sandbox-backend-unikraft"
+version = "0.8.0"
+dependencies = [
+ "hyperlight-sandbox",
+ "hyperlight-sandbox-pyo3-common",
+ "hyperlight-unikraft-sandbox",
+ "pyo3",
+]
+
+[[package]]
 name = "hyperlight-sandbox-backend-wasm"
 version = "0.8.0"
 dependencies = [

@@ -3,6 +3,7 @@ members = [
 	"src/hyperlight_sandbox",
 	"src/javascript_sandbox",
 	"src/wasm_sandbox",
+	"src/unikraft_sandbox",
 	"src/sdk/python/pyo3_common",
 	"src/sdk/python/wasm_backend",
 	"src/sdk/python/hyperlight_js_backend",
@@ -23,9 +24,14 @@ categories = ["virtualization"]
 hyperlight-sandbox = { version = "0.8.0", path = "src/hyperlight_sandbox" }
 hyperlight-javascript-sandbox = { version = "0.8.0", path = "src/javascript_sandbox" }
 hyperlight-wasm-sandbox = { version = "0.8.0", path = "src/wasm_sandbox" }
+hyperlight-unikraft-sandbox = { version = "0.8.0", path = "src/unikraft_sandbox" }
 hyperlight-sandbox-pyo3-common = { path = "src/sdk/python/pyo3_common" }
 hyperlight-common = { version = "0.17.0", default-features = false }
 hyperlight-component-macro = "0.17.0"
 hyperlight-host = { version = "0.17.0", default-features = false, features = ["executable_heap"] }
 hyperlight-wasm = "0.15.0"
+# Brings its own hyperlight-host/-common 0.18, apart from the 0.17 above that
+# hyperlight-wasm and hyperlight-js need: no hyperlight type crosses between
+# the backends, so the two link side by side.
+hyperlight-unikraft = { version = "0.18.0", default-features = false }
 pyo3 = { version = "0.29", features = ["extension-module"] }

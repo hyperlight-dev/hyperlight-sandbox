@@ -50,6 +50,7 @@ jobs:
           cargo publish --locked -p hyperlight-sandbox
           cargo publish --locked -p hyperlight-wasm-sandbox
           cargo publish --locked -p hyperlight-javascript-sandbox
+          cargo publish --locked -p hyperlight-unikraft-sandbox
 
   # Build all Python packages on Linux for glibc 2.28 and newer.
   build-linux:

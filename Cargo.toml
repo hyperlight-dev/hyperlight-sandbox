@@ -7,6 +7,7 @@ members = [
 	"src/sdk/python/pyo3_common",
 	"src/sdk/python/wasm_backend",
 	"src/sdk/python/hyperlight_js_backend",
+	"src/sdk/python/unikraft_backend",
 	"src/sdk/dotnet/ffi",
 ]
 resolver = "2"

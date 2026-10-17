@@ -1,0 +1,30 @@
+[build-system]
+requires = ["maturin>=1.13.3,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "hyperlight-sandbox-backend-unikraft"
+version = "0.7.0"
+description = "hyperlight-unikraft (CPython micro-VM) backend implementation for hyperlight-sandbox"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Programming Language :: Rust",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+]
+
+[tool.maturin]
+python-source = "."
+features = ["pyo3/extension-module"]
+module-name = "hyperlight_sandbox_backend_unikraft._native_unikraft"

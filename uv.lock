@@ -13,6 +13,7 @@ prerelease-mode = "allow"
 members = [
     "hyperlight-sandbox",
     "hyperlight-sandbox-backend-hyperlight-js",
+    "hyperlight-sandbox-backend-unikraft",
     "hyperlight-sandbox-backend-wasm",
     "hyperlight-sandbox-dev",
     "hyperlight-sandbox-javascript-guest",
@@ -344,6 +345,9 @@ javascript-guest = [
 python-guest = [
     { name = "hyperlight-sandbox-python-guest" },
 ]
+unikraft = [
+    { name = "hyperlight-sandbox-backend-unikraft" },
+]
 wasm = [
     { name = "hyperlight-sandbox-backend-wasm" },
 ]
@@ -352,16 +356,22 @@ wasm = [
 requires-dist = [
     { name = "atheris", marker = "python_full_version < '3.13' and extra == 'dev'", specifier = ">=2.3.0" },
     { name = "hyperlight-sandbox-backend-hyperlight-js", marker = "extra == 'hyperlight-js'", editable = "src/sdk/python/hyperlight_js_backend" },
+    { name = "hyperlight-sandbox-backend-unikraft", marker = "extra == 'unikraft'", editable = "src/sdk/python/unikraft_backend" },
     { name = "hyperlight-sandbox-backend-wasm", marker = "extra == 'wasm'", editable = "src/sdk/python/wasm_backend" },
     { name = "hyperlight-sandbox-javascript-guest", marker = "extra == 'javascript-guest'", editable = "src/sdk/python/wasm_guests/javascript_guest" },
     { name = "hyperlight-sandbox-python-guest", marker = "extra == 'python-guest'", editable = "src/sdk/python/wasm_guests/python_guest" },
 ]
-provides-extras = ["wasm", "hyperlight-js", "python-guest", "javascript-guest", "dev"]
+provides-extras = ["wasm", "hyperlight-js", "unikraft", "python-guest", "javascript-guest", "dev"]
 
 [[package]]
 name = "hyperlight-sandbox-backend-hyperlight-js"
 version = "0.7.0"
 source = { editable = "src/sdk/python/hyperlight_js_backend" }
+
+[[package]]
+name = "hyperlight-sandbox-backend-unikraft"
+version = "0.7.0"
+source = { editable = "src/sdk/python/unikraft_backend" }
 
 [[package]]
 name = "hyperlight-sandbox-backend-wasm"

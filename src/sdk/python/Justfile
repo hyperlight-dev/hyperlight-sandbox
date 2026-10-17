@@ -23,6 +23,7 @@ dist-root := repo-root + "/dist/pythonsdk"
 core-dist := dist-root + "/core"
 wasm-wheels := dist-root + "/wasm_backend"
 hyperlight-js-wheels := dist-root + "/hyperlight_js_backend"
+unikraft-wheels := dist-root + "/unikraft_backend"
 python-guest-dist := dist-root + "/python_guest"
 javascript-guest-dist := dist-root + "/javascript_guest"
 
@@ -40,10 +41,10 @@ python-sync-guest-resources:
     cp {{repo-root}}/src/wasm_sandbox/guests/javascript/js-sandbox.wasm {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest/javascript_guest/resources/js-sandbox.wasm
 
 # Install pure Python dependencies from the lockfile into the local venv.
-# Skips the two Rust backend packages — those are compiled and installed
+# Skips the three Rust backend packages — those are compiled and installed
 # separately by `python-install-backends` via `maturin develop`.
 python-sync-env python-version="" $UV_PYTHON=(if python-version != "" { python-version } else { env(uv-python-env, "") }) python-version-arg=(if python-version != "" { python-version-flag + " " + python-version } else { "" }):
-    uv sync {{python-version-arg}} --frozen --inexact --no-install-package hyperlight-sandbox-backend-wasm --no-install-package hyperlight-sandbox-backend-hyperlight-js
+    uv sync {{python-version-arg}} --frozen --inexact --no-install-package hyperlight-sandbox-backend-wasm --no-install-package hyperlight-sandbox-backend-hyperlight-js --no-install-package hyperlight-sandbox-backend-unikraft
 
 # Install maturin backends into the local venv for development (maturin develop).
 # This compiles the Rust backend crates and installs them as editable packages
@@ -61,7 +62,7 @@ python-clean-backend-artifacts profile="debug":
 python-develop-backend backend profile="debug" python-version="" $UV_PYTHON=(if python-version != "" { python-version } else { env(uv-python-env, "") }) python-version-arg=(if python-version != "" { python-version-flag + " " + python-version } else { "" }) profile-arg=(if profile == "release" { "--release" } else { "" }):
     uv run --directory {{python-root}}/{{backend}} --no-sync {{python-version-arg}} maturin develop {{profile-arg}}
 
-python-install-backends profile="debug" python-version="": (python-clean-backend-artifacts profile) (python-develop-backend "wasm_backend" profile python-version) (python-develop-backend "hyperlight_js_backend" profile python-version)
+python-install-backends profile="debug" python-version="": (python-clean-backend-artifacts profile) (python-develop-backend "wasm_backend" profile python-version) (python-develop-backend "hyperlight_js_backend" profile python-version) (python-develop-backend "unikraft_backend" profile python-version)
 
 python-build profile="debug" python-version="": python-sync-guest-resources (python-sync-env python-version) (python-install-backends profile python-version)
 
@@ -74,6 +75,7 @@ python-dist: python-sync-guest-resources
     cd {{repo-root}}/src/sdk/python/core && uv run python -m build --outdir {{core-dist}}
     cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}} {{manylinux-arg}} {{interpreters}}
     cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}} {{manylinux-arg}} {{interpreters}}
+    cd {{repo-root}}/src/sdk/python/unikraft_backend && uv run maturin build --release --out {{unikraft-wheels}} {{manylinux-arg}} {{interpreters}}
     cd {{repo-root}}/src/sdk/python/wasm_guests/python_guest && uv run python -m build --outdir {{python-guest-dist}}
     cd {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest && uv run python -m build --outdir {{javascript-guest-dist}}
 
@@ -83,12 +85,15 @@ python-dist: python-sync-guest-resources
 python-dist-backends: python-sync-env
     -{{rmrf}} {{wasm-wheels}}
     -{{rmrf}} {{hyperlight-js-wheels}}
+    -{{rmrf}} {{unikraft-wheels}}
     cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}} {{manylinux-arg}} {{interpreters}}
     cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}} {{manylinux-arg}} {{interpreters}}
+    cd {{repo-root}}/src/sdk/python/unikraft_backend && uv run maturin build --release --out {{unikraft-wheels}} {{manylinux-arg}} {{interpreters}}
 
 python-publish repository="pypi":
     uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{wasm-wheels}}/*
     uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{hyperlight-js-wheels}}/*
+    uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{unikraft-wheels}}/*
     uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{python-guest-dist}}/*
     uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{javascript-guest-dist}}/*
     uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{core-dist}}/*
@@ -129,6 +134,10 @@ examples: python-build
     uv run python {{repo-root}}/src/sdk/python/core/examples/jswasm_network_demo.py
     uv run python {{repo-root}}/src/sdk/python/core/examples/jswasm_filesystem_demo.py
 
+# Needs KVM and the cached `agent` rootfs (`just unikraft pull-images`).
+unikraft-examples: python-build
+    uv run python {{repo-root}}/src/sdk/python/core/examples/unikraft_basics.py
+
 python-sandbox-benchmark: (python-build "release")
     uv run python {{repo-root}}/src/sdk/python/core/examples/benchmark.py
 
@@ -137,6 +146,7 @@ python-sandbox-benchmark: (python-build "release")
 clean:
     -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target
     -{{rmrf}} {{repo-root}}/src/sdk/python/hyperlight_js_backend/target
+    -{{rmrf}} {{repo-root}}/src/sdk/python/unikraft_backend/target
 
 #### LINT / FORMAT ####
 

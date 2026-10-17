@@ -34,7 +34,9 @@ def _normalize_backend(backend: str) -> str:
         return "wasm"
     if normalized in {"javascript", "js", "hyperlight-js"}:
         return "hyperlight-js"
-    raise ValueError(f"Unknown backend '{backend}'. Expected 'wasm' or 'hyperlight-js'.")
+    if normalized in {"unikraft", "hyperlight-unikraft", "hluk"}:
+        return "unikraft"
+    raise ValueError(f"Unknown backend '{backend}'. Expected 'wasm', 'hyperlight-js' or 'unikraft'.")
 
 
 def _load_backend(backend: str):
@@ -48,6 +50,16 @@ def _load_backend(backend: str):
                 "or install the local hyperlight-sandbox-backend-wasm package."
             ) from exc
         return normalized, NativeWasmSandbox
+
+    if normalized == "unikraft":
+        try:
+            from hyperlight_sandbox_backend_unikraft import UnikraftSandbox as NativeUnikraftSandbox
+        except ImportError as exc:
+            raise ImportError(
+                "The hyperlight-unikraft backend is not installed. Install hyperlight-sandbox[unikraft] "
+                "or install the local hyperlight-sandbox-backend-unikraft package."
+            ) from exc
+        return normalized, NativeUnikraftSandbox
 
     try:
         from hyperlight_sandbox_backend_hyperlight_js import JSSandbox as NativeJSSandbox
@@ -96,12 +108,15 @@ class SandboxEnvironment:
     backend: str = "wasm"
     module: str | None = DEFAULT_MODULE_REF
     module_path: str | None = None
-    heap_size: str = field(default_factory=lambda: _DEFAULT_HEAP_SIZE)
-    stack_size: str = field(default_factory=lambda: _DEFAULT_STACK_SIZE)
+    # None: the backend's default (the unikraft backend takes none of them).
+    heap_size: str | None = None
+    stack_size: str | None = None
     filesystem_limits: Literal["unlimited"] | None = None
     max_file_size: str | None = None
     max_total_size: str | None = None
     max_file_count: int | None = None
+    scratch_size: str | None = None
+    native_network: bool = False
 
 
 class Sandbox:
@@ -111,6 +126,24 @@ class Sandbox:
     ``"64Mi"``. Partial numeric overrides retain balanced defaults for omitted
     values. Use ``filesystem_limits="unlimited"`` to explicitly disable all
     filesystem quotas; it cannot be combined with numeric overrides.
+
+    ``backend="unikraft"`` runs full CPython in a hyperlight-unikraft micro-VM.
+    ``module_path`` is then a rootfs image (initrd CPIO), and ``module`` names a
+    published image the ``hluk`` CLI has cached (``"agent"`` by default: CPython
+    with numpy, pandas, scipy and scikit-learn; or ``"python"``). ``heap_size``
+    and ``stack_size`` are refused for it: ``scratch_size`` (e.g. ``"2Gi"``)
+    overrides the guest memory the image was tested with. ``native_network``
+    also lets guest sockets (``requests``, ``urllib``) reach the domains passed
+    to ``allow_domain``, enforced by host name only; a name that does not
+    resolve is left out, and the next run's stderr says so. ``/input`` and
+    ``/output`` are host directories mounted at boot; a run that leaves a
+    symbolic or hard link in ``/output`` fails, as one past the filesystem
+    limits does. Before each run ``/output`` is cleared of every file and
+    link and of the directories the guest made; those it had when the
+    sandbox was built are kept. Exit statuses are a CPython process's, 0 to
+    255 (``sys.exit(-1)`` is 255), so -1 means the guest itself failed.
+    Tool arguments and results and HTTP bodies of any size are exchanged in
+    pieces, up to 64 MiB held unread on the host at a time.
     """
 
     def __init__(
@@ -128,6 +161,8 @@ class Sandbox:
         max_file_size: str | None = None,
         max_total_size: str | None = None,
         max_file_count: int | None = None,
+        scratch_size: str | None = None,
+        native_network: bool = False,
     ) -> None:
         numeric_limits = (max_file_size, max_total_size, max_file_count)
         if filesystem_limits is not None and filesystem_limits != "unlimited":
@@ -148,6 +183,15 @@ class Sandbox:
             if max_file_count < 0:
                 raise ValueError("max_file_count must be non-negative")
 
+        # Checked before the backend is imported, so a wrong option is a
+        # ValueError whichever backends are installed.
+        unikraft = _normalize_backend(backend) == "unikraft"
+        if unikraft and (heap_size is not None or stack_size is not None):
+            raise ValueError("heap_size and stack_size do not apply to the unikraft backend; use scratch_size")
+        if not unikraft and (scratch_size is not None or native_network):
+            raise ValueError("scratch_size and native_network apply only to the unikraft backend")
+        if unikraft and module_path is not None and module not in (None, DEFAULT_MODULE_REF):
+            raise ValueError("pass either module or module_path, not both")
         if heap_size is None:
             heap_size = _DEFAULT_HEAP_SIZE
         if stack_size is None:
@@ -157,10 +201,15 @@ class Sandbox:
         if module_path is not None and module == DEFAULT_MODULE_REF:
             effective_module = None
 
-        kwargs: dict[str, Any] = {
-            "heap_size": heap_size,
-            "stack_size": stack_size,
-        }
+        kwargs: dict[str, Any] = {}
+        if unikraft:
+            if scratch_size is not None:
+                kwargs["scratch_size"] = scratch_size
+            if native_network:
+                kwargs["native_network"] = True
+        else:
+            kwargs["heap_size"] = heap_size
+            kwargs["stack_size"] = stack_size
         if input_dir is not None:
             kwargs["input_dir"] = input_dir
         if output_dir is not None:
@@ -182,6 +231,14 @@ class Sandbox:
                 module_path=resolved_module_path,
                 **kwargs,
             )
+        elif normalized_backend == "unikraft":
+            # The Wasm default module names a Wasm guest package; for this
+            # backend a module is a published rootfs image name.
+            if module_path is not None:
+                kwargs["module_path"] = module_path
+            elif effective_module is not None and effective_module != DEFAULT_MODULE_REF:
+                kwargs["runtime"] = effective_module
+            self._inner = native_cls(**kwargs)
         else:
             self._inner = native_cls(**kwargs)
 
@@ -268,6 +325,8 @@ class CodeExecutionTool:
                 max_file_size=self.environment.max_file_size,
                 max_total_size=self.environment.max_total_size,
                 max_file_count=self.environment.max_file_count,
+                scratch_size=self.environment.scratch_size,
+                native_network=self.environment.native_network,
             )
             for tool_fn in self.tools:
                 self._sandbox.register_tool(tool_fn)

@@ -1,0 +1,18 @@
+[package]
+name = "hyperlight-sandbox-backend-unikraft"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "hyperlight-unikraft backend bindings for hyperlight-sandbox"
+publish = false
+
+[lib]
+name = "_native_unikraft"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3.workspace = true
+hyperlight-sandbox.workspace = true
+hyperlight-unikraft-sandbox.workspace = true
+hyperlight-sandbox-pyo3-common.workspace = true

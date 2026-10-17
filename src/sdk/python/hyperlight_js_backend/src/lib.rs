@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use hyperlight_javascript_sandbox::HyperlightJs;
 use hyperlight_sandbox::{
     DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, FilesystemLimits, HttpMethod,
-    Sandbox, SandboxBuilder, SandboxConfig,
+    MethodFilter, Sandbox, SandboxBuilder, SandboxConfig,
 };
 use hyperlight_sandbox_pyo3_common::{
     PyExecutionResult, build_tool_registry, parse_filesystem_limits, parse_size,
@@ -26,7 +26,7 @@ pub struct PySnapshot {
 pub struct JSSandbox {
     inner: Option<JsSandboxInner>,
     tools: HashMap<String, Py<PyAny>>,
-    pending_networks: Vec<(String, Option<Vec<String>>)>,
+    pending_networks: Vec<(String, MethodFilter)>,
     config: SandboxConfig,
     input_dir: Option<String>,
     output_dir: Option<String>,
@@ -130,8 +130,6 @@ impl JSSandbox {
                 .build()
                 .map_err(|e| PyRuntimeError::new_err(format!("Failed to create sandbox: {e:#}")))?;
             for (target, methods) in std::mem::take(&mut self.pending_networks) {
-                let methods = HttpMethod::parse_list(methods)
-                    .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
                 sandbox
                     .allow_domain(&target, methods)
                     .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
@@ -151,9 +149,9 @@ impl JSSandbox {
 
     #[pyo3(signature = (target, methods=None))]
     fn allow_domain(&mut self, target: &str, methods: Option<Vec<String>>) -> PyResult<()> {
+        let methods =
+            HttpMethod::parse_list(methods).map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
         if let Some(sandbox) = self.inner.as_mut() {
-            let methods = HttpMethod::parse_list(methods)
-                .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
             sandbox
                 .allow_domain(target, methods)
                 .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;

@@ -228,6 +228,81 @@ impl Dir {
     }
 }
 
+/// A directory's identity: device and inode on Unix, volume serial number
+/// and 128-bit file id on Windows.
+#[cfg(unix)]
+type DirIdentity = (u64, u64);
+#[cfg(windows)]
+type DirIdentity = (u64, [u8; 16]);
+
+#[cfg(unix)]
+fn dir_identity(dir: &CapDir) -> Result<DirIdentity> {
+    use cap_std::fs::MetadataExt;
+
+    let meta = dir
+        .dir_metadata()
+        .context("failed to read directory metadata")?;
+    Ok((meta.dev(), meta.ino()))
+}
+
+#[cfg(unix)]
+fn path_identity(path: &Path) -> Result<DirIdentity> {
+    use std::os::unix::fs::MetadataExt;
+
+    let meta = std::fs::metadata(path)
+        .with_context(|| format!("failed to read metadata of {}", path.display()))?;
+    Ok((meta.dev(), meta.ino()))
+}
+
+#[cfg(windows)]
+fn dir_identity(dir: &CapDir) -> Result<DirIdentity> {
+    use std::os::windows::io::AsRawHandle;
+
+    handle_identity(dir.as_raw_handle())
+}
+
+#[cfg(windows)]
+fn path_identity(path: &Path) -> Result<DirIdentity> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use std::os::windows::io::AsRawHandle;
+
+    use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS;
+
+    // Backup semantics are what lets a directory be opened as a file.
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
+        .with_context(|| format!("failed to open {}", path.display()))?;
+    handle_identity(file.as_raw_handle())
+}
+
+/// The 128-bit file id, unlike `GetFileInformationByHandle`'s 64-bit index,
+/// is unique on ReFS too.
+#[cfg(windows)]
+fn handle_identity(handle: std::os::windows::io::RawHandle) -> Result<DirIdentity> {
+    use std::mem::MaybeUninit;
+
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ID_INFO, FileIdInfo, GetFileInformationByHandleEx,
+    };
+
+    let mut info = MaybeUninit::<FILE_ID_INFO>::zeroed();
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            handle as _,
+            FileIdInfo,
+            info.as_mut_ptr().cast(),
+            std::mem::size_of::<FILE_ID_INFO>() as u32,
+        )
+    };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error()).context("failed to read the file id");
+    }
+    let info = unsafe { info.assume_init() };
+    Ok((info.VolumeSerialNumber, info.FileId.Identifier))
+}
+
 // ---------------------------------------------------------------------------
 // Internal types
 // ---------------------------------------------------------------------------
@@ -283,6 +358,8 @@ pub struct CapFs {
     dir_streams: HashMap<u32, DirStreamState>,
     next_handle: u32,
 
+    // Host filesystem path to the input directory.
+    input_path: Option<PathBuf>,
     // Host filesystem path to the output directory.
     output_path: Option<PathBuf>,
     // Owns the output temp dir when using the default.
@@ -317,6 +394,7 @@ impl CapFs {
             streams: HashMap::new(),
             dir_streams: HashMap::new(),
             next_handle: FIRST_PREOPEN_FD,
+            input_path: None,
             output_path: None,
             _output_tmp: None,
             limits,
@@ -356,6 +434,7 @@ impl CapFs {
                 guest_path: "/input".to_string(),
             },
         );
+        self.input_path = Some(input_path.as_ref().to_path_buf());
         Ok(self)
     }
 
@@ -524,6 +603,14 @@ impl CapFs {
         Ok(data)
     }
 
+    /// Return the host filesystem path of the input directory, if configured.
+    ///
+    /// Backends that hand the guest a host directory directly (rather than
+    /// serving it through this `CapFs`) need the path to mount it.
+    pub fn input_path(&self) -> Option<&Path> {
+        self.input_path.as_deref()
+    }
+
     /// Return the host filesystem path of the output directory, if configured.
     pub fn output_path(&self) -> Option<&Path> {
         self.output_path.as_deref()
@@ -611,6 +698,19 @@ impl CapFs {
 
     pub fn is_directory(&self, fd: u32) -> bool {
         self.preopen_dirs.contains_key(&fd)
+    }
+
+    /// Whether `path` names the directory opened for `guest_path` (the same
+    /// file, not merely the same name): false once it was replaced, say.
+    ///
+    /// Backends that hand the guest a host directory by path, as a mount,
+    /// check it before doing so, since this `CapFs` checks and clears the
+    /// directory it opened.
+    pub fn is_same_dir(&self, guest_path: &str, path: &Path) -> Result<bool> {
+        let dir = self
+            .dir_by_guest_path(guest_path)
+            .ok_or_else(|| anyhow::anyhow!("no directory is open for {guest_path}"))?;
+        Ok(dir_identity(dir.cap_std())? == path_identity(path)?)
     }
 
     /// Find a preopened directory by its guest-visible path.
@@ -1220,7 +1320,24 @@ impl CapFs {
     }
 
     fn resynchronize_output(&mut self) -> Result<()> {
-        let usage = match self.scan_output_usage() {
+        self.resynchronize_output_with(false)
+    }
+
+    /// Rescan the output directory after the guest wrote it directly, not
+    /// through this `CapFs`, and check it against the same rules: the
+    /// filesystem limits, no symbolic or hard links, the traversal depth
+    /// and entry bounds, and, since nothing else could have made one, no
+    /// special files (FIFOs, sockets, devices). The quota accounting is
+    /// brought up to date on success.
+    ///
+    /// For backends whose guest writes a host directory itself, such as
+    /// through a mount.
+    pub fn validate_output(&mut self) -> Result<()> {
+        self.resynchronize_output_with(true)
+    }
+
+    fn resynchronize_output_with(&mut self, refuse_special: bool) -> Result<()> {
+        let usage = match self.scan_output_usage(refuse_special) {
             Ok(usage) => usage,
             Err(error) => {
                 self.accounting_valid = false;
@@ -1253,7 +1370,7 @@ impl CapFs {
     const MAX_SCAN_ENTRIES: usize = 100_000;
     const MAX_SCAN_DEPTH: usize = 64;
 
-    fn scan_output_usage(&self) -> Result<FilesystemUsage> {
+    fn scan_output_usage(&self, refuse_special: bool) -> Result<FilesystemUsage> {
         let Some(output_fd) = self.output_fd else {
             return Ok(FilesystemUsage::default());
         };
@@ -1263,7 +1380,13 @@ impl CapFs {
             .ok_or_else(|| anyhow::anyhow!("output directory capability is missing"))?;
         let mut usage = FilesystemUsage::default();
         let mut visited = 0usize;
-        self.scan_output_dir(output.dir.cap_std(), 0, &mut visited, &mut usage)?;
+        self.scan_output_dir(
+            output.dir.cap_std(),
+            0,
+            &mut visited,
+            &mut usage,
+            refuse_special,
+        )?;
         Ok(usage)
     }
 
@@ -1273,6 +1396,7 @@ impl CapFs {
         depth: usize,
         visited: &mut usize,
         usage: &mut FilesystemUsage,
+        refuse_special: bool,
     ) -> Result<()> {
         if depth > Self::MAX_SCAN_DEPTH {
             anyhow::bail!("output directory exceeds maximum traversal depth");
@@ -1296,7 +1420,7 @@ impl CapFs {
                 let child = dir
                     .open_dir(&name)
                     .context("failed to open nested output directory")?;
-                self.scan_output_dir(&child, depth + 1, visited, usage)?;
+                self.scan_output_dir(&child, depth + 1, visited, usage, refuse_special)?;
             } else if metadata.is_file() {
                 let metadata = Self::validated_output_metadata(dir, &name, metadata)?;
                 if let Some(max_file_size) = self.limits.max_file_size
@@ -1311,6 +1435,8 @@ impl CapFs {
                         .ok_or(FsError::Overflow)?;
                     usage.file_count = usage.file_count.checked_add(1).ok_or(FsError::Overflow)?;
                 }
+            } else if refuse_special {
+                anyhow::bail!("special files are not supported in output directories");
             }
         }
         Ok(())
@@ -1881,6 +2007,48 @@ mod tests {
                 )
                 .is_err()
         );
+    }
+
+    #[test]
+    fn is_same_dir_notices_a_replaced_directory() {
+        let (fs, output) = limited_output_fs(8, 32, 4);
+        assert!(fs.is_same_dir("/output", output.path()).unwrap());
+        let moved = output.path().with_extension("moved");
+        match std::fs::rename(output.path(), &moved) {
+            Ok(()) => {}
+            // Windows does not rename a directory this `CapFs` holds open,
+            // so it cannot be replaced at all there.
+            Err(_) if cfg!(windows) => return,
+            Err(error) => panic!("{error}"),
+        }
+        std::fs::create_dir(output.path()).unwrap();
+        assert!(!fs.is_same_dir("/output", output.path()).unwrap());
+        assert!(fs.is_same_dir("/output", &moved).unwrap());
+        std::fs::remove_dir_all(&moved).unwrap();
+    }
+
+    #[test]
+    fn validate_output_checks_what_the_guest_wrote_directly() {
+        let (mut fs, output) = limited_output_fs(8, 32, 4);
+        fs.validate_output().unwrap();
+        host_write_output(&output, "ok.bin", b"data");
+        fs.validate_output().unwrap();
+        host_write_output(&output, "big.bin", b"0123456789");
+        assert!(fs.validate_output().is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn validate_output_refuses_special_files() {
+        let (mut fs, output) = limited_output_fs(8, 32, 4);
+        let made = std::process::Command::new("mkfifo")
+            .arg(output.path().join("pipe"))
+            .status()
+            .unwrap();
+        assert!(made.success());
+        assert!(fs.validate_output().is_err());
+        // The scan for writes made through CapFs leaves them alone.
+        assert!(fs.resynchronize_output().is_ok());
     }
 
     #[test]

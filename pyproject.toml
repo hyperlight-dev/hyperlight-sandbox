@@ -28,7 +28,7 @@ dev = [
     "maturin>=1.15.0,<2.0",
     "componentize-py",
     "build",
-    "ruff>=0.16.10",
+    "ruff>=0.17.0",
     "hyperlight-sandbox",
     "hyperlight-sandbox-python-guest",
     "hyperlight-sandbox-javascript-guest",

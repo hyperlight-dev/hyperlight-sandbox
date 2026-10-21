@@ -2,6 +2,7 @@ set windows-shell := ["pwsh", "-NoLogo", "-Command"]
 default-target := "debug"
 repo-root := invocation_directory_native()
 rmrf := if os() == "windows" { "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" } else { "rm -rf" }
+hyperlight-runtime-target := arch() + "-hyperlight-none"
 
 # Only clean when rust-cache left stale state (fingerprints exist but runtime binary missing).
 [unix]
@@ -9,7 +10,7 @@ _clean-stale:
     #!/usr/bin/env bash
     for profile in debug release; do
         if compgen -G "{{repo-root}}/target/$profile/build/hyperlight-js-*" > /dev/null && \
-           [ ! -f "{{repo-root}}/target/hyperlight-js-runtime/x86_64-hyperlight-none/$profile/hyperlight-js-runtime" ]; then
+           [ ! -f "{{repo-root}}/target/hyperlight-js-runtime/{{hyperlight-runtime-target}}/$profile/hyperlight-js-runtime" ]; then
             echo "Cleaning stale hyperlight-js $profile build artifacts..."
             rm -rf {{repo-root}}/target/hyperlight-js-runtime {{repo-root}}/target/hls \
                    {{repo-root}}/target/$profile/build/hyperlight-js-* {{repo-root}}/target/$profile/.fingerprint/hyperlight-js-* \
@@ -21,7 +22,7 @@ _clean-stale:
 _clean-stale:
     foreach ($profile in @('debug', 'release')) { \
         $bp = '{{repo-root}}/target/' + $profile + '/build'; \
-        $rp = '{{repo-root}}/target/hyperlight-js-runtime/x86_64-hyperlight-none/' + $profile + '/hyperlight-js-runtime'; \
+        $rp = '{{repo-root}}/target/hyperlight-js-runtime/{{hyperlight-runtime-target}}/' + $profile + '/hyperlight-js-runtime'; \
         if ((Get-ChildItem -Path $bp -Filter 'hyperlight-js-*' -ErrorAction SilentlyContinue) -and \
             -not (Test-Path $rp)) { \
             Write-Host ('Cleaning stale hyperlight-js ' + $profile + ' build artifacts...'); \

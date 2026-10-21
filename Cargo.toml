@@ -24,8 +24,9 @@ hyperlight-sandbox = { version = "0.8.0", path = "src/hyperlight_sandbox" }
 hyperlight-javascript-sandbox = { version = "0.8.0", path = "src/javascript_sandbox" }
 hyperlight-wasm-sandbox = { version = "0.8.0", path = "src/wasm_sandbox" }
 hyperlight-sandbox-pyo3-common = { path = "src/sdk/python/pyo3_common" }
-hyperlight-common = { version = "0.17.0", default-features = false }
-hyperlight-component-macro = "0.17.0"
-hyperlight-host = { version = "0.17.0", default-features = false, features = ["executable_heap"] }
-hyperlight-wasm = "0.15.0"
+hyperlight-common = { version = "0.18.0", default-features = false }
+hyperlight-component-macro = "0.18.0"
+hyperlight-host = { version = "0.18.0", default-features = false, features = ["executable_heap"] }
+# PR 562 adds the AArch64 runtime and HVF support needed for macOS.
+hyperlight-wasm = { git = "https://github.com/hyperlight-dev/hyperlight-wasm", rev = "8c7a8fe691e50aaf9ff4797ac106061ea9039ba2" }
 pyo3 = { version = "0.29", features = ["extension-module"] }

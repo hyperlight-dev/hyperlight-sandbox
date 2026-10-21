@@ -46,12 +46,9 @@ fn relative_output_dir_ignores_later_chdir() {
         .unwrap();
     assert_eq!(r.exit_code, 0, "{}", r.stderr);
     assert!(a.join("out/x.txt").is_file());
-    // A symlink the guest leaves fails the run, and the clear that
-    // follows acts on a/out alone.
-    let r = sandbox
-        .run("import os\nos.symlink('x', '/output/link')")
-        .unwrap();
-    assert_eq!(r.exit_code, 1, "{}", r.stderr);
+    // A restore clears the output, a/out alone.
+    let snapshot = sandbox.snapshot().unwrap();
+    sandbox.restore(&snapshot).unwrap();
     assert!(!a.join("out/x.txt").exists());
     assert_eq!(std::fs::read_dir(a.join("out")).unwrap().count(), 0);
     assert_eq!(

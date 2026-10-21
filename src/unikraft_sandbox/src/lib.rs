@@ -11,7 +11,7 @@
 //! | `run(code)`                    | a guest function call into a boot-time bridge |
 //! | `call_tool(name, **kwargs)`    | host function `sandbox.call_tool`             |
 //! | `http_get` / `http_post`       | host function `sandbox.http` (allowlisted)    |
-//! | `/input`, `/output`            | hostfs mounts (read-only / read-write)        |
+//! | `/input`, `/output`            | hostfs mounts served by `CapFs`               |
 //! | `allow_domain`                 | checked per HTTP request and, opt-in via [`Unikraft::native_network`], per socket connect |
 //! | `snapshot` / `restore`         | hyperlight snapshots of the whole micro-VM    |
 //!
@@ -25,19 +25,20 @@ use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use base64::Engine as _;
 use cap_std::fs::Dir as CapDir;
 use hyperlight_sandbox::runtime::BlockOn;
 use hyperlight_sandbox::{
-    CapFs, DirPerms, ExecutionResult, FilePerms, Guest, GuestSandbox, HttpMethod, MethodFilter,
-    NetworkPermissions, SandboxConfig, Snapshot, ToolRegistry, http as sandbox_http,
+    CapFs, DescriptorType, DirPerms, ExecutionResult, FilePerms, Guest, GuestSandbox, HttpMethod,
+    MethodFilter, NetworkPermissions, SandboxConfig, Snapshot, ToolRegistry, http as sandbox_http,
 };
 pub use hyperlight_unikraft;
 use hyperlight_unikraft::{
-    AppSandbox, Destination, Filter, Mount, NetworkFilter, NetworkPolicy,
-    SandboxBuilder as HlukBuilder, Snapshot as HlukSnapshot,
+    AppSandbox, Destination, DirEntry, FileStat, Filter, FsBackend, Mount, NetworkFilter,
+    NetworkPolicy, SandboxBuilder as HlukBuilder, Snapshot as HlukSnapshot,
 };
 
 /// The guest code that defines `call_tool`, `http_get`, `http_post` and the
@@ -118,22 +119,27 @@ pub fn cached_rootfs(runtime: &str) -> Result<PathBuf> {
 /// with (1.5 GiB for `agent`, 256 MiB for `python`) and is set with
 /// [`scratch_mb`](Self::scratch_mb).
 ///
-/// `/input` and `/output` are host directories mounted at boot. `/output`
-/// is read-write when its permissions allow creating and writing files,
-/// else read-only when they allow reading, else absent; it cannot be
-/// write-only. As in the other backends, its files persist from run to
+/// `/input` and `/output` are mounted in the guest's filesystem, and each
+/// file operation the guest makes on them is served by `CapFs`, by the
+/// rules the other backends' WASI calls get: its permissions, and for
+/// `/output` the filesystem limits, no links, and at most 64 levels and
+/// 100,000 entries. An operation that would break them fails in the guest
+/// (`EFBIG`, `EDQUOT`, `EACCES`, `EINVAL`), before the host directory is
+/// touched. `/output` is read-write when its permissions allow creating
+/// and writing files (write-only when they do not allow reading: files
+/// can be made and written, not read or listed), else read-only when they
+/// allow reading, else absent. As in the other backends, its files persist from run to
 /// run, and restoring a snapshot clears them. Files the guest has open are
 /// interpreter state, though: they stay open across runs, and a restore
-/// does not close them. Since the guest writes `/output` directly, it is
-/// checked by the rules `CapFs` applies to writes made through it (the
-/// filesystem limits, no symbolic or hard links, no special files, at most
-/// 64 levels and 100,000 entries) after each run, and before each, as the
-/// host may have changed it since. A run that breaks them fails, and
-/// `/output` is cleared of every file and link and of the directories made
-/// during the run; those it had when the run started are kept, emptied. A
-/// run that would start on such things is refused, and they are left as
-/// they are. The guest is booted only onto
-/// the directories the sandbox was built with.
+/// does not close them.
+///
+/// `/output` is also checked as a whole after each run, and before each,
+/// for what the host may have changed in it meanwhile: the limits, no
+/// links or special files, and the 64 levels and 100,000 entries. A run
+/// that ends past them fails, and `/output` is cleared of every file and
+/// link and of the directories made during the run; those it had when the
+/// run started are kept, emptied. A run that would start past them is
+/// refused, and what is there is left as it is.
 ///
 /// A run's exit status is the one a CPython process would exit with, 0 to
 /// 255 (`sys.exit(-1)` is 255), so -1 always means the guest failed.
@@ -491,7 +497,6 @@ impl UnikraftGuestSandbox {
         if let Some(mb) = guest.scratch_mb {
             builder = builder.scratch_mb(mb);
         }
-        check_mounts(&files, &mounts)?;
         let builder = configure(builder, &host, &mounts, policy);
         let mut sandbox = builder
             .boot()
@@ -527,11 +532,11 @@ impl UnikraftGuestSandbox {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("filesystem mutex poisoned"))?;
             // What persists from the last run, and what the host has put
-            // there since, by the rules a run's output is checked by: the
-            // guest reaches `/output` itself, through its mount, so it must
-            // not start on a link or a special file. The rest of
-            // `prepare_for_run` is resetting `CapFs` handles, of which the
-            // guest holds none.
+            // there since, by the rules a run's output is checked by:
+            // `CapFs` checks each operation the guest makes, but not what
+            // it starts on, and resynchronises its accounting here. The
+            // rest of `prepare_for_run` is resetting `CapFs` handles, of
+            // which the guest holds none.
             files
                 .validate_output()
                 .context("refusing to run on what /output holds")?;
@@ -598,13 +603,13 @@ impl UnikraftGuestSandbox {
         })
     }
 
-    /// The guest writes `/output` through hostfs, which `CapFs` does not
-    /// see, so `CapFs` checks it once the run is over, by the rules it
-    /// applies to writes made through it: the filesystem limits, no
-    /// symbolic or hard links, no special files, and its traversal bounds
-    /// (64 levels, 100,000 entries). A run that breaks them fails and
-    /// `/output` is cleared, earlier runs' files with it: what the guest
-    /// broke them with cannot be told from the rest.
+    /// `CapFs` checks each operation the guest makes on `/output`, but
+    /// not what the host does to it during the run (a tool writing there,
+    /// say), so it checks the whole once the run is over: the filesystem limits, no symbolic or
+    /// hard links, no special files, and its traversal bounds (64 levels,
+    /// 100,000 entries). A run that breaks them fails and `/output` is
+    /// cleared, earlier runs' files with it: what broke them cannot be
+    /// told from the rest.
     ///
     /// Returns what to say in the run's stderr, if anything.
     fn check_output_limits(&self) -> Option<String> {
@@ -732,30 +737,134 @@ fn strip_stderr_lines(output: &str, stderr: &str) -> Option<String> {
 /// `/input` read-only, and `/output` as close to its `CapFs` permissions as
 /// a hostfs mount, read-only or read-write, can be: read-write when files
 /// may be created and written, else read-only when it may be read, else
-/// not mounted. Write-only cannot be had: the guest can read back what it
-/// wrote.
-fn mounts_for(files: &Mutex<CapFs>) -> Result<Vec<Mount>> {
-    let files = files
+/// not mounted. Either way `CapFs` serves them, so its permissions and
+/// limits decide every operation the guest makes: a mount without read
+/// permission still refuses reads.
+fn mounts_for(files: &Arc<Mutex<CapFs>>) -> Result<Vec<Mount>> {
+    let guarded = files
         .lock()
         .map_err(|_| anyhow::anyhow!("filesystem mutex poisoned"))?;
-    // Resolved now, as `CapFs` resolved them: a relative path would
-    // follow the process's working directory, which may change.
-    let absolute = |path: &Path| {
-        std::fs::canonicalize(path).with_context(|| format!("cannot resolve {}", path.display()))
+    let mount = |root: &'static str, readonly| {
+        let backend = Arc::new(CapFsMount {
+            files: files.clone(),
+            root,
+        });
+        Mount::backend(backend, root, readonly)
     };
     let mut mounts = Vec::new();
-    if let Some(input) = files.input_path() {
-        mounts.push(Mount::ro(absolute(input)?, "/input"));
+    if guarded.dir_by_guest_path("/input").is_some() {
+        mounts.push(mount("/input", true));
     }
-    if let (Some(output), Some(dir)) = (files.output_path(), files.dir_by_guest_path("/output")) {
-        let output = absolute(output)?;
+    if let Some(dir) = guarded.dir_by_guest_path("/output") {
         if dir.perms().contains(DirPerms::MUTATE) && dir.file_perms().contains(FilePerms::WRITE) {
-            mounts.push(Mount::rw(output, "/output"));
+            mounts.push(mount("/output", false));
         } else if dir.perms().contains(DirPerms::READ) {
-            mounts.push(Mount::ro(output, "/output"));
+            mounts.push(mount("/output", true));
         }
     }
     Ok(mounts)
+}
+
+/// A guest mount served by `CapFs`, by the path operations it has for a
+/// guest with a filesystem of its own.
+struct CapFsMount {
+    files: Arc<Mutex<CapFs>>,
+    /// The directory's guest path, which `CapFs` knows it by.
+    root: &'static str,
+}
+
+impl CapFsMount {
+    fn with<T>(
+        &self,
+        op: impl FnOnce(&mut CapFs, &str) -> std::io::Result<T>,
+    ) -> std::io::Result<T> {
+        let mut files = self
+            .files
+            .lock()
+            .map_err(|_| std::io::Error::other("filesystem mutex poisoned"))?;
+        op(&mut files, self.root)
+    }
+}
+
+impl FsBackend for CapFsMount {
+    fn stat(&self, path: &str) -> std::io::Result<FileStat> {
+        self.with(|files, root| {
+            let stat = files.stat_path(root, path)?;
+            // Permission bits say what `CapFs` would allow, so tools that
+            // check them first (`os.access`, `shutil.copy`) agree with it.
+            let (dir, file) = files
+                .dir_by_guest_path(root)
+                .map_or((DirPerms::empty(), FilePerms::empty()), |d| {
+                    (d.perms(), d.file_perms())
+                });
+            let bits = |read: bool, write: bool| {
+                (if read { 0o444 } else { 0 }) | (if write { 0o200 } else { 0 })
+            };
+            let node = match stat.descriptor_type {
+                DescriptorType::Directory => FileStat::dir(
+                    0o111 | bits(dir.contains(DirPerms::READ), dir.contains(DirPerms::MUTATE)),
+                ),
+                DescriptorType::RegularFile => FileStat::file(
+                    stat.size,
+                    bits(
+                        file.contains(FilePerms::READ),
+                        file.contains(FilePerms::WRITE),
+                    ),
+                ),
+            };
+            // A host that keeps no status change time: the modification
+            // time stands in, as on hluk's own mounts.
+            let modified = stat.modified.unwrap_or(UNIX_EPOCH);
+            Ok(node.times(
+                stat.accessed.unwrap_or(UNIX_EPOCH),
+                modified,
+                stat.changed.unwrap_or(modified),
+            ))
+        })
+    }
+
+    fn read(&self, path: &str, offset: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.with(|files, root| files.read_path(root, path, offset, buf))
+    }
+
+    fn write(&self, path: &str, offset: Option<u64>, data: &[u8]) -> std::io::Result<()> {
+        self.with(|files, root| files.write_path(root, path, offset, data))
+    }
+
+    fn create_dir(&self, path: &str) -> std::io::Result<()> {
+        self.with(|files, root| files.create_dir_path(root, path))
+    }
+
+    fn remove(&self, path: &str) -> std::io::Result<()> {
+        self.with(|files, root| files.remove_path(root, path))
+    }
+
+    fn truncate(&self, path: &str, len: u64) -> std::io::Result<()> {
+        self.with(|files, root| files.truncate_path(root, path, len))
+    }
+
+    fn list(&self, path: &str) -> std::io::Result<Vec<DirEntry>> {
+        self.with(|files, root| {
+            Ok(files
+                .list_path(root, path)?
+                .into_iter()
+                .map(|(name, is_dir)| DirEntry::new(name, is_dir))
+                .collect())
+        })
+    }
+
+    fn rename(&self, from: &str, to: &str) -> std::io::Result<()> {
+        self.with(|files, root| files.rename_path(root, from, to))
+    }
+
+    fn set_times(
+        &self,
+        path: &str,
+        accessed: Option<SystemTime>,
+        modified: Option<SystemTime>,
+    ) -> std::io::Result<()> {
+        self.with(|files, root| files.set_times_path(root, path, accessed, modified))
+    }
 }
 
 /// What guest sockets may reach: TCP connections to the host of an
@@ -842,39 +951,6 @@ impl NetworkFilter for SocketFilter {
         }
         self.any(|host, port| port == Some(d.addr.port()) && host.is(d))
     }
-}
-
-/// Refuse to mount a directory other than the one `CapFs` opened for it.
-///
-/// hostfs opens each mount by path when the guest boots and keeps that
-/// directory from then on (a restore keeps it too), while `CapFs` checks
-/// and clears the one it opened at build. So this is checked before the
-/// boot: were the path replaced since the build (`rm -rf out && mkdir
-/// out`), the guest would write a directory nothing checks. After the
-/// boot, replacing it changes nothing for either side.
-fn check_mounts(files: &Mutex<CapFs>, mounts: &[Mount]) -> Result<()> {
-    let files = files
-        .lock()
-        .map_err(|_| anyhow::anyhow!("filesystem mutex poisoned"))?;
-    for mount in mounts {
-        let same = files
-            .is_same_dir(&mount.guest_path, &mount.host_path)
-            .with_context(|| {
-                format!(
-                    "cannot check that {} ({}) is the directory the sandbox was built with",
-                    mount.guest_path,
-                    mount.host_path.display()
-                )
-            })?;
-        anyhow::ensure!(
-            same,
-            "{} ({}) was replaced since the sandbox was built; restore the original \
-             directory or build a new sandbox",
-            mount.guest_path,
-            mount.host_path.display()
-        );
-    }
-    Ok(())
 }
 
 fn configure(

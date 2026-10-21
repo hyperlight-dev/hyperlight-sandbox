@@ -207,8 +207,11 @@ fn guest_classes_pickle_as_in_a_python_process() {
     assert_eq!(r.stdout, "3 __main__\nmain\n", "{}", r.stderr);
 }
 
+/// The guest's file calls are refused the write that would break the
+/// filesystem limits, as the other backends refuse it, before anything
+/// reaches the host directory.
 #[test]
-fn output_limits_are_enforced_after_the_run() {
+fn output_limits_refuse_the_write_that_breaks_them() {
     let Some(rootfs) = rootfs("python") else {
         return;
     };
@@ -221,15 +224,25 @@ fn output_limits_are_enforced_after_the_run() {
         .build()
         .unwrap();
     let r = sandbox
-        .run("open('/output/big.bin', 'wb').write(b'0' * 2048)")
+        .run(
+            "import errno, os\n\
+             def attempt(path, size):\n    \
+                 try:\n        \
+                     with open(path, 'wb') as f:\n            \
+                         f.write(b'0' * size)\n        \
+                     return 'ok'\n    \
+                 except OSError as e:\n        \
+                     return errno.errorcode[e.errno]\n\
+             print(attempt('/output/big.bin', 2048), os.path.getsize('/output/big.bin'))\n\
+             os.remove('/output/big.bin')\n\
+             print(attempt('/output/a', 1000), attempt('/output/b', 1000), attempt('/output/c', 1))",
+        )
         .unwrap();
-    assert_eq!(r.exit_code, 1);
-    assert!(
-        r.stderr.contains("exceeded the filesystem limits"),
-        "{}",
-        r.stderr
-    );
-    assert!(sandbox.get_output_files().unwrap().is_empty());
+    assert_eq!(r.exit_code, 0, "{}", r.stderr);
+    assert_eq!(r.stdout, "EFBIG 0\nok ok EDQUOT\n", "{}", r.stderr);
+    let mut files = sandbox.get_output_files().unwrap();
+    files.sort();
+    assert_eq!(files, ["a", "b"]);
 }
 
 #[test]
@@ -340,24 +353,36 @@ fn unread_replies_are_capped_per_run() {
     assert_eq!(r.stdout, "1048576\n", "{}", r.stderr);
 }
 
+/// What the host puts in `/output` during a run, which the guest's file
+/// calls could not have been refused, is checked once the run is over:
+/// whatever the run's status, its output is kept and the check made.
 #[test]
 fn out_of_range_exit_status_keeps_output_and_limits() {
     let Some(rootfs) = rootfs("python") else {
         return;
     };
+    let output = tempfile::tempdir().unwrap();
+    let host_side = output.path().to_owned();
+    let mut tools = ToolRegistry::new();
+    tools.register_unvalidated("spoil", move |_| {
+        std::fs::write(host_side.join("big.bin"), vec![0u8; 2048]).unwrap();
+        Ok(serde_json::Value::Null)
+    });
     let limits = hyperlight_sandbox::FilesystemLimits::new(1024, 4096, 2).unwrap();
     let mut sandbox = SandboxBuilder::new()
         .module_path(rootfs)
+        .with_tools(tools)
         .filesystem_limits(limits)
-        .temp_output()
+        .output_dir(
+            output.path(),
+            hyperlight_sandbox::DirPerms::READ | hyperlight_sandbox::DirPerms::MUTATE,
+            hyperlight_sandbox::FilePerms::READ | hyperlight_sandbox::FilePerms::WRITE,
+        )
         .guest(Unikraft::new())
         .build()
         .unwrap();
     let r = sandbox
-        .run(
-            "open('/output/big.bin', 'wb').write(b'0' * 2048)\n\
-             print('before')\nimport sys\nsys.exit(2 ** 40)",
-        )
+        .run("call_tool('spoil')\nprint('before')\nimport sys\nsys.exit(2 ** 40)")
         .unwrap();
     assert_eq!(r.exit_code, 1);
     assert_eq!(r.stdout, "before\n");
@@ -369,22 +394,194 @@ fn out_of_range_exit_status_keeps_output_and_limits() {
     assert!(sandbox.get_output_files().unwrap().is_empty());
 }
 
+/// Through `CapFs`, `/input` and `/output` still work as a filesystem
+/// does for the libraries a script uses. (Not `shutil.rmtree` or
+/// `shutil.copytree`, which no hostfs mount supports yet: the guest gives
+/// a path different inode numbers by `lstat` and `fstat`, and has no
+/// `utime`.)
 #[test]
-fn symlinks_in_output_are_removed() {
+fn input_and_output_work_as_a_filesystem() {
+    let input = tempfile::tempdir().unwrap();
+    std::fs::create_dir(input.path().join("data")).unwrap();
+    std::fs::write(input.path().join("data/in.txt"), "in").unwrap();
+    let Some(mut sandbox) = python_sandbox(ToolRegistry::new(), Some(input.path())) else {
+        return;
+    };
+    let r = sandbox
+        .run(
+            "import os, shutil, tempfile\n\
+             print(open('/input/data/in.txt').read(), os.listdir('/input'))\n\
+             os.makedirs('/output/a/b', exist_ok=True)\n\
+             os.makedirs('/output/a/b', exist_ok=True)\n\
+             with tempfile.NamedTemporaryFile('w', dir='/output/a', delete=False) as f:\n    \
+                 f.write('atomic')\n\
+             os.replace(f.name, '/output/a/b/result.txt')\n\
+             with open('/output/log', 'a') as f:\n    \
+                 f.write('one ')\n\
+             with open('/output/log', 'a') as f:\n    \
+                 f.write('two')\n\
+             with open('/output/log', 'r+') as f:\n    \
+                 f.seek(4)\n    \
+                 f.write('TWO')\n    \
+                 f.truncate()\n\
+             os.makedirs('/output/copy/b')\n\
+             shutil.copyfile('/output/a/b/result.txt', '/output/copy/b/result.txt')\n\
+             for d, dirs, fs in os.walk('/output/a', topdown=False):\n    \
+                 for name in fs:\n        \
+                     os.remove(os.path.join(d, name))\n    \
+                 os.rmdir(d)\n\
+             print(sorted((d, sorted(fs)) for d, _, fs in os.walk('/output')))\n\
+             try:\n    \
+                 open('/input/new', 'w')\n\
+             except OSError as e:\n    \
+                 print(type(e).__name__)",
+        )
+        .unwrap();
+    assert_eq!(r.exit_code, 0, "{}", r.stderr);
+    assert_eq!(
+        r.stdout,
+        "in ['data']\n\
+         [('/output', ['log']), ('/output/copy', []), ('/output/copy/b', ['result.txt'])]\n\
+         OSError\n",
+        "{}",
+        r.stderr
+    );
+    let output = sandbox.output_path().unwrap().unwrap();
+    assert_eq!(
+        std::fs::read_to_string(output.join("log")).unwrap(),
+        "one TWO"
+    );
+    assert_eq!(
+        std::fs::read_to_string(output.join("copy/b/result.txt")).unwrap(),
+        "atomic"
+    );
+}
+
+/// A directory cannot be moved where what it holds would be deeper than
+/// the 64 levels `/output` may have.
+#[test]
+fn directories_cannot_be_moved_too_deep() {
+    let Some(mut sandbox) = python_sandbox(ToolRegistry::new(), None) else {
+        return;
+    };
+    let r = sandbox
+        .run(
+            "import errno, os\n\
+             deep = '/output/' + '/'.join(['z'] * 63)\n\
+             os.makedirs(deep)\n\
+             os.makedirs('/output/t/u')\n\
+             try:\n    \
+                 os.rename('/output/t', deep + '/t')\n\
+             except OSError as e:\n    \
+                 print(errno.errorcode[e.errno])\n\
+             os.rename('/output/t', os.path.dirname(deep) + '/t')\n\
+             print('moved')",
+        )
+        .unwrap();
+    assert_eq!(
+        (r.exit_code, r.stdout.as_str()),
+        (0, "EINVAL\nmoved\n"),
+        "{}",
+        r.stderr
+    );
+}
+
+/// Without read permission `/output` is written, not read.
+#[test]
+fn write_only_output_is_written_not_read() {
+    let Some(rootfs) = rootfs("python") else {
+        return;
+    };
+    let output = tempfile::tempdir().unwrap();
+    let mut sandbox = SandboxBuilder::new()
+        .module_path(rootfs)
+        .output_dir(
+            output.path(),
+            hyperlight_sandbox::DirPerms::MUTATE,
+            hyperlight_sandbox::FilePerms::WRITE,
+        )
+        .guest(Unikraft::new())
+        .build()
+        .unwrap();
+    let r = sandbox
+        .run(
+            "import os\n\
+             open('/output/f', 'w').write('x')\n\
+             print(os.access('/output/f', os.R_OK), os.access('/output/f', os.W_OK))\n\
+             for op in (lambda: open('/output/f').read(), lambda: os.listdir('/output')):\n    \
+                 try:\n        \
+                     op()\n        \
+                     print('read')\n    \
+                 except PermissionError:\n        \
+                     print('refused')",
+        )
+        .unwrap();
+    assert_eq!(r.stdout, "False True\nrefused\nrefused\n", "{}", r.stderr);
+    assert_eq!(
+        std::fs::read_to_string(output.path().join("f")).unwrap(),
+        "x"
+    );
+}
+
+#[test]
+fn links_cannot_be_made_in_output() {
     let Some(mut sandbox) = python_sandbox(ToolRegistry::new(), None) else {
         return;
     };
     let r = sandbox
         .run(
             "import os\n\
-             os.symlink('../../../../etc/passwd', '/output/escape')\n\
-             open('/output/ok.txt', 'w').write('ok')",
+             open('/output/a', 'w').write('a')\n\
+             for make in (lambda: os.symlink('../../../../etc/passwd', '/output/escape'),\n             \
+                          lambda: os.link('/output/a', '/output/b')):\n    \
+                 try:\n        \
+                     make()\n        \
+                     print('made')\n    \
+                 except PermissionError:\n        \
+                     print('refused')",
         )
         .unwrap();
-    assert_eq!(r.exit_code, 1, "{}", r.stderr);
-    assert!(r.stderr.contains("symbolic links"), "{}", r.stderr);
+    assert_eq!(r.exit_code, 0, "{}", r.stderr);
+    assert_eq!(r.stdout, "refused\nrefused\n", "{}", r.stderr);
+    assert_eq!(sandbox.get_output_files().unwrap(), ["a"]);
+}
+
+#[test]
+fn file_times_reach_the_host() {
+    let input = tempfile::tempdir().unwrap();
+    std::fs::write(input.path().join("in"), "in").unwrap();
+    let Some(mut sandbox) = python_sandbox(ToolRegistry::new(), Some(input.path())) else {
+        return;
+    };
+    let r = sandbox
+        .run(
+            "import os\n\
+             open('/output/a', 'w').write('a')\n\
+             os.utime('/output/a', (1000000000, 1234567890))\n\
+             s = os.stat('/output/a')\n\
+             print(int(s.st_atime), int(s.st_mtime))\n\
+             os.mkdir('/output/d')\n\
+             os.utime('/output/d', (0, 1500000000))\n\
+             print(int(os.stat('/output/d').st_mtime))\n\
+             print(os.stat('/input/in').st_mtime > 0)\n\
+             try:\n    os.utime('/input/in', (0, 0))\nexcept OSError:\n    print('refused')",
+        )
+        .unwrap();
+    assert_eq!(r.exit_code, 0, "{}", r.stderr);
+    assert_eq!(
+        r.stdout, "1000000000 1234567890\n1500000000\nTrue\nrefused\n",
+        "{}",
+        r.stderr
+    );
     let output = sandbox.output_path().unwrap().unwrap();
-    assert_eq!(std::fs::read_dir(output).unwrap().count(), 0);
+    let modified = std::fs::metadata(output.join("a"))
+        .unwrap()
+        .modified()
+        .unwrap();
+    assert_eq!(
+        modified,
+        std::time::UNIX_EPOCH + std::time::Duration::from_secs(1234567890)
+    );
 }
 
 /// This host's address on the interface it reaches the internet by: not
@@ -482,39 +679,54 @@ fn native_network_follows_the_allowlist_without_a_reboot() {
 }
 
 #[test]
-fn output_trees_past_the_walk_limits_fail_and_are_removed() {
+fn output_trees_stop_at_the_walk_limits() {
     let Some(mut sandbox) = python_sandbox(ToolRegistry::new(), None) else {
         return;
     };
     let output = sandbox.output_path().unwrap().unwrap();
-    for code in [
-        // Deeper than the 64 levels CapFs walks.
-        "import os\nos.makedirs('/output/' + '/'.join(['d'] * 70))",
-        // More entries than the 100,000 it walks, directories counting.
-        "import os\nfor i in range(100100):\n    os.mkdir(f'/output/{i}')",
-    ] {
-        let r = sandbox.run(code).unwrap();
-        assert_eq!(r.exit_code, 1, "{}", r.stderr);
-        assert!(r.stderr.contains("its files were removed"), "{}", r.stderr);
-        assert_eq!(std::fs::read_dir(&output).unwrap().count(), 0);
-        // The next run is unaffected.
-        let r = sandbox.run("open('/output/ok', 'w').write('ok')").unwrap();
-        assert_eq!(r.exit_code, 0, "{}", r.stderr);
-        assert_eq!(sandbox.get_output_files().unwrap(), vec!["ok".to_string()]);
-    }
-}
-
-#[test]
-fn hard_links_in_output_are_removed() {
-    let Some(mut sandbox) = python_sandbox(ToolRegistry::new(), None) else {
-        return;
-    };
+    // Deeper than the 64 levels CapFs walks: refused as it is made.
     let r = sandbox
-        .run("import os\nopen('/output/a', 'w').write('a')\nos.link('/output/a', '/output/b')")
+        .run(
+            "import errno, os\n\
+             try:\n    \
+                 os.makedirs('/output/' + '/'.join(['d'] * 70))\n\
+             except OSError as e:\n    \
+                 print(errno.errorcode[e.errno])",
+        )
         .unwrap();
-    assert_eq!(r.exit_code, 1, "{}", r.stderr);
-    assert!(r.stderr.contains("hard-linked"), "{}", r.stderr);
-    assert!(sandbox.get_output_files().unwrap().is_empty());
+    assert_eq!(
+        (r.exit_code, r.stdout.as_str()),
+        (0, "EINVAL\n"),
+        "{}",
+        r.stderr
+    );
+    std::fs::remove_dir_all(output.join("d")).unwrap();
+
+    // More entries than the 100,000 it walks, directories counting:
+    // refused from the one past them.
+    let r = sandbox
+        .run(
+            "import errno, os\n\
+             try:\n    \
+                 for i in range(100100):\n        \
+                     os.mkdir(f'/output/{i}')\n\
+             except OSError as e:\n    \
+                 print(i, errno.errorcode[e.errno])",
+        )
+        .unwrap();
+    assert_eq!(
+        (r.exit_code, r.stdout.as_str()),
+        (0, "100000 EDQUOT\n"),
+        "{}",
+        r.stderr
+    );
+    for entry in std::fs::read_dir(&output).unwrap() {
+        std::fs::remove_dir(entry.unwrap().path()).unwrap();
+    }
+    // The next run is unaffected.
+    let r = sandbox.run("open('/output/ok', 'w').write('ok')").unwrap();
+    assert_eq!(r.exit_code, 0, "{}", r.stderr);
+    assert_eq!(sandbox.get_output_files().unwrap(), vec!["ok".to_string()]);
 }
 
 #[test]
@@ -545,8 +757,17 @@ fn host_directories_in_output_are_kept() {
     };
     let output = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(output.path().join("plots/png")).unwrap();
+    let host_side = output.path().to_owned();
+    let mut tools = ToolRegistry::new();
+    tools.register_unvalidated("spoil", move |_| {
+        std::fs::write(host_side.join("big.bin"), vec![0u8; 2048]).unwrap();
+        Ok(serde_json::Value::Null)
+    });
+    let limits = hyperlight_sandbox::FilesystemLimits::new(1024, 8192, 8).unwrap();
     let mut sandbox = SandboxBuilder::new()
         .module_path(rootfs)
+        .with_tools(tools)
+        .filesystem_limits(limits)
         .output_dir(
             output.path(),
             hyperlight_sandbox::DirPerms::READ | hyperlight_sandbox::DirPerms::MUTATE,
@@ -573,7 +794,7 @@ fn host_directories_in_output_are_kept() {
     // A run that fails the check clears it: the directories it started
     // with stay, emptied; the ones it made go.
     let r = sandbox
-        .run("import os\nos.makedirs('/output/during/run')\nos.symlink('x', '/output/link')")
+        .run("import os\nos.makedirs('/output/during/run')\ncall_tool('spoil')")
         .unwrap();
     assert_eq!(r.exit_code, 1, "{}", r.stderr);
     assert!(output.path().join("plots/png").is_dir());
@@ -582,7 +803,7 @@ fn host_directories_in_output_are_kept() {
     assert!(!output.path().join("guest/deep/f").exists());
     assert!(output.path().join("staged").is_dir());
     assert!(!output.path().join("during").exists());
-    assert!(!output.path().join("link").exists());
+    assert!(!output.path().join("big.bin").exists());
 }
 
 #[test]
@@ -708,9 +929,8 @@ fn native_network_reaches_allowed_names_by_name() {
     );
 }
 
-/// The guest keeps the `/output` it booted onto, which is the directory
-/// `CapFs` checks: replacing the path on the host afterwards sends neither
-/// side to the new one.
+/// The guest's `/output` is the directory `CapFs` opened, which serves it:
+/// replacing the path on the host afterwards sends neither to the new one.
 #[test]
 fn a_replaced_output_directory_changes_nothing() {
     let Some(rootfs) = rootfs("python") else {
@@ -741,11 +961,8 @@ fn a_replaced_output_directory_changes_nothing() {
     assert_eq!(r.exit_code, 0, "{}", r.stderr);
     assert!(kept.join("a.txt").is_file());
     assert_eq!(std::fs::read_dir(&output).unwrap().count(), 0);
-    // And what breaks the rules there is caught and cleared there.
-    let r = sandbox
-        .run("import os\nos.symlink('x', '/output/link')")
-        .unwrap();
-    assert_eq!(r.exit_code, 1, "{}", r.stderr);
-    assert!(r.stderr.contains("symbolic links"), "{}", r.stderr);
+    // And it is the one cleared.
+    let snapshot = sandbox.snapshot().unwrap();
+    sandbox.restore(&snapshot).unwrap();
     assert_eq!(std::fs::read_dir(&kept).unwrap().count(), 0);
 }

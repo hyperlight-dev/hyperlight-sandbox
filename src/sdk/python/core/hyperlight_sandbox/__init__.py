@@ -135,15 +135,18 @@ class Sandbox:
     overrides the guest memory the image was tested with. ``native_network``
     also lets guest sockets (``requests``, ``urllib``) reach the domains passed
     to ``allow_domain`` over TCP, on each entry's port (path and method
-    filters apply to ``http_get`` / ``http_post`` only). ``/input`` and
-    ``/output`` are host directories mounted at boot. As with the other
-    backends, files in ``/output`` persist from run to run and ``restore()``
-    clears them; open guest files are interpreter state, and stay open too.
-    A run that leaves a symbolic or hard link, a special file or files past
-    the filesystem limits in ``/output`` fails, and ``/output`` is cleared of
-    every file and link (earlier runs' included) and of the directories made
-    during the run; those it had when the run started are kept. A run is
-    refused if ``/output`` holds such things when it would start. Exit
+    filters apply to ``http_get`` / ``http_post`` only). The guest's file
+    operations on ``/input`` and ``/output`` are each checked against the
+    directory permissions and filesystem limits, as the other backends'
+    are, and one that would break them fails in the guest (``OSError``)
+    before it reaches the host directory; links cannot be made. As with the
+    other backends, files in ``/output`` persist from run to run and
+    ``restore()`` clears them; open guest files are interpreter state, and
+    stay open too. ``/output`` is also checked as a whole before and after
+    each run, for what the host changed meanwhile: a run that ends past the limits fails, and ``/output`` is
+    cleared of every file and link (earlier runs' included) and of the
+    directories made during the run; a run is refused if ``/output`` is
+    past them when it would start. Exit
     statuses are a CPython process's, 0 to 255 (``sys.exit(-1)`` is 255), so
     -1 means the guest itself failed.
     Tool arguments and results and HTTP bodies of any size are exchanged in

@@ -2071,6 +2071,7 @@ dependencies = [
  "anyhow",
  "bitflags 2.13.2",
  "bytes",
+ "cap-fs-ext 4.0.3",
  "cap-std 4.0.3",
  "futures-util",
  "http",

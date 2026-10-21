@@ -102,7 +102,7 @@ using var sandbox = new SandboxBuilder()
 
 Run full CPython, with native extensions such as numpy and pandas, from a
 hyperlight-unikraft rootfs image (the `agent` image the `hluk` CLI caches,
-e.g. `~/.cache/hluk/rootfs/ghcr.io/hyperlight-dev/hyperlight-unikraft/agent/initrd-v0.18.0.cpio`):
+e.g. `~/.cache/hluk/rootfs/ghcr.io/hyperlight-dev/hyperlight-unikraft/agent/initrd-v0.19.0.cpio`):
 
 ```csharp
 using var sandbox = new SandboxBuilder()

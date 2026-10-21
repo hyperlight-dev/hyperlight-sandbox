@@ -277,9 +277,9 @@ fn agent_image_runs_child_processes_and_threads() {
         .unwrap();
     assert_eq!(r.exit_code, 0, "{}", r.stderr);
     assert_eq!(r.stdout, "child\n3\nthread\nkilled\n");
-    // The kernel logs each PATH entry a program is not found in; that is
-    // standard error, kept out of stdout.
-    assert!(r.stderr.contains("/usr/bin/sleep"), "{}", r.stderr);
+    // The kernel's log of each PATH entry a program is not found in is the
+    // guest log, not the program's standard error.
+    assert!(!r.stderr.contains("ERR:"), "{}", r.stderr);
 }
 
 #[test]

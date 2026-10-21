@@ -70,7 +70,7 @@ const MAX_PENDING_BLOBS: usize = 256;
 /// The release of the published rootfs images this backend is built
 /// against. A snapshot (and the guest kernel's host contract) is tied to
 /// the `hyperlight-unikraft` release, so the images must match it.
-pub const IMAGE_RELEASE: &str = "v0.18.0";
+pub const IMAGE_RELEASE: &str = "v0.19.0";
 
 /// The path where the `hluk` CLI caches the published rootfs image of
 /// `runtime` (`python`, `python-shell`, `agent`, ...) for [`IMAGE_RELEASE`].

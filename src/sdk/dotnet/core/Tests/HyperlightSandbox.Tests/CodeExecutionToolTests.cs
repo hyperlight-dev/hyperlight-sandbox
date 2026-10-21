@@ -98,7 +98,7 @@ public class CodeExecutionToolTests
         }
 
         var path = Path.Combine(
-            cache, "rootfs", "ghcr.io", "hyperlight-dev", "hyperlight-unikraft", runtime, "initrd-v0.18.0.cpio");
+            cache, "rootfs", "ghcr.io", "hyperlight-dev", "hyperlight-unikraft", runtime, "initrd-v0.19.0.cpio");
         return File.Exists(path) ? path : null;
     }
 

@@ -36,7 +36,7 @@ fn relative_output_dir_ignores_later_chdir() {
             DirPerms::READ | DirPerms::MUTATE,
             FilePerms::READ | FilePerms::WRITE,
         )
-        .guest(Unikraft::new().native_network(true))
+        .guest(Unikraft::new())
         .build()
         .unwrap();
     std::env::set_current_dir(&b).unwrap();
@@ -58,11 +58,6 @@ fn relative_output_dir_ignores_later_chdir() {
         std::fs::read_to_string(b.join("out/userdata/precious.txt")).unwrap(),
         "keep"
     );
-    // A change to the allowlist re-boots the guest, remounting /output:
-    // still a/out.
-    sandbox
-        .allow_domain("http://127.0.0.1", hyperlight_sandbox::MethodFilter::Any)
-        .unwrap();
     let r = sandbox
         .run("open('/output/y.txt', 'w').write('y')")
         .unwrap();

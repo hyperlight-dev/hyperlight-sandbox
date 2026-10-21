@@ -12,7 +12,7 @@
 //! | `call_tool(name, **kwargs)`    | host function `sandbox.call_tool`             |
 //! | `http_get` / `http_post`       | host function `sandbox.http` (allowlisted)    |
 //! | `/input`, `/output`            | hostfs mounts (read-only / read-write)        |
-//! | `allow_domain`                 | checked per HTTP request on the host; raw sockets opt-in via [`Unikraft::native_network`] |
+//! | `allow_domain`                 | checked per HTTP request and, opt-in via [`Unikraft::native_network`], per socket connect |
 //! | `snapshot` / `restore`         | hyperlight snapshots of the whole micro-VM    |
 //!
 //! The module path given to the sandbox builder is the rootfs image (an
@@ -22,6 +22,7 @@
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -30,13 +31,13 @@ use base64::Engine as _;
 use cap_std::fs::Dir as CapDir;
 use hyperlight_sandbox::runtime::BlockOn;
 use hyperlight_sandbox::{
-    CapFs, DirPerms, ExecutionResult, FilePerms, Guest, GuestSandbox, HttpMethod,
+    CapFs, DirPerms, ExecutionResult, FilePerms, Guest, GuestSandbox, HttpMethod, MethodFilter,
     NetworkPermissions, SandboxConfig, Snapshot, ToolRegistry, http as sandbox_http,
 };
 pub use hyperlight_unikraft;
 use hyperlight_unikraft::{
-    AllowList, AppSandbox, Mount, NetworkPolicy, SandboxBuilder as HlukBuilder,
-    Snapshot as HlukSnapshot,
+    AppSandbox, Destination, Filter, Mount, NetworkFilter, NetworkPolicy,
+    SandboxBuilder as HlukBuilder, Snapshot as HlukSnapshot,
 };
 
 /// The guest code that defines `call_tool`, `http_get`, `http_post` and the
@@ -131,10 +132,8 @@ pub fn cached_rootfs(runtime: &str) -> Result<PathBuf> {
 /// `/output` is cleared of every file and link and of the directories made
 /// during the run; those it had when the run started are kept, emptied. A
 /// run that would start on such things is refused, and they are left as
-/// they are. The guest is (re)booted
-/// only onto the directories the sandbox was built with: one replaced on
-/// the host since then fails the boot an allowlist change makes, until it
-/// is put back.
+/// they are. The guest is booted only onto
+/// the directories the sandbox was built with.
 ///
 /// A run's exit status is the one a CPython process would exit with, 0 to
 /// 255 (`sys.exit(-1)` is 255), so -1 always means the guest failed.
@@ -162,13 +161,20 @@ impl Unikraft {
     /// Also let guest sockets reach the hosts named by `allow_domain`, so
     /// libraries like `requests` and `urllib` work directly.
     ///
+    /// A guest socket may then make a TCP connection to an `allow_domain`
+    /// entry's host on its port (the one the URL names, else its scheme's,
+    /// 443 for `https`): the host checks each connect, and each DNS
+    /// question, against the allowlist as it is at that moment, so an
+    /// `allow_domain` made later applies from the next connect.
+    ///
     /// Off by default because socket-level enforcement is coarser than the
-    /// HTTP-level allowlist the other backends apply: it is by host name
-    /// only, so the scheme, port, path prefix and method filters of an
-    /// `allow_domain` entry are not enforced on these sockets (they still
-    /// are for `http_get` / `http_post`). The names are resolved when the
-    /// allowlist changes; one that does not resolve then is left out until
-    /// it changes again, and the next run's stderr says so.
+    /// HTTP-level allowlist the other backends apply. The host sees the
+    /// address and port of a connection, and recognises an allowed name's
+    /// addresses through the answers DNS gives the guest for it, but not
+    /// what goes over the connection: another site served from the same
+    /// address (a CDN, a shared host) is reachable on that port too, and an
+    /// entry's path prefix and method filters are not enforced on these
+    /// sockets (they still are for `http_get` / `http_post`).
     pub fn native_network(mut self, on: bool) -> Self {
         self.native_network = on;
         self
@@ -437,14 +443,6 @@ fn push_capped(buffer: &mut String, text: &str) {
 pub struct UnikraftGuestSandbox {
     sandbox: AppSandbox,
     host: HostState,
-    mounts: Vec<Mount>,
-    native_network: bool,
-    /// The hosts the guest's socket policy was built from, to notice an
-    /// `allow_domain` made after boot.
-    socket_hosts: Vec<String>,
-    /// Said in the next run's stderr: which allowed hosts guest sockets
-    /// cannot reach because they did not resolve.
-    socket_notice: Option<String>,
     files: Arc<Mutex<CapFs>>,
     /// The directories `/output` had when the current run started, relative
     /// to it: kept when a failed check clears the run's output, so that
@@ -483,8 +481,11 @@ impl UnikraftGuestSandbox {
             stderr: Arc::default(),
         };
         let mounts = mounts_for(&files)?;
-        let socket_hosts = socket_hosts(guest.native_network, &network)?;
-        let (policy, socket_notice) = socket_policy(&socket_hosts);
+        let policy = guest.native_network.then(|| {
+            NetworkPolicy::Filter(Filter::new(SocketFilter {
+                network: network.clone(),
+            }))
+        });
 
         let mut builder = HlukBuilder::from_initrd(&rootfs);
         if let Some(mb) = guest.scratch_mb {
@@ -513,41 +514,10 @@ impl UnikraftGuestSandbox {
         Ok(Self {
             sandbox,
             host,
-            mounts,
-            native_network: guest.native_network,
-            socket_hosts,
-            socket_notice,
             files,
             // Taken before each run
             kept_dirs: HashSet::new(),
         })
-    }
-
-    /// Re-boot the guest under the current allowlist, keeping its state:
-    /// the socket policy is fixed at boot, and a snapshot restores under a
-    /// different one.
-    fn sync_socket_policy(&mut self) -> Result<()> {
-        let hosts = socket_hosts(self.native_network, &self.host.network)?;
-        if hosts == self.socket_hosts {
-            return Ok(());
-        }
-        // Resolved once per change of the allowlist, not every run: a name
-        // that does not resolve leaves guest sockets unable to reach it, as
-        // DNS would, rather than failing every run from then on.
-        let (policy, notice) = socket_policy(&hosts);
-        check_mounts(&self.files, &self.mounts)?;
-        let snapshot = self.sandbox.snapshot()?;
-        let builder = configure(
-            HlukBuilder::from_snapshot(snapshot),
-            &self.host,
-            &self.mounts,
-            policy,
-        );
-        self.sandbox = builder.boot()?;
-        self.sandbox.drain_output();
-        self.socket_hosts = hosts;
-        self.socket_notice = notice;
-        Ok(())
     }
 
     fn run_impl(&mut self, code: &str) -> Result<ExecutionResult> {
@@ -568,7 +538,6 @@ impl UnikraftGuestSandbox {
             self.kept_dirs =
                 output_dirs(&files).context("failed to list the directories in /output")?;
         }
-        self.sync_socket_policy()?;
         self.host.take_stderr()?;
         self.host
             .blobs
@@ -598,10 +567,6 @@ impl UnikraftGuestSandbox {
                 .unwrap_or(&raw),
         );
         push_capped(&mut stderr, &raw_stderr);
-
-        if let Some(notice) = self.socket_notice.take() {
-            stderr.insert_str(0, &notice);
-        }
 
         // Nothing below returns early: the output limits are enforced, and
         // the output kept, whatever the guest returned.
@@ -773,9 +738,8 @@ fn mounts_for(files: &Mutex<CapFs>) -> Result<Vec<Mount>> {
     let files = files
         .lock()
         .map_err(|_| anyhow::anyhow!("filesystem mutex poisoned"))?;
-    // Resolved now, as `CapFs` resolved them: a re-boot remounts them,
-    // and a relative path would then follow the process's working
-    // directory elsewhere.
+    // Resolved now, as `CapFs` resolved them: a relative path would
+    // follow the process's working directory, which may change.
     let absolute = |path: &Path| {
         std::fs::canonicalize(path).with_context(|| format!("cannot resolve {}", path.display()))
     };
@@ -794,48 +758,100 @@ fn mounts_for(files: &Mutex<CapFs>) -> Result<Vec<Mount>> {
     Ok(mounts)
 }
 
-/// The host names guest sockets may reach: none unless native networking
-/// is on, else those of every `allow_domain` entry.
-fn socket_hosts(native: bool, network: &Mutex<NetworkPermissions>) -> Result<Vec<String>> {
-    if !native {
-        return Ok(Vec::new());
-    }
-    let network = network
-        .lock()
-        .map_err(|_| anyhow::anyhow!("network mutex poisoned"))?;
-    let mut hosts: Vec<String> = network
-        .permissions()
-        .iter()
-        .filter_map(|p| p.url.host().map(|host| allowlist_host(&host)))
-        .collect();
-    hosts.sort();
-    hosts.dedup();
-    Ok(hosts)
+/// What guest sockets may reach: TCP connections to the host of an
+/// `allow_domain` entry on its port, looked up in the allowlist as it is
+/// at each DNS question and connect. A name is recognised by address,
+/// through the answers DNS gives the guest for it.
+struct SocketFilter {
+    network: Arc<Mutex<NetworkPermissions>>,
 }
 
-/// A URL's host as hyperlight-unikraft's allowlist takes it: a name, or an
-/// address without the brackets a URL puts around IPv6.
-fn allowlist_host(host: &url::Host<&str>) -> String {
-    match host {
-        url::Host::Domain(name) => (*name).to_owned(),
-        url::Host::Ipv4(address) => address.to_string(),
-        // As an IPv4 address when it is one: the allowlist compares
-        // addresses in that form.
-        url::Host::Ipv6(address) => address
-            .to_ipv4_mapped()
-            .map_or_else(|| address.to_string(), |v4| v4.to_string()),
+/// An allowlist entry's host, as guest sockets are checked against it.
+#[derive(Debug, PartialEq)]
+enum SocketHost<'a> {
+    /// A name, without a trailing dot, in the case the URL gives it (lower
+    /// for `http` and `https`, as written for a scheme `url` does not know).
+    Name(&'a str),
+    /// An address, IPv4-mapped IPv6 as IPv4, as the filter is given it.
+    Addr(IpAddr),
+}
+
+impl<'a> SocketHost<'a> {
+    fn of(host: &url::Host<&'a str>) -> Self {
+        let canonical = |ip: IpAddr| match ip {
+            IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
+            v4 => v4,
+        };
+        match *host {
+            // A scheme `url` does not know leaves an address as a name.
+            url::Host::Domain(domain) => domain
+                .parse()
+                .map(|ip| Self::Addr(canonical(ip)))
+                .unwrap_or_else(|_| Self::Name(domain.trim_end_matches('.'))),
+            url::Host::Ipv4(address) => Self::Addr(IpAddr::V4(address)),
+            url::Host::Ipv6(address) => Self::Addr(canonical(IpAddr::V6(address))),
+        }
+    }
+
+    /// Whether this is `name`, as DNS spells it to the filter: lower case,
+    /// no trailing dot.
+    fn is_name(&self, name: &str) -> bool {
+        matches!(self, Self::Name(n) if n.eq_ignore_ascii_case(name))
+    }
+
+    /// Whether this is `d`'s host: one of the names DNS gave for its
+    /// address, or the address itself.
+    fn is(&self, d: &Destination<'_>) -> bool {
+        match self {
+            Self::Name(_) => d.names.iter().any(|n| self.is_name(n)),
+            Self::Addr(ip) => *ip == d.addr.ip(),
+        }
+    }
+}
+
+impl SocketFilter {
+    /// Whether some entry's host and port satisfy `allows`. An entry that
+    /// allows no HTTP method at all (none, or only the always-refused
+    /// CONNECT and TRACE) opens no sockets either.
+    fn any(&self, mut allows: impl FnMut(&SocketHost<'_>, Option<u16>) -> bool) -> bool {
+        // A poisoned allowlist allows nothing.
+        let Ok(network) = self.network.lock() else {
+            return false;
+        };
+        network.permissions().iter().any(|p| {
+            let refuses_all = matches!(&p.methods, MethodFilter::Only(methods)
+                if methods.iter().all(|m| matches!(m, HttpMethod::Connect | HttpMethod::Trace)));
+            !refuses_all
+                && p.url.host().is_some_and(|host| {
+                    allows(&SocketHost::of(&host), p.url.port_or_known_default())
+                })
+        })
+    }
+}
+
+impl NetworkFilter for SocketFilter {
+    fn allows_name(&self, name: &str) -> bool {
+        self.any(|host, _| host.is_name(name))
+    }
+
+    fn allows(&self, d: &Destination<'_>) -> bool {
+        // An HTTP allowlist says nothing for UDP (DNS questions to the
+        // resolvers are let through before the filter is asked).
+        if d.udp {
+            return false;
+        }
+        self.any(|host, port| port == Some(d.addr.port()) && host.is(d))
     }
 }
 
 /// Refuse to mount a directory other than the one `CapFs` opened for it.
 ///
 /// hostfs opens each mount by path when the guest boots and keeps that
-/// directory until the next boot (a restore keeps it too), while `CapFs`
-/// checks and clears the one it opened at build. So this is checked before
-/// each boot, the first and the re-boot an allowlist change makes: were the
-/// path replaced since the build (`rm -rf out && mkdir out`), the guest
-/// would write a directory nothing checks. Between boots, replacing it
-/// changes nothing for either side.
+/// directory from then on (a restore keeps it too), while `CapFs` checks
+/// and clears the one it opened at build. So this is checked before the
+/// boot: were the path replaced since the build (`rm -rf out && mkdir
+/// out`), the guest would write a directory nothing checks. After the
+/// boot, replacing it changes nothing for either side.
 fn check_mounts(files: &Mutex<CapFs>, mounts: &[Mount]) -> Result<()> {
     let files = files
         .lock()
@@ -861,46 +877,11 @@ fn check_mounts(files: &Mutex<CapFs>, mounts: &[Mount]) -> Result<()> {
     Ok(())
 }
 
-/// The guest's socket policy for `hosts`, and a note naming those of them
-/// that did not resolve, which the policy leaves out.
-fn socket_policy(hosts: &[String]) -> (Option<AllowList>, Option<String>) {
-    if hosts.is_empty() {
-        return (None, None);
-    }
-    let mut reachable: Vec<&String> = hosts
-        .iter()
-        .filter(|host| AllowList::from_hosts(&[host.as_str()]).is_ok())
-        .collect();
-    // Resolved again as one list: drop any that stopped resolving since.
-    let policy = loop {
-        if reachable.is_empty() {
-            break None;
-        }
-        match AllowList::from_hosts(&reachable) {
-            Ok(allow) => break Some(allow),
-            Err(e) => reachable.retain(|host| host.as_str() != e.host()),
-        }
-    };
-    let unresolved: Vec<&str> = hosts
-        .iter()
-        .filter(|host| !reachable.contains(host))
-        .map(String::as_str)
-        .collect();
-    let notice = (!unresolved.is_empty()).then(|| {
-        format!(
-            "[hyperlight-sandbox] native network: {} did not resolve; guest sockets cannot \
-             reach it until the allowlist changes\n",
-            unresolved.join(", ")
-        )
-    });
-    (policy, notice)
-}
-
 fn configure(
     builder: HlukBuilder,
     host: &HostState,
     mounts: &[Mount],
-    policy: Option<AllowList>,
+    policy: Option<NetworkPolicy>,
 ) -> HlukBuilder {
     // Raw guest output belongs in the run's result, not in the embedding
     // process's stdout, and is held to the same cap as the rest of it.
@@ -909,8 +890,8 @@ fn configure(
         .echo_output(false)
         .output_limit(MAX_OUTPUT_BYTES)
         .mounts(mounts.iter().cloned());
-    if let Some(allow) = policy {
-        builder = builder.network(NetworkPolicy::AllowList(allow));
+    if let Some(policy) = policy {
+        builder = builder.network(policy);
     }
     builder
 }
@@ -941,7 +922,12 @@ impl GuestSandbox for UnikraftGuestSandbox {
 
 #[cfg(test)]
 mod tests {
-    use super::{allowlist_host, exit_status, strip_stderr_lines, uploaded};
+    use std::sync::{Arc, Mutex};
+
+    use hyperlight_sandbox::{HttpMethod, MethodFilter, NetworkPermissions};
+    use hyperlight_unikraft::{Destination, NetworkFilter};
+
+    use super::{SocketFilter, exit_status, strip_stderr_lines, uploaded};
 
     #[test]
     fn exit_statuses_outside_a_byte_are_failures() {
@@ -976,15 +962,106 @@ mod tests {
         assert_eq!(strip_stderr_lines("out err\n", "err\n"), None);
     }
 
+    fn filter(entries: &[&str]) -> SocketFilter {
+        let mut network = NetworkPermissions::default();
+        for entry in entries {
+            network.allow_domain(entry, MethodFilter::Any).unwrap();
+        }
+        SocketFilter {
+            network: Arc::new(Mutex::new(network)),
+        }
+    }
+
+    fn tcp<'a>(addr: &str, names: &'a [String]) -> Destination<'a> {
+        Destination::new(addr.parse().unwrap(), false, names)
+    }
+
     #[test]
-    fn allowlist_hosts_have_no_ipv6_brackets() {
-        let host = |url: &str| allowlist_host(&url::Url::parse(url).unwrap().host().unwrap());
-        assert_eq!(
-            host("https://[2606:4700:4700::1111]/"),
-            "2606:4700:4700::1111"
-        );
-        assert_eq!(host("http://[::ffff:1.2.3.4]/"), "1.2.3.4");
-        assert_eq!(host("http://127.0.0.1:8080"), "127.0.0.1");
-        assert_eq!(host("https://example.com"), "example.com");
+    fn sockets_reach_allowed_names_on_their_port() {
+        let f = filter(&["https://api.example.com/v1", "http://plain.example:8080"]);
+        assert!(f.allows_name("api.example.com"));
+        assert!(f.allows_name("plain.example"));
+        assert!(!f.allows_name("example.com"));
+        let api = ["api.example.com".to_owned()];
+        assert!(f.allows(&tcp("203.0.113.9:443", &api)));
+        assert!(!f.allows(&tcp("203.0.113.9:80", &api)));
+        let plain = ["plain.example".to_owned()];
+        assert!(f.allows(&tcp("203.0.113.10:8080", &plain)));
+        assert!(!f.allows(&tcp("203.0.113.10:80", &plain)));
+        // An address DNS gave for no allowed name, or for none at all.
+        assert!(!f.allows(&tcp("203.0.113.9:443", &["evil.example".to_owned()])));
+        assert!(!f.allows(&tcp("203.0.113.9:443", &[])));
+        // UDP is not HTTP.
+        assert!(!f.allows(&Destination::new(
+            "203.0.113.9:443".parse().unwrap(),
+            true,
+            &api
+        )));
+    }
+
+    #[test]
+    fn sockets_reach_allowed_addresses_by_address() {
+        let f = filter(&[
+            "https://[2606:4700:4700::1111]",
+            "http://[::ffff:1.2.3.4]",
+            "http://10.0.0.5:8080",
+        ]);
+        assert!(f.allows(&tcp("[2606:4700:4700::1111]:443", &[])));
+        assert!(f.allows(&tcp("1.2.3.4:80", &[])));
+        assert!(f.allows(&tcp("10.0.0.5:8080", &[])));
+        assert!(!f.allows(&tcp("10.0.0.5:80", &[])));
+        assert!(!f.allows_name("10.0.0.5"));
+    }
+
+    #[test]
+    fn hosts_are_compared_as_dns_spells_them() {
+        // A trailing dot, a scheme `url` leaves alone (case kept, an
+        // address left as a name).
+        let f = filter(&[
+            "https://example.com.",
+            "foo://DB.internal:5432",
+            "foo://1.2.3.4:22",
+        ]);
+        assert!(f.allows_name("example.com"));
+        assert!(f.allows(&tcp("203.0.113.9:443", &["example.com".to_owned()])));
+        assert!(f.allows_name("db.internal"));
+        assert!(f.allows(&tcp("10.0.0.7:5432", &["db.internal".to_owned()])));
+        assert!(f.allows(&tcp("1.2.3.4:22", &[])));
+        assert!(!f.allows_name("1.2.3.4"));
+    }
+
+    #[test]
+    fn entries_that_allow_no_method_open_no_sockets() {
+        let mut network = NetworkPermissions::default();
+        for methods in [vec![], vec![HttpMethod::Connect, HttpMethod::Trace]] {
+            network
+                .allow_domain("https://api.example.com", MethodFilter::Only(methods))
+                .unwrap();
+        }
+        let f = SocketFilter {
+            network: Arc::new(Mutex::new(network)),
+        };
+        assert!(!f.allows_name("api.example.com"));
+        f.network
+            .lock()
+            .unwrap()
+            .allow_domain("https://api.example.com", vec![HttpMethod::Get])
+            .unwrap();
+        assert!(f.allows_name("api.example.com"));
+    }
+
+    #[test]
+    fn sockets_follow_the_allowlist_as_it_changes() {
+        let f = filter(&[]);
+        let api = ["api.example.com".to_owned()];
+        assert!(!f.allows_name("api.example.com"));
+        assert!(!f.allows(&tcp("203.0.113.9:443", &api)));
+        f.network
+            .lock()
+            .unwrap()
+            .allow_domain("https://api.example.com", MethodFilter::Any)
+            .unwrap();
+        assert!(f.allows_name("api.example.com"));
+        assert!(f.allows(&tcp("203.0.113.9:443", &api)));
     }
 }

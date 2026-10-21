@@ -178,8 +178,8 @@ public sealed class SandboxBuilder
 
     /// <summary>
     /// Lets guest sockets (Python's <c>requests</c>, <c>urllib</c>) reach the
-    /// hosts allowed with <c>AllowDomain</c>, by host name only. Unikraft
-    /// backend only: scheme, port, path and method filters still apply to
+    /// hosts allowed with <c>AllowDomain</c>, over TCP on each entry's port.
+    /// Unikraft backend only: path and method filters still apply to
     /// <c>http_get</c> / <c>http_post</c> alone.
     /// </summary>
     /// <param name="enabled">Whether to enable it (default: true).</param>

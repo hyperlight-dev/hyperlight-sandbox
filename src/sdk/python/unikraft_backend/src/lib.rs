@@ -40,7 +40,7 @@ impl UnikraftSandbox {
     /// published image named by `runtime` (default `agent`) is taken from
     /// the `hluk` CLI's cache. `scratch_size` overrides the guest memory
     /// the image was tested with (e.g. `"2Gi"`). `native_network` also lets
-    /// guest sockets reach the allowed domains (by host name only).
+    /// guest sockets reach the allowed domains, over TCP on their ports.
     #[new]
     #[pyo3(signature = (input_dir=None, output_dir=None, temp_output=false, module_path=None, runtime=None, scratch_size=None, native_network=false, filesystem_limits=None, max_file_size=None, max_total_size=None, max_file_count=None))]
     fn new(

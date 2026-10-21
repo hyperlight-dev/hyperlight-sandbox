@@ -387,33 +387,98 @@ fn symlinks_in_output_are_removed() {
     assert_eq!(std::fs::read_dir(output).unwrap().count(), 0);
 }
 
+/// This host's address on the interface it reaches the internet by: not
+/// loopback, which guest sockets may never reach.
+fn host_ip() -> Option<std::net::IpAddr> {
+    let probe = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    probe.connect("8.8.8.8:53").ok()?;
+    Some(probe.local_addr().ok()?.ip())
+}
+
+/// A connection the guest opened stays open when the allowlist changes:
+/// the change is checked at the next connect, without booting the guest
+/// again (which would drop its sockets). A name that does not resolve is
+/// no obstacle either, as nothing is resolved until the guest asks.
 #[test]
-fn unresolvable_hosts_do_not_break_native_network() {
+fn native_network_follows_the_allowlist_without_a_reboot() {
+    use std::io::Read as _;
     let Some(rootfs) = rootfs("python") else {
         return;
     };
+    let Some(ip) = host_ip() else {
+        eprintln!("skipping: no outbound interface");
+        return;
+    };
+    let first = std::net::TcpListener::bind((ip, 0)).unwrap();
+    let second = std::net::TcpListener::bind((ip, 0)).unwrap();
+    let (p1, p2) = (
+        first.local_addr().unwrap().port(),
+        second.local_addr().unwrap().port(),
+    );
     let mut sandbox = SandboxBuilder::new()
         .module_path(rootfs)
         .guest(Unikraft::new().native_network(true))
         .build()
         .unwrap();
+    let connect = |port: u16| {
+        format!(
+            "import errno, socket\n\
+             def connect(port):\n    \
+                 s = socket.socket()\n    \
+                 s.settimeout(5)\n    \
+                 try:\n        \
+                     s.connect(('{ip}', port))\n        \
+                     return s\n    \
+                 except OSError as e:\n        \
+                     print('refused' if e.errno == errno.EACCES else repr(e))\n\
+             kept = connect({port})\n\
+             print('connected' if kept else 'not connected')"
+        )
+    };
+    let r = sandbox.run(&connect(p1)).unwrap();
+    assert_eq!(r.stdout, "refused\nnot connected\n", "{}", r.stderr);
+
+    sandbox
+        .allow_domain(
+            &format!("http://{ip}:{p1}"),
+            hyperlight_sandbox::MethodFilter::Any,
+        )
+        .unwrap();
+    let r = sandbox.run(&connect(p1)).unwrap();
+    assert_eq!(r.stdout, "connected\n", "{}", r.stderr);
+    let (mut held, _) = first.accept().unwrap();
+
     sandbox
         .allow_domain(
             "https://does-not-resolve.invalid",
             hyperlight_sandbox::MethodFilter::Any,
         )
         .unwrap();
-    let r = sandbox.run("print('first')").unwrap();
-    assert_eq!((r.exit_code, r.stdout.as_str()), (0, "first\n"));
-    assert!(
-        r.stderr.contains("does-not-resolve.invalid"),
-        "{}",
-        r.stderr
-    );
-    // Said once, and later runs are unaffected.
-    let r = sandbox.run("print('second')").unwrap();
-    assert_eq!((r.exit_code, r.stdout.as_str()), (0, "second\n"));
+    sandbox
+        .allow_domain(
+            &format!("http://{ip}:{p2}"),
+            hyperlight_sandbox::MethodFilter::Any,
+        )
+        .unwrap();
+    // The connection from before the change still carries data, and the
+    // newly allowed port is reachable.
+    let r = sandbox
+        .run(&format!(
+            "kept.sendall(b'still open')\n\
+             other = connect({p2})\n\
+             print('second connected' if other else 'second not connected')"
+        ))
+        .unwrap();
+    assert_eq!(r.stdout, "second connected\n", "{}", r.stderr);
     assert!(r.stderr.is_empty(), "{}", r.stderr);
+    let mut got = [0u8; 10];
+    held.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .unwrap();
+    held.read_exact(&mut got).unwrap();
+    assert_eq!(&got, b"still open");
+    // A port on the same host that no entry names is still refused.
+    let r = sandbox.run(&format!("connect({})", p2 ^ 1)).unwrap();
+    assert_eq!(r.stdout, "refused\n", "{}", r.stderr);
 }
 
 #[test]
@@ -597,8 +662,57 @@ fn a_run_is_refused_on_what_the_host_put_in_output_past_the_rules() {
     assert!(output.path().join("ran").is_file());
 }
 
+/// Guest sockets reach an allowed name on its scheme's port, by the names
+/// DNS gives the guest, and nothing else.  Needs the internet; skips
+/// without it.
 #[test]
-fn a_replaced_output_directory_is_refused() {
+fn native_network_reaches_allowed_names_by_name() {
+    let Some(rootfs) = rootfs("python") else {
+        return;
+    };
+    if std::net::ToSocketAddrs::to_socket_addrs(&("example.com", 80)).is_err() {
+        eprintln!("skipping: example.com does not resolve (no internet?)");
+        return;
+    }
+    let mut sandbox = SandboxBuilder::new()
+        .module_path(rootfs)
+        .guest(Unikraft::new().native_network(true))
+        .build()
+        .unwrap();
+    sandbox
+        .allow_domain("http://example.com", hyperlight_sandbox::MethodFilter::Any)
+        .unwrap();
+    let r = sandbox
+        .run(
+            "import errno, socket, urllib.request\n\
+             print('allowed', urllib.request.urlopen('http://example.com', timeout=15).status)\n\
+             s = socket.socket()\n\
+             s.settimeout(5)\n\
+             try:\n    \
+                 s.connect(('example.com', 443))\n    \
+                 print('443 connected')\n\
+             except OSError as e:\n    \
+                 print('443', 'refused' if e.errno == errno.EACCES else repr(e))\n\
+             try:\n    \
+                 socket.getaddrinfo('github.com', 80)\n    \
+                 print('other name resolved')\n\
+             except OSError:\n    \
+                 print('other name refused')",
+        )
+        .unwrap();
+    assert_eq!(r.exit_code, 0, "{}", r.stderr);
+    assert_eq!(
+        r.stdout, "allowed 200\n443 refused\nother name refused\n",
+        "{}",
+        r.stderr
+    );
+}
+
+/// The guest keeps the `/output` it booted onto, which is the directory
+/// `CapFs` checks: replacing the path on the host afterwards sends neither
+/// side to the new one.
+#[test]
+fn a_replaced_output_directory_changes_nothing() {
     let Some(rootfs) = rootfs("python") else {
         return;
     };
@@ -612,7 +726,7 @@ fn a_replaced_output_directory_is_refused() {
             hyperlight_sandbox::DirPerms::READ | hyperlight_sandbox::DirPerms::MUTATE,
             hyperlight_sandbox::FilePerms::READ | hyperlight_sandbox::FilePerms::WRITE,
         )
-        .guest(Unikraft::new().native_network(true))
+        .guest(Unikraft::new())
         .build()
         .unwrap();
     assert_eq!(sandbox.run("pass").unwrap().exit_code, 0);
@@ -621,20 +735,17 @@ fn a_replaced_output_directory_is_refused() {
     let kept = base.path().join("kept");
     std::fs::rename(&output, &kept).unwrap();
     std::fs::create_dir(&output).unwrap();
-    sandbox
-        .allow_domain("http://127.0.0.1", hyperlight_sandbox::MethodFilter::Any)
+    let r = sandbox
+        .run("open('/output/a.txt', 'w').write('a')")
         .unwrap();
-    let code = "import os\nos.symlink('x', '/output/link')";
-    let error = sandbox.run(code).unwrap_err();
-    assert!(format!("{error:#}").contains("was replaced"), "{error:#}");
-    // Nothing reached the new directory unchecked.
+    assert_eq!(r.exit_code, 0, "{}", r.stderr);
+    assert!(kept.join("a.txt").is_file());
     assert_eq!(std::fs::read_dir(&output).unwrap().count(), 0);
-
-    // Putting the original back lets the re-boot, and the run, go ahead.
-    std::fs::remove_dir(&output).unwrap();
-    std::fs::rename(&kept, &output).unwrap();
-    let r = sandbox.run(code).unwrap();
+    // And what breaks the rules there is caught and cleared there.
+    let r = sandbox
+        .run("import os\nos.symlink('x', '/output/link')")
+        .unwrap();
     assert_eq!(r.exit_code, 1, "{}", r.stderr);
     assert!(r.stderr.contains("symbolic links"), "{}", r.stderr);
-    assert_eq!(std::fs::read_dir(&output).unwrap().count(), 0);
+    assert_eq!(std::fs::read_dir(&kept).unwrap().count(), 0);
 }

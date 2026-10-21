@@ -134,8 +134,8 @@ class Sandbox:
     and ``stack_size`` are refused for it: ``scratch_size`` (e.g. ``"2Gi"``)
     overrides the guest memory the image was tested with. ``native_network``
     also lets guest sockets (``requests``, ``urllib``) reach the domains passed
-    to ``allow_domain``, enforced by host name only; a name that does not
-    resolve is left out, and the next run's stderr says so. ``/input`` and
+    to ``allow_domain`` over TCP, on each entry's port (path and method
+    filters apply to ``http_get`` / ``http_post`` only). ``/input`` and
     ``/output`` are host directories mounted at boot. As with the other
     backends, files in ``/output`` persist from run to run and ``restore()``
     clears them; open guest files are interpreter state, and stay open too.

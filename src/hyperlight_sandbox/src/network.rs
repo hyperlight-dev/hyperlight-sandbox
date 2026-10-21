@@ -182,7 +182,7 @@ impl NetworkPermissions {
     /// The permissions granted so far, in the order they were added.
     ///
     /// Backends that enforce the allowlist below the HTTP layer (on raw
-    /// sockets, by host name) derive their own policy from these.
+    /// sockets, by host and port) derive their own policy from these.
     pub fn permissions(&self) -> &[NetworkPermission] {
         &self.permissions
     }

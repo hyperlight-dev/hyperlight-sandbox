@@ -45,16 +45,22 @@ jobs:
         run: just test-rust
 
   wasm-sandbox:
-    name: WASM Sandbox (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: WASM Sandbox (${{ matrix.name }})
+    runs-on: ${{ fromJSON(matrix.runner) }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-15]
+        include:
+          - name: ubuntu-latest
+            runner: '["ubuntu-latest"]'
+          - name: windows-latest
+            runner: '["windows-latest"]'
+          - name: macos-hvf
+            runner: '["self-hosted", "macos", "arm64", "hvf"]'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Verify Apple Silicon runner
-        if: runner.os == 'macOS'
+        if: matrix.name == 'macos-hvf'
         run: test "$(uname -m)" = "arm64"
 
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
@@ -83,6 +89,10 @@ jobs:
       - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
         run: choco install llvm -y
+
+      - name: Install LLVM (macOS)
+        if: runner.os == 'macOS'
+        run: brew install llvm
 
       - name: Enable KVM
         if: runner.os == 'Linux' && !env.ACT
@@ -388,16 +398,22 @@ jobs:
         run: just python python-wheelhouse-test ${{ matrix.python }}
 
   javascript-sandbox:
-    name: JS Sandbox (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: JS Sandbox (${{ matrix.name }})
+    runs-on: ${{ fromJSON(matrix.runner) }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-15]
+        include:
+          - name: ubuntu-latest
+            runner: '["ubuntu-latest"]'
+          - name: windows-latest
+            runner: '["windows-latest"]'
+          - name: macos-hvf
+            runner: '["self-hosted", "macos", "arm64", "hvf"]'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Verify Apple Silicon runner
-        if: runner.os == 'macOS'
+        if: matrix.name == 'macos-hvf'
         run: test "$(uname -m)" = "arm64"
 
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
@@ -415,6 +431,10 @@ jobs:
       - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
         run: choco install llvm -y
+
+      - name: Install LLVM (macOS)
+        if: runner.os == 'macOS'
+        run: brew install llvm
 
       - name: Enable KVM
         if: runner.os == 'Linux' && !env.ACT

@@ -29,6 +29,8 @@ public sealed class SandboxBuilder
     private bool _tempOutput;
     private FilesystemLimitsConfiguration? _filesystemLimits;
     private SandboxBackend _backend = SandboxBackend.Wasm;
+    private bool _nativeNetwork;
+    private ulong _scratchSize;
 
     /// <summary>
     /// Gets the backend configured for sandboxes built by this builder.
@@ -47,11 +49,13 @@ public sealed class SandboxBuilder
     }
 
     /// <summary>
-    /// Sets the path to the guest module (<c>.wasm</c> or <c>.aot</c> file).
-    /// Required for <see cref="SandboxBackend.Wasm"/>, not needed for
+    /// Sets the path to the guest module (<c>.wasm</c> or <c>.aot</c> file),
+    /// or for <see cref="SandboxBackend.Unikraft"/> the rootfs image (an
+    /// initrd CPIO). Required for <see cref="SandboxBackend.Wasm"/> and
+    /// <see cref="SandboxBackend.Unikraft"/>; must not be set for
     /// <see cref="SandboxBackend.JavaScript"/>.
     /// </summary>
-    /// <param name="path">Absolute or relative path to the guest module.</param>
+    /// <param name="path">Absolute or relative path to the guest module or rootfs.</param>
     /// <returns>This builder for chaining.</returns>
     public SandboxBuilder WithModulePath(string path)
     {
@@ -61,7 +65,8 @@ public sealed class SandboxBuilder
     }
 
     /// <summary>
-    /// Sets the guest heap size.
+    /// Sets the guest heap size. Not for <see cref="SandboxBackend.Unikraft"/>,
+    /// which takes <see cref="WithScratchSize(string)"/> instead.
     /// </summary>
     /// <param name="size">
     /// Size string (e.g. <c>"25Mi"</c>, <c>"2Gi"</c>) or raw bytes as string.
@@ -85,7 +90,7 @@ public sealed class SandboxBuilder
     }
 
     /// <summary>
-    /// Sets the guest stack size.
+    /// Sets the guest stack size. Not for <see cref="SandboxBackend.Unikraft"/>.
     /// </summary>
     /// <param name="size">
     /// Size string (e.g. <c>"35Mi"</c>) or raw bytes as string.
@@ -143,6 +148,45 @@ public sealed class SandboxBuilder
     public SandboxBuilder WithTempOutput(bool enabled = true)
     {
         _tempOutput = enabled;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the guest memory of a <see cref="SandboxBackend.Unikraft"/>
+    /// sandbox, overriding the size its image was tested with (1.5 GiB for
+    /// <c>agent</c>). At least 1 MiB; whole MiB are used.
+    /// </summary>
+    /// <param name="size">Size string (e.g. <c>"2Gi"</c>) or raw bytes as string.</param>
+    /// <returns>This builder for chaining.</returns>
+    public SandboxBuilder WithScratchSize(string size)
+    {
+        _scratchSize = SizeParser.Parse(size);
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the guest memory of a <see cref="SandboxBackend.Unikraft"/>
+    /// sandbox in bytes.
+    /// </summary>
+    /// <param name="bytes">Guest memory in bytes.</param>
+    /// <returns>This builder for chaining.</returns>
+    public SandboxBuilder WithScratchSize(ulong bytes)
+    {
+        _scratchSize = bytes;
+        return this;
+    }
+
+    /// <summary>
+    /// Lets guest sockets (Python's <c>requests</c>, <c>urllib</c>) reach the
+    /// hosts allowed with <c>AllowDomain</c>, over TCP on each entry's port.
+    /// Unikraft backend only: path and method filters still apply to
+    /// <c>http_get</c> / <c>http_post</c> alone.
+    /// </summary>
+    /// <param name="enabled">Whether to enable it (default: true).</param>
+    /// <returns>This builder for chaining.</returns>
+    public SandboxBuilder WithNativeNetwork(bool enabled = true)
+    {
+        _nativeNetwork = enabled;
         return this;
     }
 
@@ -232,10 +276,34 @@ public sealed class SandboxBuilder
                 "Module path is required for the Wasm backend. Call WithModulePath() before Build().");
         }
 
+        if (_backend == SandboxBackend.Unikraft && string.IsNullOrWhiteSpace(_modulePath))
+        {
+            throw new InvalidOperationException(
+                "A rootfs image path is required for the Unikraft backend. Call WithModulePath() before Build().");
+        }
+
         if (_backend == SandboxBackend.JavaScript && !string.IsNullOrWhiteSpace(_modulePath))
         {
             throw new InvalidOperationException(
                 "Module path must not be set for the JavaScript backend (it has a built-in runtime).");
+        }
+
+        if (_nativeNetwork && _backend != SandboxBackend.Unikraft)
+        {
+            throw new InvalidOperationException(
+                "Native networking applies only to the Unikraft backend.");
+        }
+
+        if (_scratchSize > 0 && _backend != SandboxBackend.Unikraft)
+        {
+            throw new InvalidOperationException(
+                "The scratch size applies only to the Unikraft backend; use WithHeapSize.");
+        }
+
+        if (_backend == SandboxBackend.Unikraft && (_heapSize > 0 || _stackSize > 0))
+        {
+            throw new InvalidOperationException(
+                "Heap and stack sizes do not apply to the Unikraft backend; use WithScratchSize.");
         }
 
         return new Sandbox(
@@ -246,7 +314,9 @@ public sealed class SandboxBuilder
             _outputDir,
             _tempOutput,
             _filesystemLimits,
-            _backend);
+            _backend,
+            _nativeNetwork,
+            _scratchSize);
     }
 }
 

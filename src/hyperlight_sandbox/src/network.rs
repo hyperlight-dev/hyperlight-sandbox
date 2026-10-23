@@ -179,6 +179,14 @@ impl NetworkPermissions {
         Ok(())
     }
 
+    /// The permissions granted so far, in the order they were added.
+    ///
+    /// Backends that enforce the allowlist below the HTTP layer (on raw
+    /// sockets, by host and port) derive their own policy from these.
+    pub fn permissions(&self) -> &[NetworkPermission] {
+        &self.permissions
+    }
+
     /// HTTP methods that are always blocked regardless of permissions.
     ///
     /// CONNECT enables HTTP tunneling and TRACE can reflect credentials.

@@ -12,6 +12,7 @@ Supported backends:
 
 - [Wasm Component Sandbox](#wasm-component-sandbox) (Python/Javascript or provide your own)
 - [HyperlightJS Sandbox](#hyperlightjs-sandbox)
+- [Unikraft Sandbox](#unikraft-sandbox) (full CPython, with numpy/pandas/scipy/scikit-learn)
 
 ## Overview
 
@@ -194,6 +195,50 @@ console.log('10 + 20 = ' + sum);
 ```
 
 See [examples](./src/javascript_sandbox/examples/) for file I/O and network demos.
+
+### Unikraft Sandbox
+
+Runs full CPython 3.12 in a [Unikraft](https://unikraft.org) unikernel inside a Hyperlight micro-VM, via [hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight-unikraft). Use it when guest code needs native extensions the Wasm guest cannot load: the published `agent` image ships numpy, pandas, scipy, scikit-learn, matplotlib and more. Guest code gets the same globals as the Wasm Python guest (`call_tool`, `http_get`, `http_post`), `/input` and `/output`, and snapshot/restore of the whole micro-VM.
+
+The module path is a rootfs image (initrd CPIO). `cached_rootfs("agent")` finds the one the [`hluk`](https://github.com/hyperlight-dev/hyperlight-unikraft) CLI caches (`just unikraft pull-images` pulls `python` and `agent`).
+
+```rust
+use hyperlight_sandbox::{SandboxBuilder, ToolRegistry};
+use hyperlight_unikraft_sandbox::{Unikraft, cached_rootfs};
+
+fn main() -> anyhow::Result<()> {
+    let mut tools = ToolRegistry::new();
+    tools.register_unvalidated("fetch_data", |_| Ok(serde_json::json!([1, 2, 3, 4])));
+
+    let mut sandbox = SandboxBuilder::new()
+        .module_path(cached_rootfs("agent")?.display().to_string())
+        .with_tools(tools)
+        .guest(Unikraft::new())
+        .build()?;
+
+    let result = sandbox.run(r#"
+import numpy as np
+print(np.mean(call_tool('fetch_data')))
+"#)?;
+    print!("{}", result.stdout);
+    Ok(())
+}
+```
+
+From Python: `Sandbox(backend="unikraft")` (the `agent` image by default; `module="python"` or `module_path=...` for another), installed with `hyperlight-sandbox[unikraft]`.
+
+How it differs from the other backends:
+
+- Only the `python`, `python-shell` and `agent` images are supported, and they must be the hyperlight-unikraft release the crate is built against (`IMAGE_RELEASE`).
+- Guest memory is one size, the image's tested default (1.5 GiB for `agent`); set it with `Unikraft::scratch_mb` (`scratch_size="2Gi"` in Python, `WithScratchSize("2Gi")` in .NET). Heap and stack sizes do not apply: the Python and .NET SDKs refuse them, and the Rust builder's are ignored.
+- `/input` and `/output` are mounted in the guest's own filesystem, and `CapFs`, which serves the other backends' WASI file calls, serves each file operation the guest makes on them, by the same rules: the directory permissions, and for `/output` the filesystem limits, no symbolic or hard links, and at most 64 levels and 100,000 entries. An operation that would break them fails in the guest (`EFBIG`, `EDQUOT`, `EACCES`, `EINVAL`) before it touches the host directory. `/output` is read-write if its permissions allow creating and writing files (without read permission, files can be made and written but not read or listed), else read-only. As with the other backends, files in `/output` persist from run to run, and restoring a snapshot clears them; files the guest has open are interpreter state, so they stay open across runs and through a restore. `/output` is also checked as a whole before and after each run, for what the host put there meanwhile (a tool writing there, say). A run that ends past the limits fails, and `/output` is cleared of every file and link (earlier runs' included) and of the directories made during the run; directories it had when the run started are kept, emptied. A run that would start past them is refused, and what is there is left in place. Replacing either directory on the host after the build changes nothing for the sandbox, which keeps the one it opened.
+- `http_get` / `http_post` go through the host and the `allow_domain` allowlist, as in the Wasm guest. Guest sockets (`requests`, `urllib`) are off unless `Unikraft::native_network(true)` (`native_network=True`), and may then make TCP connections to an `allow_domain` entry's host on its port (the one the URL names, else its scheme's: 443 for `https`). The host checks every DNS question and connect against the allowlist as it is at that moment, so an `allow_domain` made later applies from the next connect. The host sees a connection's address and port, and recognises an allowed name's addresses through the answers DNS gives the guest, but not what goes over the connection: another site served from the same address (a CDN, a shared host) is reachable on that port too, and an entry's path and method filters apply to `http_get` / `http_post` only. An entry that allows no method opens no sockets.
+- One host call carries at most 64 KiB; larger code, tool arguments and results, and HTTP bodies are chunked transparently. The host holds at most 64 MiB of them unread at a time, so a single tool result or HTTP response can be up to that size.
+- Exit statuses are those a CPython process exits with, 0 to 255 (`sys.exit(-1)` is 255, `sys.exit(256)` is 0), so -1 always means the guest itself failed.
+- Guest code can run threads and child processes (`subprocess`, and shell pipelines in the `agent` and `python-shell` images, which have a `/bin/sh`). Output written straight to the file descriptors (by child processes, C extensions, or the guest kernel, whose messages are standard error) reaches the run's `stdout` and `stderr` too.
+- hyperlight-unikraft's guest limits apply: a single vCPU and no AVX.
+
+See [examples](./src/unikraft_sandbox/examples/) and [the Python example](./src/sdk/python/core/examples/unikraft_basics.py).
 
 ### Writable filesystem limits
 

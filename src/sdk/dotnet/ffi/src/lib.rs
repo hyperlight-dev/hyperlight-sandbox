@@ -29,6 +29,7 @@ use hyperlight_sandbox::{
     DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, FilesystemLimits, GuestSandbox,
     HttpMethod, Sandbox, SandboxBuilder, SandboxConfig, ToolRegistry, ToolSchema,
 };
+use hyperlight_unikraft_sandbox::Unikraft;
 use hyperlight_wasm_sandbox::Wasm;
 use log::{debug, error};
 
@@ -113,14 +114,18 @@ impl FFIResult {
 /// Zero values mean "use platform default".
 #[repr(C)]
 pub struct FFISandboxOptions {
-    /// Path to the `.wasm` or `.aot` guest module (UTF-8, null-terminated).
-    /// Required for Wasm backend. Must be null for JavaScript backend.
+    /// Path to the `.wasm` or `.aot` guest module, or for the Unikraft
+    /// backend the rootfs image (UTF-8, null-terminated).
+    /// Required for Wasm and Unikraft. Must be null for JavaScript backend.
     pub module_path: *const c_char,
-    /// Guest heap size in bytes. 0 = platform default.
+    /// Guest heap size in bytes. 0 = platform default. Must be 0 for the
+    /// Unikraft backend, whose memory is set with
+    /// `hyperlight_sandbox_set_scratch_size`.
     pub heap_size: u64,
-    /// Guest stack size in bytes. 0 = platform default.
+    /// Guest stack size in bytes. 0 = platform default. Must be 0 for the
+    /// Unikraft backend.
     pub stack_size: u64,
-    /// Backend type: 0 = Wasm (default), 1 = JavaScript.
+    /// Backend type: 0 = Wasm (default), 1 = JavaScript, 2 = Unikraft.
     pub backend: u32,
 }
 
@@ -134,6 +139,8 @@ pub enum FFIBackend {
     Wasm = 0,
     /// Hyperlight-JS built-in JavaScript backend (no module path needed).
     JavaScript = 1,
+    /// hyperlight-unikraft micro-VM running full CPython from a rootfs image.
+    Unikraft = 2,
 }
 
 /// Filesystem limit policy discriminant.
@@ -177,16 +184,24 @@ type JsSnapshotInner = hyperlight_sandbox::Snapshot<
     <<HyperlightJs as hyperlight_sandbox::Guest>::Sandbox as GuestSandbox>::SnapshotData,
 >;
 
+type UnikraftSandboxInner = Sandbox<Unikraft>;
+type UnikraftSnapshotInner = hyperlight_sandbox::Snapshot<
+    <<Unikraft as hyperlight_sandbox::Guest>::Sandbox as GuestSandbox>::SnapshotData,
+>;
+
 /// Holds the active backend sandbox instance.
 enum BackendSandbox {
     Wasm(WasmSandboxInner),
     Js(JsSandboxInner),
+    // Boxed: the micro-VM handle is several times the size of the others.
+    Unikraft(Box<UnikraftSandboxInner>),
 }
 
 /// Holds a snapshot from either backend.
 enum BackendSnapshot {
     Wasm(WasmSnapshotInner),
     Js(JsSnapshotInner),
+    Unikraft(UnikraftSnapshotInner),
 }
 
 /// Dispatch on the active backend, binding the inner sandbox to `$sb`.
@@ -196,6 +211,7 @@ macro_rules! with_sandbox {
         match $backend {
             BackendSandbox::Wasm($sb) => $body,
             BackendSandbox::Js($sb) => $body,
+            BackendSandbox::Unikraft($sb) => $body,
         }
     };
 }
@@ -215,6 +231,8 @@ struct SandboxState {
     inner: Option<BackendSandbox>,
     /// Which backend to use.
     backend: FFIBackend,
+    /// Unikraft guest settings (used by the Unikraft backend only).
+    unikraft: Unikraft,
     /// Tool callbacks registered before the first `run()`.
     tools: HashMap<String, ToolEntry>,
     /// Network allowlist entries queued before the sandbox is built.
@@ -581,11 +599,12 @@ pub unsafe extern "C" fn hyperlight_sandbox_create(options: FFISandboxOptions) -
     let backend = match options.backend {
         0 => FFIBackend::Wasm,
         1 => FFIBackend::JavaScript,
+        2 => FFIBackend::Unikraft,
         other => {
             return FFIResult::error(
                 FFIErrorCode::InvalidArgument,
                 safe_cstring(format!(
-                    "Invalid backend value: {other}. Use 0 (Wasm) or 1 (JavaScript)."
+                    "Invalid backend value: {other}. Use 0 (Wasm), 1 (JavaScript) or 2 (Unikraft)."
                 )),
             );
         }
@@ -606,6 +625,12 @@ pub unsafe extern "C" fn hyperlight_sandbox_create(options: FFISandboxOptions) -
             return FFIResult::error(
                 FFIErrorCode::InvalidArgument,
                 safe_cstring("module_path is required for Wasm backend"),
+            );
+        }
+        FFIBackend::Unikraft if module_path.is_empty() => {
+            return FFIResult::error(
+                FFIErrorCode::InvalidArgument,
+                safe_cstring("module_path (a rootfs image) is required for Unikraft backend"),
             );
         }
         FFIBackend::JavaScript if !module_path.is_empty() => {
@@ -631,9 +656,24 @@ pub unsafe extern "C" fn hyperlight_sandbox_create(options: FFISandboxOptions) -
         DEFAULT_STACK_SIZE
     };
 
+    // A unikernel has one memory size, set with
+    // `hyperlight_sandbox_set_scratch_size`; as in the Python SDK, heap and
+    // stack sizes are refused rather than taken to mean it.
+    if backend == FFIBackend::Unikraft && (options.heap_size > 0 || options.stack_size > 0) {
+        return FFIResult::error(
+            FFIErrorCode::InvalidArgument,
+            safe_cstring(
+                "heap_size and stack_size do not apply to the Unikraft backend; \
+                 set the guest memory with the scratch size",
+            ),
+        );
+    }
+    let unikraft = Unikraft::new();
+
     let state = SandboxState {
         inner: None,
         backend,
+        unikraft,
         tools: HashMap::new(),
         pending_networks: Vec::new(),
         config: SandboxConfig {
@@ -762,6 +802,80 @@ pub unsafe extern "C" fn hyperlight_sandbox_set_temp_output(
         );
     }
     state.temp_output = enabled;
+    FFIResult::success_null()
+}
+
+/// Lets guest sockets reach the `allow_domain` hosts directly (Unikraft
+/// backend only; see `Unikraft::native_network`).
+///
+/// Must be called before the first `run()`.
+///
+/// # Safety
+///
+/// `handle` must be a valid sandbox handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hyperlight_sandbox_set_native_network(
+    handle: *mut SandboxState,
+    enabled: bool,
+) -> FFIResult {
+    let state = match unsafe { deref_handle_mut(handle, "sandbox") } {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    if state.inner.is_some() {
+        return FFIResult::error(
+            FFIErrorCode::InvalidArgument,
+            safe_cstring("Cannot set native_network after sandbox has been initialized"),
+        );
+    }
+    if state.backend != FFIBackend::Unikraft {
+        return FFIResult::error(
+            FFIErrorCode::InvalidArgument,
+            safe_cstring("native_network applies only to the Unikraft backend"),
+        );
+    }
+    state.unikraft = state.unikraft.native_network(enabled);
+    FFIResult::success_null()
+}
+
+/// Sets the guest memory of a Unikraft sandbox in bytes, overriding the
+/// image's tested size (Unikraft backend only; at least 1 MiB, rounded down
+/// to whole MiB).
+///
+/// Must be called before the first `run()`.
+///
+/// # Safety
+///
+/// `handle` must be a valid sandbox handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hyperlight_sandbox_set_scratch_size(
+    handle: *mut SandboxState,
+    bytes: u64,
+) -> FFIResult {
+    let state = match unsafe { deref_handle_mut(handle, "sandbox") } {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    if state.inner.is_some() {
+        return FFIResult::error(
+            FFIErrorCode::InvalidArgument,
+            safe_cstring("Cannot set scratch_size after sandbox has been initialized"),
+        );
+    }
+    if state.backend != FFIBackend::Unikraft {
+        return FFIResult::error(
+            FFIErrorCode::InvalidArgument,
+            safe_cstring("scratch_size applies only to the Unikraft backend"),
+        );
+    }
+    let mb = usize::try_from(bytes / (1024 * 1024)).unwrap_or(usize::MAX);
+    if mb == 0 {
+        return FFIResult::error(
+            FFIErrorCode::InvalidArgument,
+            safe_cstring("scratch_size must be at least 1 MiB"),
+        );
+    }
+    state.unikraft = state.unikraft.scratch_mb(mb);
     FFIResult::success_null()
 }
 
@@ -1057,6 +1171,33 @@ fn ensure_initialized(state: &mut SandboxState) -> Result<()> {
             }
             BackendSandbox::Js(sb)
         }
+        FFIBackend::Unikraft => {
+            let mut builder = SandboxBuilder::new()
+                .module_path(&state.config.module_path)
+                .filesystem_limits(state.filesystem_limits)
+                .with_tools(registry)
+                .guest(state.unikraft);
+
+            if let Some(ref dir) = state.input_dir {
+                builder = builder.input_dir(dir);
+            }
+            if let Some(ref dir) = state.output_dir {
+                builder = builder.output_dir(
+                    dir,
+                    DirPerms::READ | DirPerms::MUTATE,
+                    FilePerms::READ | FilePerms::WRITE,
+                );
+            } else if state.temp_output {
+                builder = builder.temp_output();
+            }
+
+            let mut sb = builder.build()?;
+            for (target, methods) in std::mem::take(&mut state.pending_networks) {
+                let method_filter = HttpMethod::parse_list(methods)?;
+                sb.allow_domain(&target, method_filter)?;
+            }
+            BackendSandbox::Unikraft(Box::new(sb))
+        }
     };
 
     state.inner = Some(sandbox);
@@ -1254,6 +1395,7 @@ pub unsafe extern "C" fn hyperlight_sandbox_snapshot(handle: *mut SandboxState) 
     let snapshot_result = match sandbox {
         BackendSandbox::Wasm(sb) => sb.snapshot().map(BackendSnapshot::Wasm),
         BackendSandbox::Js(sb) => sb.snapshot().map(BackendSnapshot::Js),
+        BackendSandbox::Unikraft(sb) => sb.snapshot().map(BackendSnapshot::Unikraft),
     };
 
     match snapshot_result {
@@ -1297,6 +1439,7 @@ pub unsafe extern "C" fn hyperlight_sandbox_restore(
     let result = match (sandbox, snapshot_ref) {
         (BackendSandbox::Wasm(sb), BackendSnapshot::Wasm(snap)) => sb.restore(snap),
         (BackendSandbox::Js(sb), BackendSnapshot::Js(snap)) => sb.restore(snap),
+        (BackendSandbox::Unikraft(sb), BackendSnapshot::Unikraft(snap)) => sb.restore(snap),
         _ => {
             return FFIResult::error(
                 FFIErrorCode::InvalidArgument,
@@ -1835,6 +1978,76 @@ mod tests {
         let result = unsafe { hyperlight_sandbox_set_temp_output(ptr::null_mut(), true) };
         assert!(!result.is_success);
         unsafe { hyperlight_sandbox_free_string(result.value) };
+    }
+
+    // -----------------------------------------------------------------------
+    // Configuration: set_native_network
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn unikraft_refuses_heap_and_stack_sizes() {
+        let path = cstr("/tmp/test-rootfs.cpio");
+        for (heap_size, stack_size) in [(64 << 20, 0), (0, 1 << 20)] {
+            let options = FFISandboxOptions {
+                module_path: path.as_ptr(),
+                heap_size,
+                stack_size,
+                backend: FFIBackend::Unikraft as u32,
+            };
+            let result = unsafe { hyperlight_sandbox_create(options) };
+            assert!(!result.is_success);
+            assert_eq!(result.error_code, FFIErrorCode::InvalidArgument as u32);
+            unsafe { hyperlight_sandbox_free_string(result.value) };
+        }
+    }
+
+    #[test]
+    fn scratch_size_is_for_unikraft_only_and_at_least_one_mib() {
+        let wasm = create_test_handle();
+        let result = unsafe { hyperlight_sandbox_set_scratch_size(wasm, 64 << 20) };
+        assert!(!result.is_success);
+        unsafe { hyperlight_sandbox_free_string(result.value) };
+        unsafe { hyperlight_sandbox_free(wasm) };
+
+        let path = cstr("/tmp/test-rootfs.cpio");
+        let options = FFISandboxOptions {
+            module_path: path.as_ptr(),
+            heap_size: 0,
+            stack_size: 0,
+            backend: FFIBackend::Unikraft as u32,
+        };
+        let created = unsafe { hyperlight_sandbox_create(options) };
+        assert!(created.is_success);
+        let handle = created.value as *mut SandboxState;
+        let result = unsafe { hyperlight_sandbox_set_scratch_size(handle, 512 * 1024) };
+        assert!(!result.is_success);
+        unsafe { hyperlight_sandbox_free_string(result.value) };
+        let result = unsafe { hyperlight_sandbox_set_scratch_size(handle, 2 << 30) };
+        assert!(result.is_success);
+        unsafe { hyperlight_sandbox_free(handle) };
+    }
+
+    #[test]
+    fn set_native_network_is_for_unikraft_only() {
+        let wasm = create_test_handle();
+        let result = unsafe { hyperlight_sandbox_set_native_network(wasm, true) };
+        assert!(!result.is_success);
+        unsafe { hyperlight_sandbox_free_string(result.value) };
+        unsafe { hyperlight_sandbox_free(wasm) };
+
+        let path = cstr("/tmp/test-rootfs.cpio");
+        let options = FFISandboxOptions {
+            module_path: path.as_ptr(),
+            heap_size: 0,
+            stack_size: 0,
+            backend: FFIBackend::Unikraft as u32,
+        };
+        let created = unsafe { hyperlight_sandbox_create(options) };
+        assert!(created.is_success);
+        let handle = created.value as *mut SandboxState;
+        let result = unsafe { hyperlight_sandbox_set_native_network(handle, true) };
+        assert!(result.is_success);
+        unsafe { hyperlight_sandbox_free(handle) };
     }
 
     // -----------------------------------------------------------------------

@@ -50,6 +50,7 @@ jobs:
           cargo publish --locked -p hyperlight-sandbox
           cargo publish --locked -p hyperlight-wasm-sandbox
           cargo publish --locked -p hyperlight-javascript-sandbox
+          cargo publish --locked -p hyperlight-unikraft-sandbox
 
   # Build all Python packages on Linux for glibc 2.28 and newer.
   build-linux:
@@ -92,7 +93,7 @@ jobs:
 
       - name: Verify manylinux compatibility
         run: |
-          for wheel in dist/pythonsdk/{wasm_backend,hyperlight_js_backend}/*.whl; do
+          for wheel in dist/pythonsdk/{wasm_backend,hyperlight_js_backend,unikraft_backend}/*.whl; do
             case "$wheel" in
               *-manylinux_2_28_x86_64.whl) ;;
               *)

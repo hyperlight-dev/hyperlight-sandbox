@@ -1770,6 +1770,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyperlight-common"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "360d5876788b26af66bf055bca6b4f2c9c930a0fdcaebda4bd7f808c6bd93068"
+dependencies = [
+ "anyhow",
+ "bitflags 2.13.2",
+ "bytemuck",
+ "bytes",
+ "fixedbitset",
+ "flatbuffers",
+ "log",
+ "smallvec",
+ "spin 0.12.0",
+ "thiserror",
+ "tracing",
+ "tracing-core",
+]
+
+[[package]]
 name = "hyperlight-component-macro"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1810,7 +1830,7 @@ checksum = "816f673f3f8ef6d5703796bf92927b85177ad1baac6f391551a88451a9e46a7e"
 dependencies = [
  "anyhow",
  "flatbuffers",
- "hyperlight-common",
+ "hyperlight-common 0.17.0",
  "serde_json",
  "tracing",
 ]
@@ -1823,7 +1843,7 @@ checksum = "9c2d0ea739be89822992706da9dc6812ce359b654b328efd6141ba1549751907"
 dependencies = [
  "buddy_system_allocator",
  "flatbuffers",
- "hyperlight-common",
+ "hyperlight-common 0.17.0",
  "hyperlight-guest",
  "hyperlight-guest-macro",
  "hyperlight-guest-tracing",
@@ -1852,7 +1872,7 @@ version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f43a3d5d3fa245ce0fccee8a48ad7d94ec479e0898fc8f91fd440a1d65830c6"
 dependencies = [
- "hyperlight-common",
+ "hyperlight-common 0.17.0",
  "spin 0.12.0",
  "tracing",
  "tracing-core",
@@ -1876,7 +1896,7 @@ dependencies = [
  "flatbuffers",
  "goblin",
  "hex",
- "hyperlight-common",
+ "hyperlight-common 0.17.0",
  "kvm-bindings",
  "kvm-ioctls",
  "lazy_static",
@@ -1885,6 +1905,50 @@ dependencies = [
  "metrics",
  "mshv-bindings",
  "mshv-ioctls",
+ "oci-spec",
+ "page_size",
+ "parking_lot",
+ "rand 0.10.1",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "termcolor",
+ "thiserror",
+ "tracing",
+ "tracing-core",
+ "uuid",
+ "vmm-sys-util",
+ "windows",
+ "windows-result",
+ "windows-sys 0.61.2",
+ "windows-version",
+]
+
+[[package]]
+name = "hyperlight-host"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40f8b85ddd688890477158b9921b228973d1b70c84b866698838df0f32d2aa44"
+dependencies = [
+ "anyhow",
+ "bindgen",
+ "bitflags 2.13.2",
+ "blake3",
+ "bytemuck",
+ "cc",
+ "cfg-if",
+ "cfg_aliases",
+ "crossbeam-channel",
+ "flatbuffers",
+ "goblin",
+ "hex",
+ "hyperlight-common 0.18.0",
+ "lazy_static",
+ "libc",
+ "log",
+ "metrics",
  "oci-spec",
  "page_size",
  "parking_lot",
@@ -1928,7 +1992,7 @@ dependencies = [
  "anyhow",
  "cargo-hyperlight",
  "fn-traits",
- "hyperlight-host",
+ "hyperlight-host 0.17.0",
  "hyperlight-js-common",
  "hyperlight-js-runtime",
  "metrics",
@@ -1960,7 +2024,7 @@ dependencies = [
  "hashbrown 0.17.0",
  "hex",
  "hmac",
- "hyperlight-common",
+ "hyperlight-common 0.17.0",
  "hyperlight-guest",
  "hyperlight-guest-bin",
  "hyperlight-js-common",
@@ -2070,8 +2134,8 @@ dependencies = [
  "chrono",
  "env_logger",
  "goblin",
- "hyperlight-common",
- "hyperlight-host",
+ "hyperlight-common 0.17.0",
+ "hyperlight-host 0.17.0",
  "hyperlight-wasm-runtime",
  "junction",
  "libc",
@@ -2109,7 +2173,7 @@ dependencies = [
  "cc",
  "cfg-if",
  "cfg_aliases",
- "hyperlight-common",
+ "hyperlight-common 0.17.0",
  "hyperlight-guest",
  "hyperlight-guest-bin",
  "hyperlight-wasm-macro",
@@ -2128,9 +2192,9 @@ dependencies = [
  "http",
  "http-body",
  "http-body-util",
- "hyperlight-common",
+ "hyperlight-common 0.17.0",
  "hyperlight-component-macro",
- "hyperlight-host",
+ "hyperlight-host 0.18.0",
  "hyperlight-sandbox",
  "hyperlight-wasm",
  "log",

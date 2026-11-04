@@ -319,6 +319,19 @@ public sealed class Sandbox : IDisposable
     /// permissions). Subsequent calls reuse the initialized runtime.
     /// </remarks>
     public ExecutionResult Run(string code)
+        => Run(code, CancellationToken.None);
+
+    /// <summary>Executes guest code with cancellation of running guest execution.</summary>
+    /// <param name="code">The code to execute.</param>
+    /// <param name="cancellationToken">Token used to interrupt guest execution.</param>
+    /// <returns>The execution result.</returns>
+    /// <remarks>
+    /// Runtime initialization and host callbacks cannot be interrupted.
+    /// Cancellation waits for native execution to stop before returning.
+    /// Restore a snapshot before reusing an interrupted sandbox.
+    /// </remarks>
+    /// <exception cref="OperationCanceledException">Thrown when cancellation is requested.</exception>
+    public ExecutionResult Run(string code, CancellationToken cancellationToken)
     {
         lock (_gate)
         {
@@ -333,8 +346,48 @@ public sealed class Sandbox : IDisposable
                     nameof(code));
             }
 
-            var result = SafeNativeMethods.hyperlight_sandbox_run(_handle, code);
-            GC.KeepAlive(this);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var completed = new ManualResetEventSlim();
+            using var interruptHandle = cancellationToken.CanBeCanceled ? GetInterruptHandle() : null;
+            Task? interruption = null;
+            using var registration = cancellationToken.Register(() =>
+            {
+                // kill() can miss an idle guest just before native execution starts.
+                // Retry off the callback thread, which may itself be a host tool.
+                interruption = Task.Factory.StartNew(() =>
+                {
+                    while (!completed.IsSet)
+                    {
+                        if (SafeNativeMethods.hyperlight_sandbox_interrupt(interruptHandle!))
+                        {
+                            break;
+                        }
+
+                        completed.Wait(10);
+                    }
+                }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            });
+
+            FFIResult result;
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                result = SafeNativeMethods.hyperlight_sandbox_run(_handle, code);
+            }
+            finally
+            {
+                completed.Set();
+                registration.Dispose();
+                interruption?.GetAwaiter().GetResult();
+                GC.KeepAlive(this);
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                _ = FFIResult.StringFromPtr(result.value);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
             result.ThrowIfError();
 
             var json = FFIResult.StringFromPtr(result.value);
@@ -359,14 +412,25 @@ public sealed class Sandbox : IDisposable
     /// For ASP.NET Core, prefer calling <see cref="Run"/> directly.
     /// </summary>
     /// <remarks>
-    /// The cancellation token prevents scheduling of the task but cannot
-    /// cancel an in-progress FFI call. Once <see cref="Run"/> starts
-    /// executing in the native layer, it will run to completion.
+    /// Cancellation interrupts running guest execution, but not runtime
+    /// initialization or host callbacks. Restore a snapshot after interruption.
     /// </remarks>
     /// <param name="code">The code to execute.</param>
-    /// <param name="cancellationToken">Token to prevent scheduling (does not cancel in-progress execution).</param>
+    /// <param name="cancellationToken">Token to prevent scheduling or interrupt running guest execution.</param>
     public Task<ExecutionResult> RunAsync(string code, CancellationToken cancellationToken = default)
-        => Task.Run(() => Run(code), cancellationToken);
+        => Task.Run(() => Run(code, cancellationToken), cancellationToken);
+
+    private InterruptSafeHandle GetInterruptHandle()
+    {
+        var result = SafeNativeMethods.hyperlight_sandbox_get_interrupt_handle(_handle);
+        result.ThrowIfError();
+        if (result.value == IntPtr.Zero)
+        {
+            throw new SandboxException("Native interruption handle was null.");
+        }
+
+        return new InterruptSafeHandle(result.value);
+    }
 
     // -----------------------------------------------------------------------
     // Network

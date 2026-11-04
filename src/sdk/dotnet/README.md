@@ -266,7 +266,8 @@ just dotnet copilot-sdk-example       # Run Copilot SDK example
 | Method | Description |
 |--------|-------------|
 | `Run(string code)` | Execute guest code, returns `ExecutionResult` |
-| `RunAsync(string, CancellationToken)` | Async version on thread pool |
+| `Run(string, CancellationToken)` | Execute guest code with interruption on cancellation |
+| `RunAsync(string, CancellationToken)` | Execute on the thread pool with interruption on cancellation |
 | `RegisterTool<TArgs,TResult>(name, handler)` | Register typed tool |
 | `RegisterTool(name, Func<string,string>)` | Register raw JSON tool |
 | `AllowDomain(target, methods?)` | Add domain to network allowlist |
@@ -274,6 +275,13 @@ just dotnet copilot-sdk-example       # Run Copilot SDK example
 | `OutputPath` | Host path of output directory |
 | `Snapshot()` | Capture sandbox state |
 | `Restore(snapshot)` | Restore to captured state |
+
+Cancellation stops running guest execution on both backends and throws
+`OperationCanceledException` only after native execution and interruption callbacks
+have finished. Runtime initialization and host tool callbacks cannot be interrupted.
+Capture a snapshot before execution and restore it after cancellation before reusing
+the sandbox. Use a `CancellationTokenSource` with a finite timeout to bound guest
+execution; host tools must enforce their own cancellation policy.
 
 ### `ExecutionResult`
 

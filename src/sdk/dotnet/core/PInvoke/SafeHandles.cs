@@ -103,3 +103,25 @@ internal sealed class SnapshotSafeHandle : SafeHandle
         return true;
     }
 }
+
+/// <summary>Owns a native interruption handle independently of sandbox state.</summary>
+internal sealed class InterruptSafeHandle : SafeHandle
+{
+    public InterruptSafeHandle(IntPtr handle) : base(IntPtr.Zero, ownsHandle: true)
+    {
+        SetHandle(handle);
+    }
+
+    public override bool IsInvalid => handle == IntPtr.Zero;
+
+    protected override bool ReleaseHandle()
+    {
+        IntPtr oldHandle = Interlocked.Exchange(ref handle, IntPtr.Zero);
+        if (oldHandle != IntPtr.Zero)
+        {
+            SafeNativeMethods.hyperlight_sandbox_free_interrupt_handle(oldHandle);
+        }
+
+        return true;
+    }
+}

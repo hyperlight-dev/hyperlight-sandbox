@@ -27,7 +27,7 @@ use anyhow::Result;
 use hyperlight_javascript_sandbox::HyperlightJs;
 use hyperlight_sandbox::{
     DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, FilesystemLimits, GuestSandbox,
-    HttpMethod, Sandbox, SandboxBuilder, SandboxConfig, ToolRegistry, ToolSchema,
+    HttpMethod, InterruptHandle, Sandbox, SandboxBuilder, SandboxConfig, ToolRegistry, ToolSchema,
 };
 use hyperlight_wasm_sandbox::Wasm;
 use log::{debug, error};
@@ -1061,6 +1061,61 @@ fn ensure_initialized(state: &mut SandboxState) -> Result<()> {
 
     state.inner = Some(sandbox);
     Ok(())
+}
+
+/// Obtain an independently owned interruption handle, initializing the sandbox
+/// if necessary. The successful value is an opaque handle, not a string.
+///
+/// # Safety
+///
+/// `handle` must be valid and exclusively accessible during this call.
+/// Free the returned handle with `hyperlight_sandbox_free_interrupt_handle`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hyperlight_sandbox_get_interrupt_handle(
+    handle: *mut SandboxState,
+) -> FFIResult {
+    let state = match unsafe { deref_handle_mut(handle, "sandbox") } {
+        Ok(state) => state,
+        Err(error) => return error,
+    };
+    if let Err(error) = ensure_initialized(state) {
+        return error_result(error);
+    }
+    let Some(sandbox) = state.inner.as_ref() else {
+        return error_result(anyhow::anyhow!(
+            "Sandbox initialization produced no backend"
+        ));
+    };
+    match with_sandbox!(sandbox, sb => sb.interrupt_handle()) {
+        Ok(handle) => FFIResult::success(Box::into_raw(Box::new(handle)).cast()),
+        Err(error) => error_result(error),
+    }
+}
+
+/// Interrupt guest execution without accessing mutable sandbox state.
+///
+/// # Safety
+///
+/// `handle` must be a live interruption handle. Do not free it during this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hyperlight_sandbox_interrupt(handle: *const InterruptHandle) -> bool {
+    let Some(handle) = NonNull::new(handle.cast_mut()) else {
+        error!("Null pointer passed for interruption handle");
+        return false;
+    };
+    unsafe { handle.as_ref() }.kill()
+}
+
+/// Free an independently owned interruption handle. Null is a no-op.
+///
+/// # Safety
+///
+/// `handle` must be null or a live handle that is not in use.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hyperlight_sandbox_free_interrupt_handle(handle: *mut InterruptHandle) {
+    if !handle.is_null() {
+        drop(unsafe { Box::from_raw(handle) });
+    }
 }
 
 /// Executes guest code in the sandbox.

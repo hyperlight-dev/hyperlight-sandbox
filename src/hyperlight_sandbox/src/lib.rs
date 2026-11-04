@@ -106,6 +106,31 @@ impl<T> Snapshot<T> {
 // Guest traits
 // ---------------------------------------------------------------------------
 
+/// An independently owned handle for interrupting guest execution.
+///
+/// Host callbacks are not interrupted. After an interruption, restore a
+/// snapshot before reusing the sandbox.
+#[derive(Clone)]
+pub struct InterruptHandle {
+    kill: std::sync::Arc<dyn Fn() -> bool + Send + Sync>,
+}
+
+impl InterruptHandle {
+    pub fn new(kill: impl Fn() -> bool + Send + Sync + 'static) -> Self {
+        Self {
+            kill: std::sync::Arc::new(kill),
+        }
+    }
+
+    /// Interrupt a running guest, returning whether it was interrupted.
+    ///
+    /// This may block until the running vCPU stops. It returns false if the
+    /// guest is not running, including while executing a host callback.
+    pub fn kill(&self) -> bool {
+        (self.kill)()
+    }
+}
+
 pub trait Guest: Sized {
     type Sandbox: GuestSandbox;
     fn build(
@@ -129,6 +154,10 @@ pub trait GuestSandbox: Send {
     fn snapshot(&mut self) -> Result<Snapshot<Self::SnapshotData>>;
     /// Restore a previously captured guest runtime state.
     fn restore(&mut self, snapshot: &Snapshot<Self::SnapshotData>) -> Result<()>;
+    /// Obtain an independently owned interruption handle.
+    fn interrupt_handle(&self) -> Result<InterruptHandle> {
+        anyhow::bail!("guest backend does not support interruption")
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +200,10 @@ impl<G: Guest> Sandbox<G> {
     /// files are read-only and managed by the host.
     pub fn run(&mut self, code: &str) -> Result<ExecutionResult> {
         self.inner.run(code)
+    }
+
+    pub fn interrupt_handle(&self) -> Result<InterruptHandle> {
+        self.inner.interrupt_handle()
     }
 
     pub fn snapshot(&mut self) -> Result<Snapshot<<G::Sandbox as GuestSandbox>::SnapshotData>> {

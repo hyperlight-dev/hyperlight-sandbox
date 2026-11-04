@@ -65,6 +65,41 @@ public class IntegrationTests
     // -----------------------------------------------------------------------
 
     [Fact]
+    public async Task Integration_RunAsync_CancellationStopsGuestAndAllowsRestoreAsync()
+    {
+        var guestPath = FindPythonGuest();
+        Assert.NotNull(guestPath);
+        using var cancellation = new CancellationTokenSource();
+        using var sandbox = new SandboxBuilder().WithModulePath(guestPath).Build();
+        sandbox.RegisterTool("cancel_run", (string _) =>
+        {
+            cancellation.CancelAfter(TimeSpan.FromMilliseconds(100));
+            return "{}";
+        });
+        var warmup = await sandbox.RunAsync("print('ready')").ConfigureAwait(false);
+        Assert.True(warmup.Success, warmup.Stderr);
+        using var snapshot = await sandbox.SnapshotAsync().ConfigureAwait(false);
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sandbox.RunAsync("""
+            import time
+            call_tool('cancel_run')
+            end = time.monotonic() + 5
+            while time.monotonic() < end:
+                pass
+            print('finished')
+            """, cancellation.Token)).ConfigureAwait(false);
+
+        Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(2), "Guest execution was not interrupted promptly.");
+        await sandbox.RestoreAsync(snapshot).ConfigureAwait(false);
+        using var recovery = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var result = await sandbox.RunAsync("print('recovered')", recovery.Token)
+            .WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        Assert.True(result.Success, result.Stderr);
+        Assert.Contains("recovered", result.Stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
 
     public void Integration_BasicExecution_ReturnsStdout()
     {

@@ -7,8 +7,8 @@ use hyperlight_js::{
 };
 use hyperlight_sandbox::runtime::BlockOn;
 use hyperlight_sandbox::{
-    CapFs, ExecutionResult, Guest, GuestSandbox, NetworkPermissions, SandboxConfig, Snapshot,
-    ToolRegistry, http as sandbox_http,
+    CapFs, ExecutionResult, Guest, GuestSandbox, InterruptHandle, NetworkPermissions,
+    SandboxConfig, Snapshot, ToolRegistry, http as sandbox_http,
 };
 use serde::Deserialize;
 
@@ -414,6 +414,11 @@ impl JsGuestSandbox {
 
 impl GuestSandbox for JsGuestSandbox {
     type SnapshotData = JsSnapshot;
+
+    fn interrupt_handle(&self) -> Result<InterruptHandle> {
+        let handle = self.sandbox.interrupt_handle();
+        Ok(InterruptHandle::new(move || handle.kill()))
+    }
 
     fn run(&mut self, code: &str) -> Result<ExecutionResult> {
         self.run_impl(code)

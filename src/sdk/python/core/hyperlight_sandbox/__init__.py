@@ -62,6 +62,7 @@ def _load_backend(backend: str):
 __all__ = [
     "CodeExecutionTool",
     "ExecutionResult",
+    "InterruptHandle",
     "Sandbox",
     "SandboxEnvironment",
     "__version__",
@@ -102,6 +103,24 @@ class SandboxEnvironment:
     max_file_size: str | None = None
     max_total_size: str | None = None
     max_file_count: int | None = None
+
+
+class InterruptHandle:
+    """An independently owned handle that can interrupt a guest from any thread."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    def kill(self) -> bool:
+        """Interrupt a running guest and wait for it to stop.
+
+        Returns whether the vCPU was running. False during a host callback can
+        still leave cancellation pending until that callback returns.
+        A request just before guest entry can be missed; callers can retry.
+        Host callbacks are not interrupted. Restore a snapshot before reusing
+        an interrupted sandbox. The handle can outlive its sandbox.
+        """
+        return self._inner.kill()
 
 
 class Sandbox:
@@ -199,6 +218,7 @@ class Sandbox:
     MAX_CODE_SIZE: int = 10 * 1024 * 1024
 
     def run(self, code: str) -> ExecutionResult:
+        """Execute code, raising InterruptedError if a handle interrupts the guest."""
         if len(code) > self.MAX_CODE_SIZE:
             raise ValueError(f"code exceeds maximum size ({len(code)} > {self.MAX_CODE_SIZE} bytes)")
         native_result = self._inner.run(code)
@@ -207,6 +227,14 @@ class Sandbox:
             stderr=native_result.stderr,
             exit_code=native_result.exit_code,
         )
+
+    def interrupt_handle(self) -> InterruptHandle:
+        """Initialize the runtime if needed and return a thread-safe interrupt handle.
+
+        Register tools before obtaining the handle. Use the sandbox itself only
+        on its creating thread; the independent handle can be shared.
+        """
+        return InterruptHandle(self._inner.interrupt_handle())
 
     def get_output_files(self) -> list[str]:
         """List filenames written by the guest to the output directory.

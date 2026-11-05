@@ -60,6 +60,8 @@ pub enum FFIErrorCode {
     InvalidArgument = 6,
     /// Filesystem I/O error.
     IoError = 7,
+    /// Guest execution was interrupted by the host.
+    Cancelled = 8,
 }
 
 // ---------------------------------------------------------------------------
@@ -270,6 +272,17 @@ fn safe_cstring<T: Into<Vec<u8>>>(t: T) -> CString {
 /// Uses `downcast_ref` for concrete types where possible, falling back
 /// to string matching for untyped `anyhow` errors.
 fn classify_error(err: &anyhow::Error) -> FFIErrorCode {
+    if let Some(error) = err.downcast_ref::<hyperlight_sandbox::HyperlightError>() {
+        match error {
+            hyperlight_sandbox::HyperlightError::ExecutionCanceledByHost() => {
+                return FFIErrorCode::Cancelled;
+            }
+            hyperlight_sandbox::HyperlightError::PoisonedSandbox => {
+                return FFIErrorCode::Poisoned;
+            }
+            _ => {}
+        }
+    }
     // Try concrete type downcasts first (more reliable than string matching).
     if err.downcast_ref::<std::sync::PoisonError<()>>().is_some() {
         return FFIErrorCode::Poisoned;
@@ -282,12 +295,7 @@ fn classify_error(err: &anyhow::Error) -> FFIErrorCode {
     let msg = err.to_string().to_lowercase();
     if msg.contains("poisoned") || msg.contains("mutex") {
         FFIErrorCode::Poisoned
-    } else if msg.contains("timeout")
-        || msg.contains("cancelled")
-        || msg.contains("canceled")
-        || msg.contains("timed out")
-        || msg.contains("deadline")
-    {
+    } else if msg.contains("timeout") || msg.contains("timed out") || msg.contains("deadline") {
         FFIErrorCode::Timeout
     } else if msg.contains("permission") || msg.contains("not allowed") || msg.contains("denied") {
         FFIErrorCode::PermissionDenied
@@ -1479,9 +1487,24 @@ mod tests {
     }
 
     #[test]
-    fn classify_error_cancelled() {
+    fn classify_error_untyped_cancellation_is_not_timeout() {
         let err = anyhow::anyhow!("operation was cancelled by host");
-        assert_eq!(classify_error(&err), FFIErrorCode::Timeout);
+        assert_eq!(classify_error(&err), FFIErrorCode::Unknown);
+    }
+
+    #[test]
+    fn classify_error_preserves_native_cancellation_with_context() {
+        let err =
+            anyhow::Error::new(hyperlight_sandbox::HyperlightError::ExecutionCanceledByHost())
+                .context("guest execution failed");
+        assert_eq!(classify_error(&err), FFIErrorCode::Cancelled);
+    }
+
+    #[test]
+    fn classify_error_preserves_native_poison_with_context() {
+        let err = anyhow::Error::new(hyperlight_sandbox::HyperlightError::PoisonedSandbox)
+            .context("guest execution failed");
+        assert_eq!(classify_error(&err), FFIErrorCode::Poisoned);
     }
 
     #[test]

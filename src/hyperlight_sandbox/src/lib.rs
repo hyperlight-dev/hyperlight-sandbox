@@ -17,6 +17,7 @@ pub use cap_fs::{
     CapFs, DescriptorFlags, DescriptorStat, DescriptorType, Dir, DirPerms, FilePerms,
     FilesystemLimits, FsError, OpenFlags,
 };
+pub use hyperlight_host::HyperlightError;
 pub use network::{HttpMethod, MethodFilter, NetworkPermission, NetworkPermissions};
 use serde::{Deserialize, Serialize};
 pub use tools::{ArgType, ToolRegistry, ToolSchema};
@@ -112,14 +113,12 @@ impl<T> Snapshot<T> {
 /// snapshot before reusing the sandbox.
 #[derive(Clone)]
 pub struct InterruptHandle {
-    kill: std::sync::Arc<dyn Fn() -> bool + Send + Sync>,
+    inner: std::sync::Arc<dyn hyperlight_host::hypervisor::InterruptHandle>,
 }
 
 impl InterruptHandle {
-    pub fn new(kill: impl Fn() -> bool + Send + Sync + 'static) -> Self {
-        Self {
-            kill: std::sync::Arc::new(kill),
-        }
+    pub fn new(inner: std::sync::Arc<dyn hyperlight_host::hypervisor::InterruptHandle>) -> Self {
+        Self { inner }
     }
 
     /// Interrupt a running guest, returning whether it was interrupted.
@@ -127,7 +126,7 @@ impl InterruptHandle {
     /// This may block until the running vCPU stops. It returns false if the
     /// guest is not running, including while executing a host callback.
     pub fn kill(&self) -> bool {
-        (self.kill)()
+        self.inner.kill()
     }
 }
 
@@ -405,6 +404,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interrupt_handle_is_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<InterruptHandle>();
+    }
 
     struct TestGuest;
 

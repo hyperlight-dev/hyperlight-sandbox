@@ -393,6 +393,15 @@ impl JsGuestSandbox {
                     exit_code: response.exit_code,
                 })
             }
+            Err(error)
+                if matches!(
+                    error,
+                    hyperlight_sandbox::HyperlightError::ExecutionCanceledByHost()
+                        | hyperlight_sandbox::HyperlightError::PoisonedSandbox
+                ) =>
+            {
+                Err(error.into())
+            }
             Err(error) => {
                 let mut stderr = error.to_string();
                 let stdout = match self.stdout.lock() {
@@ -417,7 +426,7 @@ impl GuestSandbox for JsGuestSandbox {
 
     fn interrupt_handle(&self) -> Result<InterruptHandle> {
         let handle = self.sandbox.interrupt_handle();
-        Ok(InterruptHandle::new(move || handle.kill()))
+        Ok(InterruptHandle::new(handle))
     }
 
     fn run(&mut self, code: &str) -> Result<ExecutionResult> {

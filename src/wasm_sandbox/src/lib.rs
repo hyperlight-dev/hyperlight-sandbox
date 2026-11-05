@@ -282,8 +282,7 @@ impl WasmComponentSandbox {
 
         match result {
             Ok(wit_result) => {
-                let wit_result =
-                    wit_result.map_err(|e| anyhow::anyhow!("guest execution failed: {e}"))?;
+                let wit_result = wit_result.context("guest execution failed")?;
                 Ok(ExecutionResult {
                     stdout: wit_result.stdout,
                     stderr: wit_result.stderr,
@@ -319,7 +318,7 @@ impl GuestSandbox for WasmComponentSandbox {
 
     fn interrupt_handle(&self) -> Result<InterruptHandle> {
         let handle = self.sandbox.sb.interrupt_handle()?;
-        Ok(InterruptHandle::new(move || handle.kill()))
+        Ok(InterruptHandle::new(handle))
     }
 
     fn run(&mut self, code: &str) -> Result<ExecutionResult> {

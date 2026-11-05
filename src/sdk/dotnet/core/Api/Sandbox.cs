@@ -328,9 +328,11 @@ public sealed class Sandbox : IDisposable
     /// <remarks>
     /// Runtime initialization and host callbacks cannot be interrupted.
     /// Cancellation waits for native execution to stop before returning.
+    /// Completed results and unrelated failures are preserved if cancellation arrives late.
     /// Restore a snapshot before reusing an interrupted sandbox.
     /// </remarks>
-    /// <exception cref="OperationCanceledException">Thrown when cancellation is requested.</exception>
+    /// <exception cref="OperationCanceledException">Thrown before execution if cancellation is
+    /// requested, or when native execution reports cancellation for this token.</exception>
     public ExecutionResult Run(string code, CancellationToken cancellationToken)
     {
         lock (_gate)
@@ -382,13 +384,7 @@ public sealed class Sandbox : IDisposable
                 GC.KeepAlive(this);
             }
 
-            if (cancellationToken.IsCancellationRequested)
-            {
-                _ = FFIResult.StringFromPtr(result.value);
-                cancellationToken.ThrowIfCancellationRequested();
-            }
-
-            result.ThrowIfError();
+            result.ThrowIfError(cancellationToken);
 
             var json = FFIResult.StringFromPtr(result.value);
             if (json == null)

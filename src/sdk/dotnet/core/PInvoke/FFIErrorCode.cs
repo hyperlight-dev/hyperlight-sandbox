@@ -33,4 +33,7 @@ internal enum FFIErrorCode : uint
 
     /// <summary>Filesystem I/O error.</summary>
     IoError = 7,
+
+    /// <summary>Guest execution was interrupted by the host.</summary>
+    Cancelled = 8,
 }

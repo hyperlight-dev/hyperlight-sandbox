@@ -25,6 +25,7 @@ public class PInvokeLayerTests
     [InlineData(5u, 5u)] // GuestError
     [InlineData(6u, 6u)] // InvalidArgument
     [InlineData(7u, 7u)] // IoError
+    [InlineData(8u, 8u)] // Cancelled
     public void FFIErrorCode_Values_MatchRust(uint codeValue, uint expected)
     {
         var code = (FFIErrorCode)codeValue;
@@ -47,6 +48,36 @@ public class PInvokeLayerTests
 
         // Should not throw.
         result.ThrowIfError();
+    }
+
+    [Fact]
+    public void FFIResult_Success_PreservesResultAfterCancellation()
+    {
+        var result = new FFIResult { is_success = true };
+        result.ThrowIfError(new CancellationToken(canceled: true));
+    }
+
+    [Fact]
+    public void FFIResult_UnrelatedFailure_PreservesErrorAfterCancellation()
+    {
+        var result = new FFIResult { error_code = (uint)FFIErrorCode.IoError };
+        Assert.Throws<IOException>(() => result.ThrowIfError(new CancellationToken(canceled: true)));
+    }
+
+    [Fact]
+    public void FFIResult_NativeCancellation_WithRequestedToken_ThrowsCancellation()
+    {
+        var result = new FFIResult { error_code = (uint)FFIErrorCode.Cancelled };
+        var token = new CancellationToken(canceled: true);
+        var exception = Assert.Throws<OperationCanceledException>(() => result.ThrowIfError(token));
+        Assert.Equal(token, exception.CancellationToken);
+    }
+
+    [Fact]
+    public void FFIResult_NativeCancellation_WithoutRequestedToken_PreservesNativeError()
+    {
+        var result = new FFIResult { error_code = (uint)FFIErrorCode.Cancelled };
+        Assert.Throws<SandboxException>(() => result.ThrowIfError(CancellationToken.None));
     }
 
     [Fact]

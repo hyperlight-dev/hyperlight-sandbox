@@ -59,7 +59,7 @@ internal struct FFIResult
     /// Maps <see cref="FFIErrorCode"/> values to specific exception types
     /// for structured error handling in the API layer.
     /// </remarks>
-    public void ThrowIfError()
+    public void ThrowIfError(CancellationToken cancellationToken = default)
     {
         if (is_success)
         {
@@ -71,6 +71,8 @@ internal struct FFIResult
 
         throw code switch
         {
+            FFIErrorCode.Cancelled when cancellationToken.IsCancellationRequested =>
+                new OperationCanceledException(errorMessage, cancellationToken),
             FFIErrorCode.Timeout =>
                 new SandboxTimeoutException(errorMessage),
             FFIErrorCode.Poisoned =>

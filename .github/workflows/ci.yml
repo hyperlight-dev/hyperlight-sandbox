@@ -16,6 +16,20 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  build-recipes:
+    name: Build recipes (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+      - name: Install just
+        run: cargo install --locked just
+      - name: Test build recipes
+        run: just wasm test-build
+
   rust:
     name: Rust (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

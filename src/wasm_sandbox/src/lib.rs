@@ -245,7 +245,9 @@ impl WasmComponentSandbox {
         };
 
         let mut proto = HyperlightSandboxBuilder::new()
-            .with_guest_input_buffer_size(config.heap_size.min(70_000_000) as usize)
+            .with_h2g_pool_pages(
+                config.heap_size.min(70_000_000) as usize / hyperlight_common::vmem::PAGE_SIZE + 1,
+            )
             .with_guest_heap_size(config.heap_size)
             .with_guest_scratch_size(config.stack_size as usize)
             .build()

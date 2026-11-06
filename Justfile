@@ -32,7 +32,7 @@ fmt-check-rust:
 
 #### TESTS ####
 
-test: wasm::guest-build wasm::js-guest-build python::build python::python-test test-rust wasm::test dotnet::test-rust dotnet::test
+test: wasm::test-build wasm::guest-build wasm::js-guest-build python::build python::python-test test-rust wasm::test dotnet::test-rust dotnet::test
 
 fuzz seconds="60": (python::python-fuzz seconds)
 

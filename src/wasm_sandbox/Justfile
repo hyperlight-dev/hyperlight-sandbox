@@ -5,29 +5,26 @@ repo-root := invocation_directory_native()
 export WIT_WORLD := repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm"
 rmrf := if os() == "windows" { "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" } else { "rm -rf" }
 
-[unix]
 ensure-tools:
-    @command -v clang >/dev/null 2>&1 || { echo "clang not found — install with: apt install clang or brew install llvm"; exit 1; }
-    @command -v wasm-tools >/dev/null 2>&1 || cargo install wasm-tools --locked
-    # Always force-install: cargo install skips when the same version is cached,
-    # even if the cached binary was compiled with different dependency versions
-    # (e.g. a stale wasmtime patch from the CI Cargo bin cache).
-    cargo install hyperlight-wasm-aot --locked --force --version 0.15.0
+    uv run --no-project --python 3.14 python {{repo-root}}/scripts/guest_build.py tools
 
-[windows]
-ensure-tools:
-    if (-not (Get-Command clang -ErrorAction SilentlyContinue)) { Write-Error 'clang not found — install with: winget install LLVM.LLVM'; exit 1 }; \
-    if (-not (Get-Command wasm-tools -ErrorAction SilentlyContinue)) { cargo install wasm-tools --locked }; \
-    cargo install hyperlight-wasm-aot --locked --force --version 0.15.0
+guest-build-wasm:
+    uv run --no-project --python 3.14 python {{repo-root}}/scripts/guest_build.py python
 
-guest-build-wasm: ensure-tools
-    cd {{repo-root}}/src/wasm_sandbox/guests/python && uv run componentize-py \
-        -d ../../wit/hyperlight-sandbox.wit -w root \
-        componentize sandbox_executor -o python-sandbox.wasm
-    wasm-tools strip --all {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.wasm -o {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.wasm
+guest-compile-wit:
+    uv run --no-project --python 3.14 python {{repo-root}}/scripts/guest_build.py wit
 
-guest-compile-wit: ensure-tools
-    wasm-tools component wit {{repo-root}}/src/wasm_sandbox/wit/hyperlight-sandbox.wit -w -o {{repo-root}}/src/wasm_sandbox/wit/sandbox-world.wasm
+# Build portable x86-64 guests once for Linux and Windows consumers.
+guest-bundle:
+    uv run --no-project --python 3.14 python {{repo-root}}/scripts/guest_build.py all
+
+# Include resolved compiler versions in immutable CI cache keys.
+guest-cache-keys:
+    uv run --no-project --python 3.14 python {{repo-root}}/scripts/guest_build.py cache-keys
+
+# Reject artifacts produced from different guest sources or WIT interfaces.
+guest-verify:
+    uv run --no-project --python 3.14 python {{repo-root}}/scripts/guest_build.py verify
 
 # Invalidate cargo caches that embed the WIT signature.
 # Without this, cargo won't detect that sandbox-world.wasm changed
@@ -91,23 +88,18 @@ _clean-stale-wasm:
         } \
     }
 
-guest-build-aot target=default-target: guest-build-wasm ensure-tools
-    hyperlight-wasm-aot compile --component \
-        {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.wasm {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.aot
+guest-build-aot target=default-target: guest-build-wasm
 
 guest-build target=default-target: (guest-build-wasm) (guest-compile-wit) (guest-build-aot target)
 
 js-guest-build-wasm: (js-guest-install)
-    cd {{repo-root}}/src/wasm_sandbox/guests/javascript && npm run build
 
-js-guest-build-aot: js-guest-build-wasm ensure-tools
-    hyperlight-wasm-aot compile --component \
-        {{repo-root}}/src/wasm_sandbox/guests/javascript/js-sandbox.wasm {{repo-root}}/src/wasm_sandbox/guests/javascript/js-sandbox.aot
+js-guest-build-aot: js-guest-build-wasm
 
 js-guest-build: js-guest-build-wasm js-guest-build-aot
 
 js-guest-install:
-    cd {{repo-root}}/src/wasm_sandbox/guests/javascript && npm install
+    uv run --no-project --python 3.14 python {{repo-root}}/scripts/guest_build.py javascript
 
 build target=default-target: _clean-stale-wasm (guest-build target) (js-guest-build)
     cargo build --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }}
@@ -123,6 +115,10 @@ examples target=default-target:
     cargo run --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example js_filesystem_demo
 
 #### TESTS ####
+
+# Check build reuse and cache invalidation without compiling a guest.
+test-build:
+    uv run --no-project --python 3.14 python -m unittest discover -s {{repo-root}}/scripts/tests -v
 
 test target=default-target:
     cargo test --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --test http_wasm_integration -- --nocapture

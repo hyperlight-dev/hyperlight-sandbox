@@ -69,13 +69,13 @@ build: python-build
 
 #### DIST / PUBLISH ####
 
-python-dist: python-sync-guest-resources
+python-dist: python-sync-guest-resources python-sync-env
     -{{rmrf}} {{dist-root}}
-    cd {{repo-root}}/src/sdk/python/core && uv run python -m build --outdir {{core-dist}}
-    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}} {{manylinux-arg}} {{interpreters}}
-    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}} {{manylinux-arg}} {{interpreters}}
-    cd {{repo-root}}/src/sdk/python/wasm_guests/python_guest && uv run python -m build --outdir {{python-guest-dist}}
-    cd {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest && uv run python -m build --outdir {{javascript-guest-dist}}
+    cd {{repo-root}}/src/sdk/python/core && uv run --no-sync python -m build --outdir {{core-dist}}
+    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run --no-sync maturin build --release --out {{wasm-wheels}} {{manylinux-arg}} {{interpreters}}
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run --no-sync maturin build --release --out {{hyperlight-js-wheels}} {{manylinux-arg}} {{interpreters}}
+    cd {{repo-root}}/src/sdk/python/wasm_guests/python_guest && uv run --no-sync python -m build --outdir {{python-guest-dist}}
+    cd {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest && uv run --no-sync python -m build --outdir {{javascript-guest-dist}}
 
 # Build only the platform-specific maturin backend wheels.
 # Used by CI to produce Windows wheels without needing guest binaries.
@@ -83,8 +83,8 @@ python-dist: python-sync-guest-resources
 python-dist-backends: python-sync-env
     -{{rmrf}} {{wasm-wheels}}
     -{{rmrf}} {{hyperlight-js-wheels}}
-    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run maturin build --release --out {{wasm-wheels}} {{manylinux-arg}} {{interpreters}}
-    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run maturin build --release --out {{hyperlight-js-wheels}} {{manylinux-arg}} {{interpreters}}
+    cd {{repo-root}}/src/sdk/python/wasm_backend && uv run --no-sync maturin build --release --out {{wasm-wheels}} {{manylinux-arg}} {{interpreters}}
+    cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run --no-sync maturin build --release --out {{hyperlight-js-wheels}} {{manylinux-arg}} {{interpreters}}
 
 python-publish repository="pypi":
     uv publish {{ if repository != "pypi" { "--publish-url https://test.pypi.org/legacy/" } else { "" } }} {{wasm-wheels}}/*
@@ -132,6 +132,17 @@ examples: python-build
 python-sandbox-benchmark: (python-build "release")
     uv run python {{repo-root}}/src/sdk/python/core/examples/benchmark.py
 
+# Benchmark pre-built release wheels without rebuilding; isolate imports from the checkout.
+python-wheelhouse-benchmark python-version="3.14":
+    uv run --isolated --no-project --python {{python-version}} --no-index \
+        --find-links="{{core-dist}}" \
+        --find-links="{{wasm-wheels}}" \
+        --find-links="{{hyperlight-js-wheels}}" \
+        --find-links="{{python-guest-dist}}" \
+        --find-links="{{javascript-guest-dist}}" \
+        --with "hyperlight-sandbox[wasm,hyperlight_js,python_guest,javascript_guest]" \
+        python -I "{{repo-root}}/src/sdk/python/core/examples/benchmark.py"
+
 #### CLEAN ####
 
 clean:
@@ -141,15 +152,15 @@ clean:
 #### LINT / FORMAT ####
 
 lint:
-    uv run ruff check {{repo-root}}/src/sdk/python {{repo-root}}/examples
+    uv run ruff check {{repo-root}}/src/sdk/python {{repo-root}}/examples {{repo-root}}/scripts
 
 fmt:
-    uv run ruff format {{repo-root}}/src/sdk/python {{repo-root}}/examples
-    uv run ruff check --fix {{repo-root}}/src/sdk/python {{repo-root}}/examples
+    uv run ruff format {{repo-root}}/src/sdk/python {{repo-root}}/examples {{repo-root}}/scripts
+    uv run ruff check --fix {{repo-root}}/src/sdk/python {{repo-root}}/examples {{repo-root}}/scripts
 
 fmt-check:
-    uv run ruff format --check {{repo-root}}/src/sdk/python {{repo-root}}/examples
-    uv run ruff check {{repo-root}}/src/sdk/python {{repo-root}}/examples
+    uv run ruff format --check {{repo-root}}/src/sdk/python {{repo-root}}/examples {{repo-root}}/scripts
+    uv run ruff check {{repo-root}}/src/sdk/python {{repo-root}}/examples {{repo-root}}/scripts
 
 #### TESTS ####
 

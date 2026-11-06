@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    # Run CI daily on the default branch at 06:23 UTC to refresh caches for PRs.
+    - cron: "23 6 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,6 +20,78 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  guest-build:
+    name: Shared guest build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
+        with:
+          cache: false
+          rustflags: ""
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: src/wasm_sandbox/guests/javascript/package-lock.json
+      - name: Install just
+        run: cargo install --locked just
+      - name: Resolve guest cache keys
+        id: guest-keys
+        run: just wasm guest-cache-keys
+      - name: Cache guest compilers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            target/guest-tools
+            target/guest-build/tools.json
+          key: guest-tools-${{ steps.guest-keys.outputs.tool-key }}
+      - name: Cache guest bundle
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            target/guest-build/wit.json
+            target/guest-build/python.json
+            target/guest-build/javascript.json
+            target/guest-build/bundle.json
+            src/wasm_sandbox/wit/sandbox-world.wasm
+            src/wasm_sandbox/guests/python/python-sandbox.wasm
+            src/wasm_sandbox/guests/python/python-sandbox.aot
+            src/wasm_sandbox/guests/javascript/js-sandbox.wasm
+            src/wasm_sandbox/guests/javascript/js-sandbox.aot
+          key: guest-bundle-${{ steps.guest-keys.outputs.guest-key }}
+      - name: Install clang
+        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Build guests
+        run: just wasm guest-bundle
+      - name: Upload guest bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: guest-bundle
+          path: |
+            target/guest-build/bundle.json
+            src/wasm_sandbox/wit/sandbox-world.wasm
+            src/wasm_sandbox/guests/python/python-sandbox.wasm
+            src/wasm_sandbox/guests/python/python-sandbox.aot
+            src/wasm_sandbox/guests/javascript/js-sandbox.wasm
+            src/wasm_sandbox/guests/javascript/js-sandbox.aot
+          if-no-files-found: error
+
+  build-recipes:
+    name: Build recipes (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+      - name: Install just
+        run: cargo install --locked just
+      - name: Test build recipes
+        run: just wasm test-build
+
   rust:
     name: Rust (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -30,6 +106,7 @@ jobs:
           toolchain: nightly, 1.94
           components: rustfmt, clippy
           rustflags: ""
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install just
         run: cargo install --locked just
@@ -45,17 +122,29 @@ jobs:
 
   wasm-sandbox:
     name: WASM Sandbox (${{ matrix.os }})
+    needs: guest-build
     runs-on: ${{ matrix.os }}
+    env:
+      HYPERLIGHT_GUEST_ARTIFACT: "1"
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: guest-bundle
 
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
         with:
           components: clippy
           rustflags: ""
+          cache-key: ${{ hashFiles('src/wasm_sandbox/wit/**/*.wit') }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-directories: |
+            target/hyperlight-wasm-runtime
+            target/hyperlight-js-runtime
+            target/hls
 
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
 
@@ -101,18 +190,30 @@ jobs:
 
   dotnet-sdk:
     name: .NET SDK (${{ matrix.os }})
+    needs: guest-build
     runs-on: ${{ matrix.os }}
+    env:
+      HYPERLIGHT_GUEST_ARTIFACT: "1"
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: guest-bundle
 
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
         with:
           toolchain: nightly, 1.94
           components: rustfmt, clippy
           rustflags: ""
+          cache-key: ${{ hashFiles('src/wasm_sandbox/wit/**/*.wit') }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-directories: |
+            target/hyperlight-wasm-runtime
+            target/hyperlight-js-runtime
+            target/hls
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68  # v6.0.0
         with:
@@ -176,19 +277,30 @@ jobs:
 
   python-sdk:
     name: Python SDK (${{ matrix.os }})
+    needs: guest-build
     runs-on: ${{ matrix.os }}
     env:
       UV_PYTHON: "3.14"
+      HYPERLIGHT_GUEST_ARTIFACT: "1"
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: guest-bundle
 
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
         with:
           components: clippy
           rustflags: ""
+          cache-key: ${{ hashFiles('src/wasm_sandbox/wit/**/*.wit') }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-directories: |
+            target/hyperlight-wasm-runtime
+            target/hyperlight-js-runtime
+            target/hls
 
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
 
@@ -251,25 +363,31 @@ jobs:
       #     COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
       #   run: just integration-examples
 
-      # run last because it runs in build mode and messes with maturin
-      - name: Benchmark
-        run: just benchmark
-
   # Build all Python packages on Linux for glibc 2.28 and newer.
   python-wheelhouse-build-linux:
     name: Python wheelhouse build (manylinux_2_28)
+    needs: guest-build
     runs-on: ubuntu-latest
     container:
       image: quay.io/pypa/manylinux_2_28_x86_64@sha256:f854c50adf7b7a325bc4794316f3758d387a41d61f9e2ebca0f26c7dc8f761d4
     env:
       MANYLINUX: "2_28"
+      HYPERLIGHT_GUEST_ARTIFACT: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: guest-bundle
 
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
         with:
-          cache-key: release
+          cache-key: release-${{ hashFiles('src/wasm_sandbox/wit/**/*.wit') }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           rustflags: ""
+          cache-directories: |
+            target/hyperlight-wasm-runtime
+            target/hyperlight-js-runtime
+            target/hls
 
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
 
@@ -313,14 +431,25 @@ jobs:
   # Build Windows-specific maturin backend wheels only.
   python-wheelhouse-build-windows:
     name: Python wheelhouse build (Windows)
+    needs: guest-build
     runs-on: windows-latest
+    env:
+      HYPERLIGHT_GUEST_ARTIFACT: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: guest-bundle
 
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
         with:
-          cache-key: release
+          cache-key: release-${{ hashFiles('src/wasm_sandbox/wit/**/*.wit') }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           rustflags: ""
+          cache-directories: |
+            target/hyperlight-wasm-runtime
+            target/hyperlight-js-runtime
+            target/hls
 
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
 
@@ -382,19 +511,60 @@ jobs:
       - name: Run wheelhouse tests
         run: just python python-wheelhouse-test ${{ matrix.python }}
 
-  javascript-sandbox:
-    name: JS Sandbox (${{ matrix.os }})
+  python-benchmark:
+    name: Python benchmark (${{ matrix.os }})
+    needs: [python-wheelhouse-build-linux, python-wheelhouse-build-windows]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+      - name: Install just
+        run: cargo install --locked just
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          path: dist/pythonsdk/
+          merge-multiple: true
+          pattern: python-wheels-*
+      - name: Enable KVM
+        if: runner.os == 'Linux' && !env.ACT
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 666 /dev/kvm
+      - name: Benchmark release wheels
+        run: just python python-wheelhouse-benchmark
+
+  javascript-sandbox:
+    name: JS Sandbox (${{ matrix.os }})
+    needs: guest-build
+    runs-on: ${{ matrix.os }}
+    env:
+      HYPERLIGHT_GUEST_ARTIFACT: "1"
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: guest-bundle
 
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
         with:
           components: clippy
           rustflags: ""
+          cache-key: ${{ hashFiles('src/wasm_sandbox/wit/**/*.wit') }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-directories: |
+            target/hyperlight-wasm-runtime
+            target/hyperlight-js-runtime
+            target/hls
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
 
       - name: Install just
         run: cargo install --locked just

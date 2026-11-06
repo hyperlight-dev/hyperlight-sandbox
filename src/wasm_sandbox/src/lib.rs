@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use hyperlight_sandbox::{
-    CapFs, ExecutionResult, Guest, GuestSandbox, NetworkPermissions, SandboxConfig, Snapshot,
-    ToolRegistry,
+    CapFs, ExecutionResult, Guest, GuestSandbox, InterruptHandle, NetworkPermissions,
+    SandboxConfig, Snapshot, ToolRegistry,
 };
 use hyperlight_wasm::{
     LoadedWasmSandbox, SandboxBuilder as HyperlightSandboxBuilder, Snapshot as WasmSnapshot,
@@ -282,8 +282,10 @@ impl WasmComponentSandbox {
 
         match result {
             Ok(wit_result) => {
-                let wit_result =
-                    wit_result.map_err(|e| anyhow::anyhow!("guest execution failed: {e}"))?;
+                let wit_result = wit_result.map_err(|error| {
+                    let message = format!("guest execution failed: {error}");
+                    error.context(message)
+                })?;
                 Ok(ExecutionResult {
                     stdout: wit_result.stdout,
                     stderr: wit_result.stderr,
@@ -316,6 +318,11 @@ impl WasmComponentSandbox {
 
 impl GuestSandbox for WasmComponentSandbox {
     type SnapshotData = WasmSnapshot;
+
+    fn interrupt_handle(&self) -> Result<InterruptHandle> {
+        let handle = self.sandbox.sb.interrupt_handle()?;
+        Ok(InterruptHandle::new(handle))
+    }
 
     fn run(&mut self, code: &str) -> Result<ExecutionResult> {
         self.run_impl(code)

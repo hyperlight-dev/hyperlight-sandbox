@@ -17,6 +17,7 @@ pub use cap_fs::{
     CapFs, DescriptorFlags, DescriptorStat, DescriptorType, Dir, DirPerms, FilePerms,
     FilesystemLimits, FsError, OpenFlags,
 };
+pub use hyperlight_host::HyperlightError;
 pub use network::{HttpMethod, MethodFilter, NetworkPermission, NetworkPermissions};
 use serde::{Deserialize, Serialize};
 pub use tools::{ArgType, ToolRegistry, ToolSchema};
@@ -106,6 +107,30 @@ impl<T> Snapshot<T> {
 // Guest traits
 // ---------------------------------------------------------------------------
 
+/// An independently owned handle for interrupting guest execution.
+///
+/// Host callbacks are not interrupted. After an interruption, restore a
+/// snapshot before reusing the sandbox.
+#[derive(Clone)]
+pub struct InterruptHandle {
+    inner: std::sync::Arc<dyn hyperlight_host::hypervisor::InterruptHandle>,
+}
+
+impl InterruptHandle {
+    pub fn new(inner: std::sync::Arc<dyn hyperlight_host::hypervisor::InterruptHandle>) -> Self {
+        Self { inner }
+    }
+
+    /// Request interruption, returning whether the vCPU was running.
+    ///
+    /// This may block until the running vCPU stops. A false return during a
+    /// host callback can still leave cancellation pending until it returns.
+    /// A request just before guest entry can be missed; callers can retry.
+    pub fn kill(&self) -> bool {
+        self.inner.kill()
+    }
+}
+
 pub trait Guest: Sized {
     type Sandbox: GuestSandbox;
     fn build(
@@ -129,6 +154,10 @@ pub trait GuestSandbox: Send {
     fn snapshot(&mut self) -> Result<Snapshot<Self::SnapshotData>>;
     /// Restore a previously captured guest runtime state.
     fn restore(&mut self, snapshot: &Snapshot<Self::SnapshotData>) -> Result<()>;
+    /// Obtain an independently owned interruption handle.
+    fn interrupt_handle(&self) -> Result<InterruptHandle> {
+        anyhow::bail!("guest backend does not support interruption")
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +200,10 @@ impl<G: Guest> Sandbox<G> {
     /// files are read-only and managed by the host.
     pub fn run(&mut self, code: &str) -> Result<ExecutionResult> {
         self.inner.run(code)
+    }
+
+    pub fn interrupt_handle(&self) -> Result<InterruptHandle> {
+        self.inner.interrupt_handle()
     }
 
     pub fn snapshot(&mut self) -> Result<Snapshot<<G::Sandbox as GuestSandbox>::SnapshotData>> {
@@ -372,6 +405,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interrupt_handle_is_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<InterruptHandle>();
+    }
 
     struct TestGuest;
 

@@ -1998,6 +1998,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "hyperlight-host",
  "log",
  "proptest",
  "serde",

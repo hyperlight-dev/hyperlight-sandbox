@@ -1,7 +1,32 @@
-use hyperlight_sandbox::{ArgType, FilesystemLimits, ToolRegistry, ToolSchema};
-use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
+use hyperlight_sandbox::{
+    ArgType, FilesystemLimits, HyperlightError, InterruptHandle, ToolRegistry, ToolSchema,
+};
+use pyo3::exceptions::{PyInterruptedError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyModule};
+
+#[pyclass(frozen, name = "InterruptHandle")]
+pub struct PyInterruptHandle {
+    pub inner: InterruptHandle,
+}
+
+#[pymethods]
+impl PyInterruptHandle {
+    fn kill(&self, py: Python<'_>) -> bool {
+        py.detach(|| self.inner.kill())
+    }
+}
+
+pub fn execution_error(error: anyhow::Error) -> PyErr {
+    if matches!(
+        error.downcast_ref::<HyperlightError>(),
+        Some(HyperlightError::ExecutionCanceledByHost())
+    ) {
+        PyInterruptedError::new_err(format!("Execution interrupted: {error:#}"))
+    } else {
+        PyRuntimeError::new_err(format!("Execution failed: {error:#}"))
+    }
+}
 
 /// Convert a human-readable size string (e.g. `"200Mi"`) to bytes.
 pub fn parse_size(size: &str) -> PyResult<u64> {

@@ -5,8 +5,8 @@ use hyperlight_sandbox::{
     MethodFilter, Sandbox, SandboxBuilder, SandboxConfig,
 };
 use hyperlight_sandbox_pyo3_common::{
-    PyExecutionResult, build_tool_registry, parse_filesystem_limits, parse_size,
-    parse_tool_registration,
+    PyExecutionResult, PyInterruptHandle, build_tool_registry, execution_error,
+    parse_filesystem_limits, parse_size, parse_tool_registration,
 };
 use hyperlight_wasm_sandbox::Wasm;
 use pyo3::exceptions::PyRuntimeError;
@@ -32,6 +32,45 @@ pub struct WasmSandbox {
     output_dir: Option<String>,
     temp_output: bool,
     filesystem_limits: Option<FilesystemLimits>,
+}
+
+impl WasmSandbox {
+    fn ensure_initialized(&mut self, py: Python<'_>) -> PyResult<()> {
+        if self.inner.is_none() {
+            let registry = build_tool_registry(py, &mut self.tools)?;
+            let mut builder = SandboxBuilder::new()
+                .module_path(&self.config.module_path)
+                .heap_size(self.config.heap_size)
+                .stack_size(self.config.stack_size)
+                .with_tools(registry)
+                .guest(Wasm);
+            if let Some(limits) = self.filesystem_limits {
+                builder = builder.filesystem_limits(limits);
+            }
+            if let Some(ref dir) = self.input_dir {
+                builder = builder.input_dir(dir);
+            }
+            if let Some(ref dir) = self.output_dir {
+                builder = builder.output_dir(
+                    dir,
+                    DirPerms::READ | DirPerms::MUTATE,
+                    FilePerms::READ | FilePerms::WRITE,
+                );
+            } else if self.temp_output {
+                builder = builder.temp_output();
+            }
+            let mut sandbox = builder
+                .build()
+                .map_err(|e| PyRuntimeError::new_err(format!("Failed to create sandbox: {e:#}")))?;
+            for (target, methods) in std::mem::take(&mut self.pending_networks) {
+                sandbox
+                    .allow_domain(&target, methods)
+                    .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+            }
+            self.inner = Some(sandbox);
+        }
+        Ok(())
+    }
 }
 
 #[pymethods]
@@ -95,45 +134,24 @@ impl WasmSandbox {
         Ok(())
     }
 
+    fn interrupt_handle(&mut self, py: Python<'_>) -> PyResult<PyInterruptHandle> {
+        self.ensure_initialized(py)?;
+        let inner = self
+            .inner
+            .as_ref()
+            .unwrap()
+            .interrupt_handle()
+            .map_err(|error| {
+                PyRuntimeError::new_err(format!("Failed to get interrupt handle: {error:#}"))
+            })?;
+        Ok(PyInterruptHandle { inner })
+    }
+
     #[pyo3(signature = (code))]
-    fn run(&mut self, py: Python<'_>, code: &str) -> PyResult<PyExecutionResult> {
-        if self.inner.is_none() {
-            let registry = build_tool_registry(py, &mut self.tools)?;
-            let mut builder = SandboxBuilder::new()
-                .module_path(&self.config.module_path)
-                .heap_size(self.config.heap_size)
-                .stack_size(self.config.stack_size)
-                .with_tools(registry)
-                .guest(Wasm);
-            if let Some(limits) = self.filesystem_limits {
-                builder = builder.filesystem_limits(limits);
-            }
-            if let Some(ref dir) = self.input_dir {
-                builder = builder.input_dir(dir);
-            }
-            if let Some(ref dir) = self.output_dir {
-                builder = builder.output_dir(
-                    dir,
-                    DirPerms::READ | DirPerms::MUTATE,
-                    FilePerms::READ | FilePerms::WRITE,
-                );
-            } else if self.temp_output {
-                builder = builder.temp_output();
-            }
-            let mut sandbox = builder
-                .build()
-                .map_err(|e| PyRuntimeError::new_err(format!("Failed to create sandbox: {e:#}")))?;
-            for (target, methods) in std::mem::take(&mut self.pending_networks) {
-                sandbox
-                    .allow_domain(&target, methods)
-                    .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-            }
-            self.inner = Some(sandbox);
-        }
+    fn run(&mut self, py: Python<'_>, code: String) -> PyResult<PyExecutionResult> {
+        self.ensure_initialized(py)?;
         let sandbox = self.inner.as_mut().unwrap();
-        let result = sandbox
-            .run(code)
-            .map_err(|e| PyRuntimeError::new_err(format!("Execution failed: {e}")))?;
+        let result = py.detach(|| sandbox.run(&code)).map_err(execution_error)?;
         Ok(PyExecutionResult {
             stdout: result.stdout,
             stderr: result.stderr,
@@ -204,6 +222,7 @@ fn _native_wasm(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<WasmSandbox>()?;
     m.add_class::<PyExecutionResult>()?;
     m.add_class::<PySnapshot>()?;
+    m.add_class::<PyInterruptHandle>()?;
     m.add("__version__", "0.1.0")?;
     Ok(())
 }

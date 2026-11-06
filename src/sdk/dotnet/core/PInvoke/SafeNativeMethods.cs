@@ -214,6 +214,19 @@ internal static partial class SafeNativeMethods
         SandboxSafeHandle handle,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string code);
 
+    [LibraryImport(LibName)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial FFIResult hyperlight_sandbox_get_interrupt_handle(SandboxSafeHandle handle);
+
+    [LibraryImport(LibName)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    [return: MarshalAs(UnmanagedType.I1)]
+    internal static partial bool hyperlight_sandbox_interrupt(InterruptSafeHandle handle);
+
+    [LibraryImport(LibName)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial void hyperlight_sandbox_free_interrupt_handle(IntPtr handle);
+
     // -----------------------------------------------------------------------
     // Filesystem
     // -----------------------------------------------------------------------

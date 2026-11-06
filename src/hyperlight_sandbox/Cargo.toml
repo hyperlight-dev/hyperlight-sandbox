@@ -16,6 +16,7 @@ bytes = "1"
 cap-std = "4.0.3"
 http = "1"
 http-body-util = "0.1"
+hyperlight-host = { workspace = true, features = ["kvm", "mshv3", "hvf"] }
 hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 log = "0.4"

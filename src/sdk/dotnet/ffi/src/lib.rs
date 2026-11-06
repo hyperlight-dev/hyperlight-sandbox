@@ -27,7 +27,7 @@ use anyhow::Result;
 use hyperlight_javascript_sandbox::HyperlightJs;
 use hyperlight_sandbox::{
     DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, FilesystemLimits, GuestSandbox,
-    HttpMethod, Sandbox, SandboxBuilder, SandboxConfig, ToolRegistry, ToolSchema,
+    HttpMethod, InterruptHandle, Sandbox, SandboxBuilder, SandboxConfig, ToolRegistry, ToolSchema,
 };
 use hyperlight_wasm_sandbox::Wasm;
 use log::{debug, error};
@@ -60,6 +60,8 @@ pub enum FFIErrorCode {
     InvalidArgument = 6,
     /// Filesystem I/O error.
     IoError = 7,
+    /// Guest execution was interrupted by the host.
+    Cancelled = 8,
 }
 
 // ---------------------------------------------------------------------------
@@ -270,6 +272,17 @@ fn safe_cstring<T: Into<Vec<u8>>>(t: T) -> CString {
 /// Uses `downcast_ref` for concrete types where possible, falling back
 /// to string matching for untyped `anyhow` errors.
 fn classify_error(err: &anyhow::Error) -> FFIErrorCode {
+    if let Some(error) = err.downcast_ref::<hyperlight_sandbox::HyperlightError>() {
+        match error {
+            hyperlight_sandbox::HyperlightError::ExecutionCanceledByHost() => {
+                return FFIErrorCode::Cancelled;
+            }
+            hyperlight_sandbox::HyperlightError::PoisonedSandbox => {
+                return FFIErrorCode::Poisoned;
+            }
+            _ => {}
+        }
+    }
     // Try concrete type downcasts first (more reliable than string matching).
     if err.downcast_ref::<std::sync::PoisonError<()>>().is_some() {
         return FFIErrorCode::Poisoned;
@@ -282,12 +295,7 @@ fn classify_error(err: &anyhow::Error) -> FFIErrorCode {
     let msg = err.to_string().to_lowercase();
     if msg.contains("poisoned") || msg.contains("mutex") {
         FFIErrorCode::Poisoned
-    } else if msg.contains("timeout")
-        || msg.contains("cancelled")
-        || msg.contains("canceled")
-        || msg.contains("timed out")
-        || msg.contains("deadline")
-    {
+    } else if msg.contains("timeout") || msg.contains("timed out") || msg.contains("deadline") {
         FFIErrorCode::Timeout
     } else if msg.contains("permission") || msg.contains("not allowed") || msg.contains("denied") {
         FFIErrorCode::PermissionDenied
@@ -1063,6 +1071,61 @@ fn ensure_initialized(state: &mut SandboxState) -> Result<()> {
     Ok(())
 }
 
+/// Obtain an independently owned interruption handle, initializing the sandbox
+/// if necessary. The successful value is an opaque handle, not a string.
+///
+/// # Safety
+///
+/// `handle` must be valid and exclusively accessible during this call.
+/// Free the returned handle with `hyperlight_sandbox_free_interrupt_handle`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hyperlight_sandbox_get_interrupt_handle(
+    handle: *mut SandboxState,
+) -> FFIResult {
+    let state = match unsafe { deref_handle_mut(handle, "sandbox") } {
+        Ok(state) => state,
+        Err(error) => return error,
+    };
+    if let Err(error) = ensure_initialized(state) {
+        return error_result(error);
+    }
+    let Some(sandbox) = state.inner.as_ref() else {
+        return error_result(anyhow::anyhow!(
+            "Sandbox initialization produced no backend"
+        ));
+    };
+    match with_sandbox!(sandbox, sb => sb.interrupt_handle()) {
+        Ok(handle) => FFIResult::success(Box::into_raw(Box::new(handle)).cast()),
+        Err(error) => error_result(error),
+    }
+}
+
+/// Interrupt guest execution without accessing mutable sandbox state.
+///
+/// # Safety
+///
+/// `handle` must be a live interruption handle. Do not free it during this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hyperlight_sandbox_interrupt(handle: *const InterruptHandle) -> bool {
+    let Some(handle) = NonNull::new(handle.cast_mut()) else {
+        error!("Null pointer passed for interruption handle");
+        return false;
+    };
+    unsafe { handle.as_ref() }.kill()
+}
+
+/// Free an independently owned interruption handle. Null is a no-op.
+///
+/// # Safety
+///
+/// `handle` must be null or a live handle that is not in use.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hyperlight_sandbox_free_interrupt_handle(handle: *mut InterruptHandle) {
+    if !handle.is_null() {
+        drop(unsafe { Box::from_raw(handle) });
+    }
+}
+
 /// Executes guest code in the sandbox.
 ///
 /// The first call triggers lazy initialization (building the sandbox, registering
@@ -1424,9 +1487,24 @@ mod tests {
     }
 
     #[test]
-    fn classify_error_cancelled() {
+    fn classify_error_untyped_cancellation_is_not_timeout() {
         let err = anyhow::anyhow!("operation was cancelled by host");
-        assert_eq!(classify_error(&err), FFIErrorCode::Timeout);
+        assert_eq!(classify_error(&err), FFIErrorCode::Unknown);
+    }
+
+    #[test]
+    fn classify_error_preserves_native_cancellation_with_context() {
+        let err =
+            anyhow::Error::new(hyperlight_sandbox::HyperlightError::ExecutionCanceledByHost())
+                .context("guest execution failed");
+        assert_eq!(classify_error(&err), FFIErrorCode::Cancelled);
+    }
+
+    #[test]
+    fn classify_error_preserves_native_poison_with_context() {
+        let err = anyhow::Error::new(hyperlight_sandbox::HyperlightError::PoisonedSandbox)
+            .context("guest execution failed");
+        assert_eq!(classify_error(&err), FFIErrorCode::Poisoned);
     }
 
     #[test]

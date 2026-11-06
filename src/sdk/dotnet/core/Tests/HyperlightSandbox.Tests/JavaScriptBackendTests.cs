@@ -66,6 +66,89 @@ public class JavaScriptBackendTests
     // Lifecycle
     // -----------------------------------------------------------------------
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task JavaScript_RunAsync_CancellationDuringExecution_StopsGuestAsync(bool delayedCancellation)
+    {
+        using var cancellation = new CancellationTokenSource();
+        using var sandbox = new SandboxBuilder()
+            .WithBackend(SandboxBackend.JavaScript)
+            .Build();
+        sandbox.RegisterTool("cancel_run", (string _) =>
+        {
+            if (delayedCancellation)
+            {
+                cancellation.CancelAfter(TimeSpan.FromMilliseconds(100));
+            }
+            else
+            {
+                cancellation.Cancel();
+            }
+
+            return "{}";
+        });
+        Assert.True((await sandbox.RunAsync("console.log('ready');").ConfigureAwait(false)).Success);
+        using var snapshot = await sandbox.SnapshotAsync().ConfigureAwait(false);
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sandbox.RunAsync("""
+            call_tool('cancel_run');
+            const end = Date.now() + 5000;
+            while (Date.now() < end) {}
+            console.log('finished');
+            """, cancellation.Token)).ConfigureAwait(false);
+
+        Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(2), "Guest execution was not interrupted promptly.");
+        await sandbox.RestoreAsync(snapshot).ConfigureAwait(false);
+        using var recovery = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var result = await sandbox.RunAsync("console.log('recovered');", recovery.Token)
+            .WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        Assert.True(result.Success, result.Stderr);
+        Assert.Contains("recovered", result.Stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void JavaScript_Run_PreCanceledTokenDoesNotExecuteGuest()
+    {
+        using var cancellation = new CancellationTokenSource();
+        using var sandbox = new SandboxBuilder()
+            .WithBackend(SandboxBackend.JavaScript)
+            .Build();
+        var invoked = false;
+        sandbox.RegisterTool("mark_run", (string _) =>
+        {
+            invoked = true;
+            return "{}";
+        });
+        cancellation.Cancel();
+
+        Assert.ThrowsAny<OperationCanceledException>(
+            () => sandbox.Run("call_tool('mark_run');", cancellation.Token));
+        Assert.False(invoked);
+        using var recovery = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        Assert.True(sandbox.Run("console.log('recovered');", recovery.Token).Success);
+    }
+
+    [Fact]
+    public void JavaScript_Run_CompletedCancellationDoesNotInterruptNextRun()
+    {
+        using var sandbox = new SandboxBuilder()
+            .WithBackend(SandboxBackend.JavaScript)
+            .Build();
+        for (int i = 0; i < 5; i++)
+        {
+            using var completed = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            Assert.True(sandbox.Run("console.log('first');", completed.Token).Success);
+            completed.Cancel();
+
+            using var next = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var result = sandbox.Run("console.log('next');", next.Token);
+            Assert.True(result.Success, result.Stderr);
+            Assert.Contains("next", result.Stdout, StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public void JavaScript_CreateAndDispose_NoLeak()
     {

@@ -255,9 +255,9 @@ dependencies = [
 
 [[package]]
 name = "built"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4ad8f11f288f48ca24471bbd51ac257aaeaaa07adae295591266b792902ae64"
+checksum = "5c0e531d93d39c34eef561e929e8a7f86d77a5af08aac4f6d6e39976c51858e9"
 dependencies = [
  "chrono",
  "git2",
@@ -316,7 +316,19 @@ dependencies = [
  "cap-primitives 3.4.5",
  "cap-std 3.4.5",
  "io-lifetimes 2.0.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "cap-fs-ext"
+version = "4.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56ff379b70af8e08307a8f65e7040c7301cb4a572538ade16b4984f0da77847f"
+dependencies = [
+ "cap-primitives 4.0.3",
+ "cap-std 4.0.3",
+ "io-lifetimes 3.0.1",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -345,7 +357,7 @@ dependencies = [
  "maybe-owned",
  "rustix 1.1.4",
  "rustix-linux-procfs",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
  "winx",
 ]
 
@@ -1284,7 +1296,7 @@ checksum = "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78"
 dependencies = [
  "cfg-if",
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1370,7 +1382,7 @@ checksum = "94e7099f6313ecacbe1256e8ff9d617b75d1bcb16a6fddef94866d225a01a14a"
 dependencies = [
  "io-lifetimes 2.0.4",
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1527,15 +1539,14 @@ dependencies = [
 
 [[package]]
 name = "git2"
-version = "0.20.4"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b88256088d75a56f8ecfa070513a775dd9107f6530ef14919dac831af9cfe2b"
+checksum = "ddddbf932745a6be37109b6112d3ee09696106f848449069d3a57bba937ab82e"
 dependencies = [
  "bitflags 2.13.2",
  "libc",
  "libgit2-sys",
  "log",
- "url",
 ]
 
 [[package]]
@@ -1770,6 +1781,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyperlight-common"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "360d5876788b26af66bf055bca6b4f2c9c930a0fdcaebda4bd7f808c6bd93068"
+dependencies = [
+ "anyhow",
+ "bitflags 2.13.2",
+ "bytemuck",
+ "bytes",
+ "fixedbitset",
+ "flatbuffers",
+ "log",
+ "smallvec",
+ "spin 0.12.0",
+ "thiserror",
+ "tracing",
+ "tracing-core",
+]
+
+[[package]]
 name = "hyperlight-component-macro"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1810,7 +1841,7 @@ checksum = "816f673f3f8ef6d5703796bf92927b85177ad1baac6f391551a88451a9e46a7e"
 dependencies = [
  "anyhow",
  "flatbuffers",
- "hyperlight-common",
+ "hyperlight-common 0.17.0",
  "serde_json",
  "tracing",
 ]
@@ -1823,7 +1854,7 @@ checksum = "9c2d0ea739be89822992706da9dc6812ce359b654b328efd6141ba1549751907"
 dependencies = [
  "buddy_system_allocator",
  "flatbuffers",
- "hyperlight-common",
+ "hyperlight-common 0.17.0",
  "hyperlight-guest",
  "hyperlight-guest-macro",
  "hyperlight-guest-tracing",
@@ -1852,7 +1883,7 @@ version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f43a3d5d3fa245ce0fccee8a48ad7d94ec479e0898fc8f91fd440a1d65830c6"
 dependencies = [
- "hyperlight-common",
+ "hyperlight-common 0.17.0",
  "spin 0.12.0",
  "tracing",
  "tracing-core",
@@ -1876,15 +1907,64 @@ dependencies = [
  "flatbuffers",
  "goblin",
  "hex",
- "hyperlight-common",
+ "hyperlight-common 0.17.0",
  "kvm-bindings",
  "kvm-ioctls",
  "lazy_static",
  "libc",
  "log",
  "metrics",
- "mshv-bindings",
- "mshv-ioctls",
+ "mshv-bindings 0.6.8",
+ "mshv-ioctls 0.6.8",
+ "oci-spec",
+ "page_size",
+ "parking_lot",
+ "rand 0.10.1",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "termcolor",
+ "thiserror",
+ "tracing",
+ "tracing-core",
+ "uuid",
+ "vmm-sys-util",
+ "windows",
+ "windows-result",
+ "windows-sys 0.61.2",
+ "windows-version",
+]
+
+[[package]]
+name = "hyperlight-host"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40f8b85ddd688890477158b9921b228973d1b70c84b866698838df0f32d2aa44"
+dependencies = [
+ "anyhow",
+ "bindgen",
+ "bitflags 2.13.2",
+ "blake3",
+ "built",
+ "bytemuck",
+ "cc",
+ "cfg-if",
+ "cfg_aliases",
+ "crossbeam-channel",
+ "flatbuffers",
+ "goblin",
+ "hex",
+ "hyperlight-common 0.18.0",
+ "kvm-bindings",
+ "kvm-ioctls",
+ "lazy_static",
+ "libc",
+ "log",
+ "metrics",
+ "mshv-bindings 0.7.1",
+ "mshv-ioctls 0.7.1",
  "oci-spec",
  "page_size",
  "parking_lot",
@@ -1928,7 +2008,7 @@ dependencies = [
  "anyhow",
  "cargo-hyperlight",
  "fn-traits",
- "hyperlight-host",
+ "hyperlight-host 0.17.0",
  "hyperlight-js-common",
  "hyperlight-js-runtime",
  "metrics",
@@ -1960,7 +2040,7 @@ dependencies = [
  "hashbrown 0.17.0",
  "hex",
  "hmac",
- "hyperlight-common",
+ "hyperlight-common 0.17.0",
  "hyperlight-guest",
  "hyperlight-guest-bin",
  "hyperlight-js-common",
@@ -1991,6 +2071,7 @@ dependencies = [
  "anyhow",
  "bitflags 2.13.2",
  "bytes",
+ "cap-fs-ext 4.0.3",
  "cap-std 4.0.3",
  "futures-util",
  "http",
@@ -2020,6 +2101,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyperlight-sandbox-backend-unikraft"
+version = "0.8.0"
+dependencies = [
+ "hyperlight-sandbox",
+ "hyperlight-sandbox-pyo3-common",
+ "hyperlight-unikraft-sandbox",
+ "pyo3",
+]
+
+[[package]]
 name = "hyperlight-sandbox-backend-wasm"
 version = "0.8.0"
 dependencies = [
@@ -2036,6 +2127,7 @@ dependencies = [
  "anyhow",
  "hyperlight-javascript-sandbox",
  "hyperlight-sandbox",
+ "hyperlight-unikraft-sandbox",
  "hyperlight-wasm-sandbox",
  "libc",
  "log",
@@ -2056,6 +2148,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyperlight-unikraft"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1323f2fe645074a1d71b983a1e2f1f9749873983d789d9a9fe794e559bf3d1cf"
+dependencies = [
+ "cap-fs-ext 4.0.3",
+ "cap-std 4.0.3",
+ "getrandom 0.4.3",
+ "hyperlight-common 0.18.0",
+ "hyperlight-host 0.18.0",
+ "rustix 1.1.4",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror",
+ "tracing",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "hyperlight-unikraft-sandbox"
+version = "0.8.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "cap-std 4.0.3",
+ "hyperlight-sandbox",
+ "hyperlight-unikraft",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "url",
+]
+
+[[package]]
 name = "hyperlight-wasm"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2070,8 +2196,8 @@ dependencies = [
  "chrono",
  "env_logger",
  "goblin",
- "hyperlight-common",
- "hyperlight-host",
+ "hyperlight-common 0.17.0",
+ "hyperlight-host 0.17.0",
  "hyperlight-wasm-runtime",
  "junction",
  "libc",
@@ -2109,7 +2235,7 @@ dependencies = [
  "cc",
  "cfg-if",
  "cfg_aliases",
- "hyperlight-common",
+ "hyperlight-common 0.17.0",
  "hyperlight-guest",
  "hyperlight-guest-bin",
  "hyperlight-wasm-macro",
@@ -2128,9 +2254,9 @@ dependencies = [
  "http",
  "http-body",
  "http-body-util",
- "hyperlight-common",
+ "hyperlight-common 0.17.0",
  "hyperlight-component-macro",
- "hyperlight-host",
+ "hyperlight-host 0.17.0",
  "hyperlight-sandbox",
  "hyperlight-wasm",
  "log",
@@ -2300,7 +2426,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2285ddfe3054097ef4b2fe909ef8c3bcd1ea52a8f0d274416caebeef39f04a65"
 dependencies = [
  "io-lifetimes 2.0.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2491,9 +2617,9 @@ checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
 
 [[package]]
 name = "libgit2-sys"
-version = "0.18.3+1.9.2"
+version = "0.18.8+1.9.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9b3acc4b91781bb0b3386669d325163746af5f6e4f73e6d2d630e09a35f3487"
+checksum = "7f7c568b25d7489bc3fb2988ed69ab111d2944d2f5fec3d5c987fe545ea97b50"
 dependencies = [
  "cc",
  "libc",
@@ -2664,13 +2790,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "mshv-bindings"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b4b2414499597c6e31b1cd25239f19e8e8c55023b3bf8fcfa44d927cff6a123"
+dependencies = [
+ "libc",
+ "num_enum",
+ "vmm-sys-util",
+ "zerocopy",
+]
+
+[[package]]
 name = "mshv-ioctls"
 version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1339723fe3a26baf4041459de20ad923e89d312c3bb25dbf9f60738c22a47f5e"
 dependencies = [
  "libc",
- "mshv-bindings",
+ "mshv-bindings 0.6.8",
+ "thiserror",
+ "vmm-sys-util",
+]
+
+[[package]]
+name = "mshv-ioctls"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c30d1b5b76a709e30b46248f52bbb44dde04a659d6d58255c7f06c88d528d210"
+dependencies = [
+ "libc",
+ "mshv-bindings 0.7.1",
  "thiserror",
  "vmm-sys-util",
 ]
@@ -3507,7 +3657,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3880,12 +4030,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc4592f674ce18521c2a81483873a49596655b179f71c5e05d10c1fe66c78745"
 dependencies = [
  "bitflags 2.13.2",
- "cap-fs-ext",
+ "cap-fs-ext 3.4.5",
  "cap-std 3.4.5",
  "fd-lock",
  "io-lifetimes 2.0.4",
  "rustix 0.38.44",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
  "winx",
 ]
 
@@ -4829,7 +4979,7 @@ dependencies = [
  "async-trait",
  "bitflags 2.13.2",
  "bytes",
- "cap-fs-ext",
+ "cap-fs-ext 3.4.5",
  "cap-net-ext",
  "cap-rand",
  "cap-std 3.4.5",
@@ -5117,15 +5267,6 @@ dependencies = [
 
 [[package]]
 name = "windows-sys"
-version = "0.59.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
-dependencies = [
- "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "windows-sys"
 version = "0.60.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2f500e4d28234f72040990ec9d39e3a6b950f9f22d3dba18416c35882612bcb"
@@ -5305,7 +5446,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f3fd376f71958b862e7afb20cfe5a22830e1963462f3a17f49d82a6c1d1f42d"
 dependencies = [
  "bitflags 2.13.2",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

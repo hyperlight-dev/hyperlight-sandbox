@@ -16,6 +16,7 @@ crate-type = ["cdylib", "rlib"]
 hyperlight-sandbox.workspace = true
 hyperlight-wasm-sandbox.workspace = true
 hyperlight-javascript-sandbox.workspace = true
+hyperlight-unikraft-sandbox.workspace = true
 anyhow = "1"
 libc = "0.2"
 log = "0.4"

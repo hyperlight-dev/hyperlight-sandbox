@@ -1,6 +1,8 @@
 """Regression tests for Python network permission validation."""
 
 import multiprocessing
+import os
+import sys
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -29,6 +31,19 @@ def _serve(connection):
             server.handle_request()
 
 
+def _unikraft_available():
+    """Whether the unikraft backend can run here: installed, its python image
+    in the hluk cache, and a hypervisor. Like its Rust end-to-end tests, the
+    cases skip themselves otherwise."""
+    try:
+        Sandbox(backend="unikraft", module="python")
+    except (ImportError, RuntimeError):
+        return False
+    if sys.platform == "linux":
+        return os.path.exists("/dev/kvm") or os.path.exists("/dev/mshv")
+    return sys.platform == "win32"
+
+
 class TestPendingNetworkPermissions(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -46,7 +61,7 @@ class TestPendingNetworkPermissions(unittest.TestCase):
         cls.server_process.close()
 
     def backend_cases(self):
-        return {
+        cases = {
             "wasm": {
                 "get": f"print(http_get('{self.url}')['status'])",
                 "plain": "print('plain')",
@@ -56,11 +71,18 @@ class TestPendingNetworkPermissions(unittest.TestCase):
                 "plain": "console.log('plain');",
             },
         }
+        if _unikraft_available():
+            cases["unikraft"] = {
+                "get": f"print(http_get('{self.url}')['status'])",
+                "plain": "print('plain')",
+                "options": {"module": "python"},
+            }
+        return cases
 
     def test_valid_queued_rule_works_on_first_run(self):
         for backend, code in self.backend_cases().items():
             with self.subTest(backend=backend):
-                sandbox = Sandbox(backend=backend)
+                sandbox = Sandbox(backend=backend, **code.get("options", {}))
                 sandbox.allow_domain(self.url, methods=["GET"])
 
                 result = sandbox.run(code["get"])
@@ -70,7 +92,7 @@ class TestPendingNetworkPermissions(unittest.TestCase):
     def test_invalid_queued_method_does_not_discard_valid_rule(self):
         for backend, code in self.backend_cases().items():
             with self.subTest(backend=backend):
-                sandbox = Sandbox(backend=backend)
+                sandbox = Sandbox(backend=backend, **code.get("options", {}))
                 sandbox.allow_domain(self.url, methods=["GET"])
 
                 with self.assertRaisesRegex(RuntimeError, "invalid HTTP method: PROPFIND"):
@@ -87,7 +109,7 @@ class TestPendingNetworkPermissions(unittest.TestCase):
     def test_invalid_method_is_rejected_after_initialization(self):
         for backend, code in self.backend_cases().items():
             with self.subTest(backend=backend):
-                sandbox = Sandbox(backend=backend)
+                sandbox = Sandbox(backend=backend, **code.get("options", {}))
 
                 result = sandbox.run(code["plain"])
                 self.assertEqual(result.exit_code, 0, result.stderr)

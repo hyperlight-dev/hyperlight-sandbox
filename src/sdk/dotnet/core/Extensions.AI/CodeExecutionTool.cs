@@ -40,6 +40,9 @@ public sealed class CodeExecutionTool : IDisposable
     private const string WasmInitializationCode = "None";
     private const string JavaScriptInitializationCode = "void 0;";
 
+    // The Unikraft guest runs CPython, like the Wasm Python guest.
+    private const string UnikraftInitializationCode = "None";
+
     private readonly Api.Sandbox _sandbox;
     private readonly string _initializationCode;
     private Api.SandboxSnapshot? _snapshot;
@@ -231,6 +234,7 @@ public sealed class CodeExecutionTool : IDisposable
     {
         Api.SandboxBackend.Wasm => WasmInitializationCode,
         Api.SandboxBackend.JavaScript => JavaScriptInitializationCode,
+        Api.SandboxBackend.Unikraft => UnikraftInitializationCode,
         _ => throw new ArgumentOutOfRangeException(nameof(backend), backend, "Unknown sandbox backend."),
     };
 }

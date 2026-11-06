@@ -34,6 +34,7 @@ Example dependency sets:
 - `Sandbox(backend="wasm", module="python_guest.path")` requires `hyperlight-sandbox[wasm,python_guest]`
 - `Sandbox(backend="wasm", module="javascript_guest.path")` requires `hyperlight-sandbox[wasm,javascript_guest]`
 - `Sandbox(backend="hyperlight-js")` requires `hyperlight-sandbox[hyperlight_js]`
+- `Sandbox(backend="unikraft")` requires `hyperlight-sandbox[unikraft]` and a rootfs image the `hluk` CLI has cached (`module="agent"` by default), or `module_path=` to one
 
 Use `Sandbox(backend="wasm", module="javascript_guest.path")` to run the
 packaged JavaScript Wasm guest package.

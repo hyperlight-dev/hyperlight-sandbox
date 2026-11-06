@@ -20,11 +20,13 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use anyhow::{Context, Result};
+use cap_fs_ext::{DirExt, SystemTimeSpec};
 use cap_std::ambient_authority;
 use cap_std::fs::Dir as CapDir;
 
@@ -64,6 +66,22 @@ impl fmt::Display for FsError {
 }
 
 impl std::error::Error for FsError {}
+
+/// As a guest's own file calls would see it, for [`CapFs`]'s path
+/// operations.
+impl From<FsError> for io::Error {
+    fn from(error: FsError) -> Self {
+        let kind = match error {
+            FsError::BadDescriptor | FsError::NoEntry => io::ErrorKind::NotFound,
+            FsError::NotPermitted => io::ErrorKind::PermissionDenied,
+            FsError::InvalidPath => io::ErrorKind::InvalidInput,
+            FsError::FileTooLarge | FsError::Overflow => io::ErrorKind::FileTooLarge,
+            FsError::QuotaExceeded => io::ErrorKind::QuotaExceeded,
+            FsError::Io(message) => return io::Error::other(message),
+        };
+        io::Error::new(kind, error)
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Filesystem limits
@@ -151,6 +169,52 @@ pub enum DescriptorType {
 pub struct DescriptorStat {
     pub descriptor_type: DescriptorType,
     pub size: u64,
+    /// Last access, modification and status change, where the host
+    /// keeps them.
+    pub accessed: Option<SystemTime>,
+    pub modified: Option<SystemTime>,
+    pub changed: Option<SystemTime>,
+}
+
+impl DescriptorStat {
+    fn of(metadata: &cap_std::fs::Metadata) -> Self {
+        let time = |t: io::Result<cap_std::time::SystemTime>| t.ok().map(|t| t.into_std());
+        Self {
+            descriptor_type: if metadata.is_dir() {
+                DescriptorType::Directory
+            } else {
+                DescriptorType::RegularFile
+            },
+            size: metadata.len(),
+            accessed: time(metadata.accessed()),
+            modified: time(metadata.modified()),
+            changed: changed(metadata),
+        }
+    }
+}
+
+/// The status change time of `metadata`; hosts other than Unix keep none.
+#[cfg(unix)]
+fn changed(metadata: &cap_std::fs::Metadata) -> Option<SystemTime> {
+    use std::time::{Duration, UNIX_EPOCH};
+
+    use cap_std::fs::MetadataExt;
+
+    // Before the epoch, stat gives negative seconds and positive
+    // nanoseconds.
+    let (secs, nanos) = (metadata.ctime(), u32::try_from(metadata.ctime_nsec()).ok()?);
+    if secs >= 0 {
+        UNIX_EPOCH.checked_add(Duration::new(secs.unsigned_abs(), nanos))
+    } else {
+        UNIX_EPOCH
+            .checked_sub(Duration::from_secs(secs.unsigned_abs()))?
+            .checked_add(Duration::from_nanos(nanos.into()))
+    }
+}
+
+#[cfg(not(unix))]
+fn changed(_: &cap_std::fs::Metadata) -> Option<SystemTime> {
+    None
 }
 
 /// Effective permissions reported for a descriptor.
@@ -228,6 +292,19 @@ impl Dir {
     }
 }
 
+/// Whether two metadata are of the same file, where that can be told.
+#[cfg(unix)]
+fn same_file(a: &cap_std::fs::Metadata, b: &cap_std::fs::Metadata) -> Option<bool> {
+    use cap_std::fs::MetadataExt;
+
+    Some((a.dev(), a.ino()) == (b.dev(), b.ino()))
+}
+
+#[cfg(not(unix))]
+fn same_file(_: &cap_std::fs::Metadata, _: &cap_std::fs::Metadata) -> Option<bool> {
+    None
+}
+
 // ---------------------------------------------------------------------------
 // Internal types
 // ---------------------------------------------------------------------------
@@ -267,6 +344,10 @@ struct PreopenEntry {
 struct FilesystemUsage {
     logical_bytes: u64,
     file_count: usize,
+    // Entries of every kind, directories too, whatever the limits: what
+    // the output scan walks, kept by the path operations so a guest
+    // cannot make more than it can walk.
+    entries: usize,
 }
 
 /// Capability-based virtual filesystem.
@@ -478,6 +559,9 @@ impl CapFs {
                 None => anyhow::anyhow!("failed to write output file {key}: {error}"),
             });
         }
+        if !existed {
+            self.output_usage.entries += 1;
+        }
         self.apply_mutation(old_size, new_size, !existed)
             .map_err(|error| anyhow::anyhow!(error))?;
         Ok(())
@@ -670,12 +754,18 @@ impl CapFs {
             return Ok(DescriptorStat {
                 descriptor_type: DescriptorType::Directory,
                 size: 0,
+                accessed: None,
+                modified: None,
+                changed: None,
             });
         }
         if let Some(size) = self.file_size(fd) {
             return Ok(DescriptorStat {
                 descriptor_type: DescriptorType::RegularFile,
                 size,
+                accessed: None,
+                modified: None,
+                changed: None,
             });
         }
         Err(FsError::BadDescriptor)
@@ -688,15 +778,7 @@ impl CapFs {
             return Err(FsError::NotPermitted);
         }
         let metadata = dir.cap_std().metadata(path).map_err(|_| FsError::NoEntry)?;
-        let descriptor_type = if metadata.is_dir() {
-            DescriptorType::Directory
-        } else {
-            DescriptorType::RegularFile
-        };
-        Ok(DescriptorStat {
-            descriptor_type,
-            size: metadata.len(),
-        })
+        Ok(DescriptorStat::of(&metadata))
     }
 
     /// Get the effective permission flags for a descriptor.
@@ -1104,6 +1186,395 @@ impl CapFs {
     }
 
     // -----------------------------------------------------------------------
+    // Path operations
+    // -----------------------------------------------------------------------
+    //
+    // For a guest with a filesystem of its own, which asks the host for
+    // each operation by path rather than through WASI descriptors (a
+    // hyperlight-unikraft guest's hostfs mounts). Paths are relative to
+    // the directory registered at `guest_root` ("/input", "/output"),
+    // `/`-separated, the empty path being that directory. The rules of the
+    // descriptor operations apply, before the host directory is touched:
+    // its permissions, and for the output the filesystem limits and no
+    // links. Errors are the ones the guest's file calls should see.
+
+    /// Maximum entries in one directory listing, as for directory streams.
+    const MAX_LIST_ENTRIES: usize = Self::MAX_DIR_ENTRIES;
+
+    /// The directory registered at `guest_root`, and whether it is the
+    /// output (the one the limits are kept for), once `path` is known to
+    /// stay in it as written.
+    fn path_dir(&self, guest_root: &str, path: &str) -> io::Result<(Dir, bool)> {
+        // cap-std refuses what escapes the directory; this refuses what
+        // only reads differently on another host (`\`, `:` on Windows)
+        // and what the output scan could not walk.
+        if !path.is_empty() {
+            let mut depth = 0usize;
+            for component in path.split('/') {
+                depth += 1;
+                if component.is_empty()
+                    || component == "."
+                    || component == ".."
+                    || component.contains(['\\', '\0'])
+                    || (cfg!(windows) && component.contains(':'))
+                    || depth > Self::MAX_SCAN_DEPTH
+                {
+                    return Err(FsError::InvalidPath.into());
+                }
+            }
+        }
+        let (fd, entry) = self
+            .preopen_dirs
+            .iter()
+            .find(|(_, e)| e.guest_path == guest_root)
+            .ok_or(FsError::NoEntry)?;
+        Ok((entry.dir.clone(), self.output_fd == Some(*fd)))
+    }
+
+    /// Not permitted unless `allowed`.
+    fn permit(allowed: bool) -> io::Result<()> {
+        if allowed {
+            Ok(())
+        } else {
+            Err(FsError::NotPermitted.into())
+        }
+    }
+
+    /// Metadata of a path.
+    ///
+    /// Allowed when the directory may be read or changed: a guest's own
+    /// filesystem looks a path up before it creates or writes it, so a
+    /// write-only output needs this much. File contents still need
+    /// `FilePerms::READ`.
+    pub fn stat_path(&self, guest_root: &str, path: &str) -> io::Result<DescriptorStat> {
+        let (dir, _) = self.path_dir(guest_root, path)?;
+        Self::permit(dir.perms().intersects(DirPerms::READ | DirPerms::MUTATE))?;
+        let metadata = if path.is_empty() {
+            dir.cap_std().dir_metadata()?
+        } else {
+            dir.cap_std().metadata(path)?
+        };
+        Ok(DescriptorStat::of(&metadata))
+    }
+
+    /// Read into `buf` from `offset`; fewer bytes than `buf` holds means
+    /// the end of the file.
+    pub fn read_path(
+        &self,
+        guest_root: &str,
+        path: &str,
+        offset: u64,
+        buf: &mut [u8],
+    ) -> io::Result<usize> {
+        let (dir, _) = self.path_dir(guest_root, path)?;
+        Self::permit(dir.file_perms().contains(FilePerms::READ))?;
+        // Only regular files: opening a FIFO the host left would block the
+        // host call, with this `CapFs` locked.
+        if !dir.cap_std().metadata(path)?.is_file() {
+            return Err(FsError::NotPermitted.into());
+        }
+        let mut file = dir.cap_std().open(path)?;
+        file.seek(SeekFrom::Start(offset))?;
+        let mut filled = 0;
+        while filled < buf.len() {
+            match file.read(&mut buf[filled..]) {
+                Ok(0) => break,
+                Ok(n) => filled += n,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(filled)
+    }
+
+    /// Write `data` at `offset`, or at the end for `None`, creating the
+    /// file when the directory may be changed.
+    pub fn write_path(
+        &mut self,
+        guest_root: &str,
+        path: &str,
+        offset: Option<u64>,
+        data: &[u8],
+    ) -> io::Result<()> {
+        let (dir, output) = self.path_dir(guest_root, path)?;
+        Self::permit(dir.file_perms().contains(FilePerms::WRITE))?;
+        let len = u64::try_from(data.len()).map_err(|_| FsError::Overflow)?;
+        let mut opts = cap_std::fs::OpenOptions::new();
+        opts.read(true).write(true);
+        let (mut file, old_size) = match dir.cap_std().open_with(path, &opts) {
+            Ok(file) => {
+                let metadata = file.metadata()?;
+                if output {
+                    Self::refuse_links(&dir, path, metadata.clone())?;
+                }
+                (file, Some(metadata.len()))
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                Self::permit(dir.perms().contains(DirPerms::MUTATE))?;
+                let end = offset
+                    .unwrap_or(0)
+                    .checked_add(len)
+                    .ok_or(FsError::Overflow)?;
+                // Checked before the file exists, so a refused write
+                // leaves nothing behind.
+                if output {
+                    self.reserve_entry()?;
+                    self.validate_mutation(0, end, true)?;
+                }
+                opts.create_new(true);
+                let file = dir.cap_std().open_with(path, &opts)?;
+                if output {
+                    self.output_usage.entries += 1;
+                }
+                (file, None)
+            }
+            Err(error) => return Err(error),
+        };
+        let size = old_size.unwrap_or(0);
+        let at = offset.unwrap_or(size);
+        let new_size = size.max(at.checked_add(len).ok_or(FsError::Overflow)?);
+        if output && old_size.is_some() {
+            self.validate_mutation(size, new_size, false)?;
+        }
+        let written = file
+            .seek(SeekFrom::Start(at))
+            .and_then(|_| file.write_all(data));
+        if output {
+            match written {
+                Ok(()) => self.apply_mutation(size, new_size, old_size.is_none())?,
+                Err(_) => {
+                    let _ = self.resynchronize_output();
+                }
+            }
+        }
+        written
+    }
+
+    /// Make a directory.
+    pub fn create_dir_path(&mut self, guest_root: &str, path: &str) -> io::Result<()> {
+        let (dir, output) = self.path_dir(guest_root, path)?;
+        Self::permit(dir.perms().contains(DirPerms::MUTATE))?;
+        if output {
+            self.ensure_accounting_valid()?;
+            self.reserve_entry()?;
+        }
+        dir.cap_std().create_dir(path)?;
+        if output {
+            self.output_usage.entries += 1;
+        }
+        Ok(())
+    }
+
+    /// Remove a file or an empty directory.
+    pub fn remove_path(&mut self, guest_root: &str, path: &str) -> io::Result<()> {
+        let (dir, output) = self.path_dir(guest_root, path)?;
+        Self::permit(dir.perms().contains(DirPerms::MUTATE))?;
+        let metadata = dir.cap_std().symlink_metadata(path)?;
+        if metadata.is_dir() {
+            dir.cap_std().remove_dir(path)?;
+        } else {
+            dir.cap_std().remove_file(path)?;
+        }
+        if output {
+            self.release_entry(&dir, path, &metadata);
+        }
+        Ok(())
+    }
+
+    /// Set a file's length.
+    pub fn truncate_path(&mut self, guest_root: &str, path: &str, len: u64) -> io::Result<()> {
+        let (dir, output) = self.path_dir(guest_root, path)?;
+        Self::permit(dir.file_perms().contains(FilePerms::WRITE))?;
+        // Only regular files: opening a FIFO for writing would block.
+        if !dir.cap_std().metadata(path)?.is_file() {
+            return Err(FsError::NotPermitted.into());
+        }
+        let file = dir
+            .cap_std()
+            .open_with(path, cap_std::fs::OpenOptions::new().write(true))?;
+        let metadata = file.metadata()?;
+        let size = metadata.len();
+        if output {
+            Self::refuse_links(&dir, path, metadata)?;
+            self.validate_mutation(size, len, false)?;
+        }
+        let truncated = file.set_len(len);
+        if output {
+            match truncated {
+                Ok(()) => self.apply_mutation(size, len, false)?,
+                Err(_) => {
+                    let _ = self.resynchronize_output();
+                }
+            }
+        }
+        truncated
+    }
+
+    /// Set the access and modification times, those that are `Some`: a
+    /// file's under `FilePerms::WRITE`, a directory's under
+    /// `DirPerms::MUTATE`.
+    pub fn set_times_path(
+        &self,
+        guest_root: &str,
+        path: &str,
+        accessed: Option<SystemTime>,
+        modified: Option<SystemTime>,
+    ) -> io::Result<()> {
+        let (dir, output) = self.path_dir(guest_root, path)?;
+        let at = if path.is_empty() { "." } else { path };
+        let metadata = dir.cap_std().metadata(at)?;
+        if metadata.is_dir() {
+            Self::permit(dir.perms().contains(DirPerms::MUTATE))?;
+        } else {
+            Self::permit(dir.file_perms().contains(FilePerms::WRITE))?;
+            // A hard link's times are those of a file outside output.
+            if output {
+                Self::refuse_links(&dir, path, metadata)?;
+            }
+        }
+        let spec = |t: Option<SystemTime>| {
+            t.map(|t| SystemTimeSpec::Absolute(cap_std::time::SystemTime::from_std(t)))
+        };
+        dir.cap_std().set_times(at, spec(accessed), spec(modified))
+    }
+
+    /// A directory's entries: each name, and whether it is a directory.
+    pub fn list_path(&self, guest_root: &str, path: &str) -> io::Result<Vec<(String, bool)>> {
+        let (dir, _) = self.path_dir(guest_root, path)?;
+        Self::permit(dir.perms().contains(DirPerms::READ))?;
+        let entries = if path.is_empty() {
+            dir.cap_std().entries()?
+        } else {
+            dir.cap_std().read_dir(path)?
+        };
+        let mut listed = Vec::new();
+        for entry in entries {
+            let entry = entry?;
+            if listed.len() >= Self::MAX_LIST_ENTRIES {
+                return Err(io::Error::other("directory listing exceeds entry limit"));
+            }
+            let name = entry.file_name();
+            // As `stat_path` sees it: a link (the host's) by its target.
+            let is_dir = match entry.file_type() {
+                Ok(ft) if ft.is_symlink() => {
+                    let at = Path::new(path).join(&name);
+                    dir.cap_std().metadata(at).is_ok_and(|m| m.is_dir())
+                }
+                ft => ft.is_ok_and(|ft| ft.is_dir()),
+            };
+            listed.push((name.to_string_lossy().into_owned(), is_dir));
+        }
+        Ok(listed)
+    }
+
+    /// Rename `from` to `to`, replacing what `to` names as the host's
+    /// rename would.
+    pub fn rename_path(&mut self, guest_root: &str, from: &str, to: &str) -> io::Result<()> {
+        let (dir, output) = self.path_dir(guest_root, from)?;
+        self.path_dir(guest_root, to)?;
+        Self::permit(dir.perms().contains(DirPerms::MUTATE))?;
+        if from.is_empty() || to.is_empty() {
+            return Err(FsError::InvalidPath.into());
+        }
+        if output {
+            self.ensure_accounting_valid()?;
+        }
+        let source = dir.cap_std().symlink_metadata(from)?;
+        // A directory moved deeper takes its own depth with it: what it
+        // holds must still be within what the output scan walks.
+        if source.is_dir() {
+            let depth = to.split('/').count();
+            let room = Self::MAX_SCAN_DEPTH.saturating_sub(depth);
+            if !Self::height_within(&dir.cap_std().open_dir(from)?, room)? {
+                return Err(FsError::InvalidPath.into());
+            }
+        }
+        let replaced = dir.cap_std().symlink_metadata(to).ok();
+        dir.cap_std().rename(from, dir.cap_std(), to)?;
+        if output && let Some(replaced) = replaced {
+            match same_file(&source, &replaced) {
+                // Renamed onto itself: nothing changed.
+                Some(true) => {}
+                // Renamed over another, which is gone.
+                Some(false) => self.release_entry(&dir, to, &replaced),
+                // Not knowable here (a case-only rename, say): count again.
+                None => {
+                    let _ = self.resynchronize_output();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether nothing in `dir` is more than `room` levels below it,
+    /// walking no more than the output scan would.
+    fn height_within(dir: &CapDir, room: usize) -> io::Result<bool> {
+        Self::height_within_from(dir, room, &mut 0)
+    }
+
+    // Depth first, so at most `room` (64) directories are open at a
+    // time, not every one found.
+    fn height_within_from(dir: &CapDir, room: usize, visited: &mut usize) -> io::Result<bool> {
+        for entry in dir.entries()? {
+            let entry = entry?;
+            *visited += 1;
+            if *visited > Self::MAX_SCAN_ENTRIES {
+                return Ok(false);
+            }
+            if entry.file_type()?.is_dir()
+                && (room == 0
+                    || !Self::height_within_from(
+                        &dir.open_dir(entry.file_name())?,
+                        room - 1,
+                        visited,
+                    )?)
+            {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    /// Refuse an output file with another link, which may be outside it.
+    fn refuse_links(dir: &Dir, path: &str, metadata: cap_std::fs::Metadata) -> io::Result<()> {
+        Self::validated_output_metadata(dir.cap_std(), std::ffi::OsStr::new(path), metadata)
+            .map(drop)
+            .map_err(|error| io::Error::new(io::ErrorKind::PermissionDenied, error))
+    }
+
+    /// Refuse an output entry past what the output scan walks.
+    fn reserve_entry(&self) -> io::Result<()> {
+        if self.output_usage.entries >= Self::MAX_SCAN_ENTRIES {
+            return Err(FsError::QuotaExceeded.into());
+        }
+        Ok(())
+    }
+
+    /// Account for the output entry `path` was, as `metadata` saw it,
+    /// now gone.
+    fn release_entry(&mut self, dir: &Dir, path: &str, metadata: &cap_std::fs::Metadata) {
+        self.output_usage.entries = self.output_usage.entries.saturating_sub(1);
+        if !metadata.is_file() || self.limits.is_unlimited() {
+            return;
+        }
+        // A file with another link keeps its bytes: count again.
+        let linked = Self::refuse_links(dir, path, metadata.clone()).is_err();
+        match (
+            self.output_usage.logical_bytes.checked_sub(metadata.len()),
+            self.output_usage.file_count.checked_sub(1),
+        ) {
+            (Some(bytes), Some(count)) if !linked => {
+                self.output_usage.logical_bytes = bytes;
+                self.output_usage.file_count = count;
+            }
+            // Or the accounting was off.
+            _ => {
+                let _ = self.resynchronize_output();
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Internals
     // -----------------------------------------------------------------------
 
@@ -1220,7 +1691,24 @@ impl CapFs {
     }
 
     fn resynchronize_output(&mut self) -> Result<()> {
-        let usage = match self.scan_output_usage() {
+        self.resynchronize_output_with(false)
+    }
+
+    /// Rescan the output directory after the guest wrote it directly, not
+    /// through this `CapFs`, and check it against the same rules: the
+    /// filesystem limits, no symbolic or hard links, the traversal depth
+    /// and entry bounds, and, since nothing else could have made one, no
+    /// special files (FIFOs, sockets, devices). The quota accounting is
+    /// brought up to date on success.
+    ///
+    /// For backends whose guest writes a host directory itself, such as
+    /// through a mount.
+    pub fn validate_output(&mut self) -> Result<()> {
+        self.resynchronize_output_with(true)
+    }
+
+    fn resynchronize_output_with(&mut self, refuse_special: bool) -> Result<()> {
+        let usage = match self.scan_output_usage(refuse_special) {
             Ok(usage) => usage,
             Err(error) => {
                 self.accounting_valid = false;
@@ -1253,7 +1741,7 @@ impl CapFs {
     const MAX_SCAN_ENTRIES: usize = 100_000;
     const MAX_SCAN_DEPTH: usize = 64;
 
-    fn scan_output_usage(&self) -> Result<FilesystemUsage> {
+    fn scan_output_usage(&self, refuse_special: bool) -> Result<FilesystemUsage> {
         let Some(output_fd) = self.output_fd else {
             return Ok(FilesystemUsage::default());
         };
@@ -1263,7 +1751,14 @@ impl CapFs {
             .ok_or_else(|| anyhow::anyhow!("output directory capability is missing"))?;
         let mut usage = FilesystemUsage::default();
         let mut visited = 0usize;
-        self.scan_output_dir(output.dir.cap_std(), 0, &mut visited, &mut usage)?;
+        self.scan_output_dir(
+            output.dir.cap_std(),
+            0,
+            &mut visited,
+            &mut usage,
+            refuse_special,
+        )?;
+        usage.entries = visited;
         Ok(usage)
     }
 
@@ -1273,6 +1768,7 @@ impl CapFs {
         depth: usize,
         visited: &mut usize,
         usage: &mut FilesystemUsage,
+        refuse_special: bool,
     ) -> Result<()> {
         if depth > Self::MAX_SCAN_DEPTH {
             anyhow::bail!("output directory exceeds maximum traversal depth");
@@ -1296,7 +1792,7 @@ impl CapFs {
                 let child = dir
                     .open_dir(&name)
                     .context("failed to open nested output directory")?;
-                self.scan_output_dir(&child, depth + 1, visited, usage)?;
+                self.scan_output_dir(&child, depth + 1, visited, usage, refuse_special)?;
             } else if metadata.is_file() {
                 let metadata = Self::validated_output_metadata(dir, &name, metadata)?;
                 if let Some(max_file_size) = self.limits.max_file_size
@@ -1311,6 +1807,8 @@ impl CapFs {
                         .ok_or(FsError::Overflow)?;
                     usage.file_count = usage.file_count.checked_add(1).ok_or(FsError::Overflow)?;
                 }
+            } else if refuse_special {
+                anyhow::bail!("special files are not supported in output directories");
             }
         }
         Ok(())
@@ -1881,6 +2379,30 @@ mod tests {
                 )
                 .is_err()
         );
+    }
+
+    #[test]
+    fn validate_output_checks_what_the_guest_wrote_directly() {
+        let (mut fs, output) = limited_output_fs(8, 32, 4);
+        fs.validate_output().unwrap();
+        host_write_output(&output, "ok.bin", b"data");
+        fs.validate_output().unwrap();
+        host_write_output(&output, "big.bin", b"0123456789");
+        assert!(fs.validate_output().is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn validate_output_refuses_special_files() {
+        let (mut fs, output) = limited_output_fs(8, 32, 4);
+        let made = std::process::Command::new("mkfifo")
+            .arg(output.path().join("pipe"))
+            .status()
+            .unwrap();
+        assert!(made.success());
+        assert!(fs.validate_output().is_err());
+        // The scan for writes made through CapFs leaves them alone.
+        assert!(fs.resynchronize_output().is_ok());
     }
 
     #[test]
@@ -2594,6 +3116,316 @@ mod tests {
         assert_eq!(
             fs.alloc_handle(),
             Err(FsError::Io("file descriptor handle space exhausted".into()))
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Path operations
+    // -----------------------------------------------------------------------
+
+    fn kind<T: std::fmt::Debug>(result: io::Result<T>) -> io::ErrorKind {
+        result.unwrap_err().kind()
+    }
+
+    #[test]
+    fn paths_reach_nested_directories() {
+        let (mut fs, _input, output) = test_fs();
+        fs.create_dir_path("/output", "a").unwrap();
+        fs.create_dir_path("/output", "a/b").unwrap();
+        fs.write_path("/output", "a/b/f.txt", None, b"hello")
+            .unwrap();
+        fs.write_path("/output", "a/b/f.txt", None, b" world")
+            .unwrap();
+        fs.write_path("/output", "a/b/f.txt", Some(0), b"J")
+            .unwrap();
+        assert_eq!(
+            std::fs::read(output.path().join("a/b/f.txt")).unwrap(),
+            b"Jello world"
+        );
+
+        let mut buf = [0u8; 64];
+        let n = fs.read_path("/output", "a/b/f.txt", 6, &mut buf).unwrap();
+        assert_eq!(&buf[..n], b"world");
+        let stat = fs.stat_path("/output", "a/b/f.txt").unwrap();
+        assert_eq!(stat.descriptor_type, DescriptorType::RegularFile);
+        assert_eq!(stat.size, 11);
+        assert_eq!(
+            fs.stat_path("/output", "").unwrap().descriptor_type,
+            DescriptorType::Directory
+        );
+        assert_eq!(
+            fs.list_path("/output", "a").unwrap(),
+            vec![("b".to_string(), true)]
+        );
+
+        fs.rename_path("/output", "a/b/f.txt", "g.txt").unwrap();
+        assert_eq!(
+            kind(fs.remove_path("/output", "a")),
+            io::ErrorKind::DirectoryNotEmpty
+        );
+        fs.remove_path("/output", "a/b").unwrap();
+        fs.remove_path("/output", "a").unwrap();
+        fs.truncate_path("/output", "g.txt", 2).unwrap();
+        assert_eq!(std::fs::read(output.path().join("g.txt")).unwrap(), b"Je");
+    }
+
+    #[test]
+    fn paths_that_leave_or_misread_the_directory_are_refused() {
+        let (mut fs, _input, _output) = test_fs();
+        for path in ["..", "a/../b", "./a", "a//b", "a/", "/a", "a\\b", "a\0b"] {
+            assert_eq!(
+                kind(fs.write_path("/output", path, None, b"x")),
+                io::ErrorKind::InvalidInput,
+                "{path:?}"
+            );
+        }
+        let deep = vec!["d"; CapFs::MAX_SCAN_DEPTH + 1].join("/");
+        assert_eq!(
+            kind(fs.create_dir_path("/output", &deep)),
+            io::ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            kind(fs.stat_path("/elsewhere", "")),
+            io::ErrorKind::NotFound
+        );
+        assert_eq!(
+            kind(fs.rename_path("/output", "", "x")),
+            io::ErrorKind::InvalidInput
+        );
+    }
+
+    #[test]
+    fn input_paths_are_read_only() {
+        let (mut fs, input, _output) = test_fs();
+        host_write_input(&input, "data.txt", b"in");
+        let mut buf = [0u8; 8];
+        assert_eq!(fs.read_path("/input", "data.txt", 0, &mut buf).unwrap(), 2);
+        assert_eq!(
+            kind(fs.write_path("/input", "data.txt", None, b"x")),
+            io::ErrorKind::PermissionDenied
+        );
+        assert_eq!(
+            kind(fs.write_path("/input", "new.txt", None, b"x")),
+            io::ErrorKind::PermissionDenied
+        );
+        assert_eq!(
+            kind(fs.create_dir_path("/input", "d")),
+            io::ErrorKind::PermissionDenied
+        );
+        assert_eq!(
+            kind(fs.remove_path("/input", "data.txt")),
+            io::ErrorKind::PermissionDenied
+        );
+        assert_eq!(
+            kind(fs.truncate_path("/input", "data.txt", 0)),
+            io::ErrorKind::PermissionDenied
+        );
+        assert_eq!(
+            kind(fs.rename_path("/input", "data.txt", "x")),
+            io::ErrorKind::PermissionDenied
+        );
+        assert!(input.path().join("data.txt").exists());
+        assert!(!input.path().join("new.txt").exists());
+    }
+
+    #[test]
+    fn path_writes_are_held_to_the_limits_before_they_happen() {
+        let (mut fs, output) = limited_output_fs(8, 12, 2);
+        assert_eq!(
+            kind(fs.write_path("/output", "big", None, &[0; 9])),
+            io::ErrorKind::FileTooLarge
+        );
+        assert!(
+            !output.path().join("big").exists(),
+            "a refused write creates nothing"
+        );
+
+        fs.write_path("/output", "a", None, &[0; 8]).unwrap();
+        assert_eq!(
+            kind(fs.write_path("/output", "a", Some(4), &[0; 5])),
+            io::ErrorKind::FileTooLarge
+        );
+        // Rewriting in place grows nothing.
+        fs.write_path("/output", "a", Some(0), &[1; 8]).unwrap();
+        fs.write_path("/output", "b", None, &[0; 4]).unwrap();
+        assert_eq!(
+            kind(fs.write_path("/output", "b", None, &[0; 1])),
+            io::ErrorKind::QuotaExceeded
+        );
+        assert_eq!(
+            kind(fs.truncate_path("/output", "b", 5)),
+            io::ErrorKind::QuotaExceeded
+        );
+        assert_eq!(
+            kind(fs.write_path("/output", "c", None, b"")),
+            io::ErrorKind::QuotaExceeded
+        );
+        assert_eq!(std::fs::metadata(output.path().join("b")).unwrap().len(), 4);
+
+        // What is removed, truncated or renamed over is given back.
+        fs.truncate_path("/output", "a", 0).unwrap();
+        fs.write_path("/output", "b", None, &[0; 4]).unwrap();
+        fs.rename_path("/output", "b", "a").unwrap();
+        fs.write_path("/output", "c", None, &[0; 4]).unwrap();
+        fs.remove_path("/output", "c").unwrap();
+        fs.write_path("/output", "d", None, &[0; 4]).unwrap();
+        fs.validate_output().unwrap();
+        assert_eq!(fs.output_usage.logical_bytes, 12);
+        assert_eq!(fs.output_usage.file_count, 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_writes_refuse_hard_linked_files() {
+        let (mut fs, output) = limited_output_fs(8, 12, 4);
+        fs.write_path("/output", "a", None, b"x").unwrap();
+        std::fs::hard_link(output.path().join("a"), output.path().join("b")).unwrap();
+        assert_eq!(
+            kind(fs.write_path("/output", "b", None, b"y")),
+            io::ErrorKind::PermissionDenied
+        );
+        assert_eq!(std::fs::read(output.path().join("a")).unwrap(), b"x");
+    }
+
+    #[test]
+    fn directories_cannot_be_moved_past_the_scan_depth() {
+        let (mut fs, _input, _output) = test_fs();
+        let chain = vec!["z"; 40].join("/");
+        fs.create_dir_path("/output", "t").unwrap();
+        fs.create_dir_path("/output", "t/u").unwrap();
+        let mut at = String::new();
+        for component in chain.split('/') {
+            at = if at.is_empty() {
+                component.to_string()
+            } else {
+                format!("{at}/{component}")
+            };
+            fs.create_dir_path("/output", &at).unwrap();
+        }
+        // `t` holds one level: moved under 63 levels, `t/u` would be 65
+        // deep; under 62, it is 64.
+        let deep = vec!["z"; 63].join("/");
+        for component in deep.split('/').skip(40) {
+            at = format!("{at}/{component}");
+            fs.create_dir_path("/output", &at).unwrap();
+        }
+        assert_eq!(
+            kind(fs.rename_path("/output", "t", &format!("{at}/t"))),
+            io::ErrorKind::InvalidInput
+        );
+        let shallower = at.rsplit_once('/').unwrap().0;
+        fs.rename_path("/output", "t", &format!("{shallower}/t"))
+            .unwrap();
+        fs.validate_output().unwrap();
+    }
+
+    #[test]
+    fn output_entries_stop_at_what_the_scan_walks() {
+        let (mut fs, _input, _output) = test_fs();
+        fs.create_dir_path("/output", "d").unwrap();
+        assert_eq!(fs.output_usage.entries, 1);
+        fs.output_usage.entries = CapFs::MAX_SCAN_ENTRIES;
+        assert_eq!(
+            kind(fs.create_dir_path("/output", "e")),
+            io::ErrorKind::QuotaExceeded
+        );
+        assert_eq!(
+            kind(fs.write_path("/output", "f", None, b"x")),
+            io::ErrorKind::QuotaExceeded
+        );
+        fs.remove_path("/output", "d").unwrap();
+        fs.create_dir_path("/output", "e").unwrap();
+        fs.validate_output().unwrap();
+        assert_eq!(fs.output_usage.entries, 1);
+    }
+
+    #[test]
+    fn write_only_output_can_be_written_not_read() {
+        let output = tempfile::tempdir().unwrap();
+        let mut fs = CapFs::new()
+            .with_output_dir(output.path(), DirPerms::MUTATE, FilePerms::WRITE)
+            .unwrap();
+        fs.stat_path("/output", "").unwrap();
+        fs.write_path("/output", "f", None, b"x").unwrap();
+        assert_eq!(fs.stat_path("/output", "f").unwrap().size, 1);
+        let mut buf = [0u8; 4];
+        assert_eq!(
+            kind(fs.read_path("/output", "f", 0, &mut buf)),
+            io::ErrorKind::PermissionDenied
+        );
+        assert_eq!(
+            kind(fs.list_path("/output", "")),
+            io::ErrorKind::PermissionDenied
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn truncate_and_remove_respect_hard_links() {
+        let (mut fs, output) = limited_output_fs(8, 12, 4);
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("precious"), b"keep").unwrap();
+        std::fs::hard_link(outside.path().join("precious"), output.path().join("l")).unwrap();
+        assert_eq!(
+            kind(fs.truncate_path("/output", "l", 0)),
+            io::ErrorKind::PermissionDenied
+        );
+        assert_eq!(
+            std::fs::read(outside.path().join("precious")).unwrap(),
+            b"keep"
+        );
+        // Removing the link leaves the bytes it shared counted for what
+        // still has them, which is nothing in the output.
+        fs.remove_path("/output", "l").unwrap();
+        assert_eq!(fs.output_usage.logical_bytes, 0);
+        assert_eq!(fs.output_usage.file_count, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn special_files_are_not_read() {
+        let (fs, input, _output) = test_fs();
+        let fifo = input.path().join("fifo");
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&fifo)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let mut buf = [0u8; 4];
+        assert_eq!(
+            kind(fs.read_path("/input", "fifo", 0, &mut buf)),
+            io::ErrorKind::PermissionDenied
+        );
+    }
+
+    #[test]
+    fn wide_directories_rename_with_few_handles_open() {
+        let (mut fs, _input, _output) = test_fs();
+        fs.create_dir_path("/output", "w").unwrap();
+        for i in 0..3000 {
+            fs.create_dir_path("/output", &format!("w/{i}")).unwrap();
+        }
+        fs.rename_path("/output", "w", "w2").unwrap();
+        fs.validate_output().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn special_files_are_not_truncated() {
+        let (mut fs, _input, output) = test_fs();
+        let fifo = output.path().join("fifo");
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&fifo)
+                .status()
+                .unwrap()
+                .success()
+        );
+        assert_eq!(
+            kind(fs.truncate_path("/output", "fifo", 0)),
+            io::ErrorKind::PermissionDenied
         );
     }
 }

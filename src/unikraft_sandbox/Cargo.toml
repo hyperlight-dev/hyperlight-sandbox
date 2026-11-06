@@ -1,0 +1,26 @@
+[package]
+name = "hyperlight-unikraft-sandbox"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "hyperlight-unikraft guest for hyperlight-sandbox: full CPython in a Unikraft micro-VM"
+
+[dependencies]
+hyperlight-sandbox.workspace = true
+# The library only: the default `cli` feature pulls in the `hluk` CLI's
+# registry client, TOML and archive dependencies.
+hyperlight-unikraft = { workspace = true }
+anyhow = "1"
+base64 = "0.22"
+cap-std = "4.0.3"
+serde_json = "1"
+url = "2"
+
+[dev-dependencies]
+hyperlight-sandbox = { workspace = true, features = ["test-utils"] }
+serde = { version = "1", features = ["derive"] }
+tempfile = "3"

@@ -12,6 +12,7 @@ members = [
     "src/sdk/python/core",
     "src/sdk/python/wasm_backend",
     "src/sdk/python/hyperlight_js_backend",
+    "src/sdk/python/unikraft_backend",
     "src/sdk/python/wasm_guests/python_guest",
     "src/sdk/python/wasm_guests/javascript_guest",
 ]
@@ -20,6 +21,7 @@ members = [
 hyperlight-sandbox = { workspace = true }
 hyperlight-sandbox-backend-wasm = { workspace = true }
 hyperlight-sandbox-backend-hyperlight-js = { workspace = true }
+hyperlight-sandbox-backend-unikraft = { workspace = true }
 hyperlight-sandbox-python-guest = { workspace = true }
 hyperlight-sandbox-javascript-guest = { workspace = true }
 

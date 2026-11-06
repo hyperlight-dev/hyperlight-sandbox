@@ -1,0 +1,26 @@
+set windows-shell := ["pwsh", "-NoLogo", "-Command"]
+default-target := "debug"
+repo-root := invocation_directory_native()
+
+build target=default-target:
+    cargo build --manifest-path {{repo-root}}/src/unikraft_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }}
+
+# Pull the published rootfs images the examples and tests run on into the
+# hluk CLI's cache (needs `hluk`: https://github.com/hyperlight-dev/hyperlight-unikraft).
+pull-images:
+    hluk run --runtime python --cold --exec "pass"
+    hluk run --runtime agent --cold --exec "pass"
+
+#### EXAMPLES ####
+
+examples target=default-target:
+    cargo run --manifest-path {{repo-root}}/src/unikraft_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --example basics
+
+#### TESTS ####
+
+lint:
+    cargo clippy -p hyperlight-unikraft-sandbox --all-targets -- -D warnings
+
+# The end-to-end tests skip themselves when the images are not cached.
+test:
+    cargo test -p hyperlight-unikraft-sandbox

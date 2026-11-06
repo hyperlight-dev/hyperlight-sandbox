@@ -107,8 +107,32 @@ class GuestBuilder:
             self.wasm / "guests" / "javascript" / "js-sandbox.aot",
         ]
 
+    def tools_context(self):
+        return [platform.system(), platform.machine(), self.version("rustc", "-vV")]
+
+    def cache_keys(self):
+        context = self.tools_context()
+        keys = {
+            "tool-key": fingerprint(self.root, [self.root / "scripts" / "guest_build.py"], context),
+            "guest-key": fingerprint(
+                self.root,
+                self.inputs(),
+                [
+                    *context,
+                    self.version("node", "--version"),
+                    self.version("npm", "--version"),
+                    self.version("uv", "run", "--no-project", "python", "--version"),
+                ],
+            ),
+        }
+        for name, value in keys.items():
+            print(f"{name}={value}", flush=True)
+        if output := os.environ.get("GITHUB_OUTPUT"):
+            with open(output, "a", encoding="utf-8") as file:
+                file.writelines(f"{name}={value}\n" for name, value in keys.items())
+
     def tools(self):
-        context = [platform.system(), platform.machine(), self.version("rustc", "-vV")]
+        context = self.tools_context()
 
         def install():
             for name, version in [("wasm-tools", WASM_TOOLS_VERSION), ("hyperlight-wasm-aot", AOT_VERSION)]:
@@ -147,6 +171,9 @@ class GuestBuilder:
         print("Verified shared guest artifact against checkout and output hashes", flush=True)
 
     def build(self, kind):
+        if kind == "cache-keys":
+            self.cache_keys()
+            return
         if kind == "verify" or os.environ.get("HYPERLIGHT_GUEST_ARTIFACT") == "1":
             self.verify_bundle()
             return
@@ -218,5 +245,5 @@ class GuestBuilder:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=["tools", "wit", "python", "javascript", "all", "verify"])
+    parser.add_argument("kind", choices=["cache-keys", "tools", "wit", "python", "javascript", "all", "verify"])
     GuestBuilder(Path(__file__).resolve().parents[1]).build(parser.parse_args().kind)

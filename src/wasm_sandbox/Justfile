@@ -18,6 +18,10 @@ guest-compile-wit:
 guest-bundle:
     uv run --no-project --python 3.14 python {{repo-root}}/scripts/guest_build.py all
 
+# Include resolved compiler versions in immutable CI cache keys.
+guest-cache-keys:
+    uv run --no-project --python 3.14 python {{repo-root}}/scripts/guest_build.py cache-keys
+
 # Reject artifacts produced from different guest sources or WIT interfaces.
 guest-verify:
     uv run --no-project --python 3.14 python {{repo-root}}/scripts/guest_build.py verify

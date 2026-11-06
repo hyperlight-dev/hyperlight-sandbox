@@ -35,13 +35,18 @@ jobs:
           node-version: "26"
           cache: npm
           cache-dependency-path: src/wasm_sandbox/guests/javascript/package-lock.json
+      - name: Install just
+        run: cargo install --locked just
+      - name: Resolve guest cache keys
+        id: guest-keys
+        run: just wasm guest-cache-keys
       - name: Cache guest compilers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             target/guest-tools
             target/guest-build/tools.json
-          key: guest-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'scripts/guest_build.py') }}
+          key: guest-tools-${{ steps.guest-keys.outputs.tool-key }}
       - name: Cache guest bundle
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
@@ -55,9 +60,7 @@ jobs:
             src/wasm_sandbox/guests/python/python-sandbox.aot
             src/wasm_sandbox/guests/javascript/js-sandbox.wasm
             src/wasm_sandbox/guests/javascript/js-sandbox.aot
-          key: guest-bundle-${{ runner.os }}-${{ hashFiles('scripts/guest_build.py', 'rust-toolchain.toml', 'Cargo.lock', 'pyproject.toml', 'uv.lock', 'src/wasm_sandbox/wit/**/*.wit', 'src/wasm_sandbox/guests/python/*.py', 'src/wasm_sandbox/guests/javascript/*.js', 'src/wasm_sandbox/guests/javascript/package*.json') }}
-      - name: Install just
-        run: cargo install --locked just
+          key: guest-bundle-${{ steps.guest-keys.outputs.guest-key }}
       - name: Install clang
         run: sudo apt-get update && sudo apt-get install -y clang
       - name: Build guests

@@ -22,14 +22,23 @@ class TestInterruption(unittest.TestCase):
             with self.subTest(backend=backend):
                 self._interrupt_and_restore(backend)
 
-    def _interrupt_and_restore(self, backend):
+    def test_pending_host_call_interruption_and_restore(self):
+        for backend in ("wasm", "hyperlight-js"):
+            with self.subTest(backend=backend):
+                attempts = self._interrupt_and_restore(backend, interrupt_during_host_call=True)
+                self.assertEqual(attempts, [False])
+
+    def _interrupt_and_restore(self, backend, interrupt_during_host_call=False):
         sandbox = Sandbox(backend=backend)
         started = threading.Event()
         finished = threading.Event()
+        release = threading.Event()
         attempts = []
 
         def ready() -> bool:
             started.set()
+            if interrupt_during_host_call:
+                return release.wait(5)
             return True
 
         sandbox.register_tool("ready", ready)
@@ -45,7 +54,8 @@ class TestInterruption(unittest.TestCase):
                 return
             while not finished.is_set():
                 attempts.append(handle.kill())
-                if attempts[-1]:
+                release.set()
+                if attempts[-1] or interrupt_during_host_call:
                     return
                 finished.wait(0.01)
 
@@ -66,6 +76,7 @@ class TestInterruption(unittest.TestCase):
                 sandbox.run(code)
         finally:
             finished.set()
+            release.set()
             worker.join(5)
         self.assertFalse(worker.is_alive())
         self.assertIn(True, attempts)
@@ -74,6 +85,7 @@ class TestInterruption(unittest.TestCase):
             sandbox.run(warmup)
         sandbox.restore(snapshot)
         self.assertTrue(sandbox.run(warmup).success)
+        return attempts
 
     def test_interruption_does_not_abort_host_callback(self):
         for backend in ("wasm", "hyperlight-js"):

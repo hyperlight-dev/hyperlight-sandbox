@@ -32,10 +32,11 @@ const outputPath = "js-sandbox.wasm";
 async function build() {
   console.log("Reading source...");
   const source = await readFile(sourcePath, "utf-8");
+  const witWorld = await readFile(witPath, "utf-8");
 
   console.log("Componentizing...");
   const { component, imports } = await componentize(source, {
-    witPath,
+    witWorld,
     worldName: "hyperlight:sandbox/sandbox",
   });
 

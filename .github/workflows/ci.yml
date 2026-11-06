@@ -63,6 +63,8 @@ jobs:
           key: guest-bundle-${{ steps.guest-keys.outputs.guest-key }}
       - name: Install clang
         run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Test JavaScript guest build
+        run: just wasm js-guest-test
       - name: Build guests
         run: just wasm guest-bundle
       - name: Upload guest bundle

@@ -101,6 +101,11 @@ js-guest-build: js-guest-build-wasm js-guest-build-aot
 js-guest-install:
     uv run --no-project --python 3.14 python {{repo-root}}/scripts/guest_build.py javascript
 
+# Test componentization against the installed JavaScript dependencies.
+js-guest-test:
+    cd {{repo-root}}/src/wasm_sandbox/guests/javascript && npm ci
+    cd {{repo-root}}/src/wasm_sandbox/guests/javascript && npm test
+
 build target=default-target: _clean-stale-wasm (guest-build target) (js-guest-build)
     cargo build --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }}
 

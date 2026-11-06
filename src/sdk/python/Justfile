@@ -132,6 +132,17 @@ examples: python-build
 python-sandbox-benchmark: (python-build "release")
     uv run python {{repo-root}}/src/sdk/python/core/examples/benchmark.py
 
+# Benchmark pre-built release wheels without rebuilding; isolate imports from the checkout.
+python-wheelhouse-benchmark python-version="3.14":
+    uv run --isolated --no-project --python {{python-version}} --no-index \
+        --find-links="{{core-dist}}" \
+        --find-links="{{wasm-wheels}}" \
+        --find-links="{{hyperlight-js-wheels}}" \
+        --find-links="{{python-guest-dist}}" \
+        --find-links="{{javascript-guest-dist}}" \
+        --with "hyperlight-sandbox[wasm,hyperlight_js,python_guest,javascript_guest]" \
+        python -I "{{repo-root}}/src/sdk/python/core/examples/benchmark.py"
+
 #### CLEAN ####
 
 clean:
@@ -141,15 +152,15 @@ clean:
 #### LINT / FORMAT ####
 
 lint:
-    uv run ruff check {{repo-root}}/src/sdk/python {{repo-root}}/examples
+    uv run ruff check {{repo-root}}/src/sdk/python {{repo-root}}/examples {{repo-root}}/scripts
 
 fmt:
-    uv run ruff format {{repo-root}}/src/sdk/python {{repo-root}}/examples
-    uv run ruff check --fix {{repo-root}}/src/sdk/python {{repo-root}}/examples
+    uv run ruff format {{repo-root}}/src/sdk/python {{repo-root}}/examples {{repo-root}}/scripts
+    uv run ruff check --fix {{repo-root}}/src/sdk/python {{repo-root}}/examples {{repo-root}}/scripts
 
 fmt-check:
-    uv run ruff format --check {{repo-root}}/src/sdk/python {{repo-root}}/examples
-    uv run ruff check {{repo-root}}/src/sdk/python {{repo-root}}/examples
+    uv run ruff format --check {{repo-root}}/src/sdk/python {{repo-root}}/examples {{repo-root}}/scripts
+    uv run ruff check {{repo-root}}/src/sdk/python {{repo-root}}/examples {{repo-root}}/scripts
 
 #### TESTS ####
 

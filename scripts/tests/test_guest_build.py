@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from guest_build import cached_build
+from guest_build import GuestBuilder, cached_build, fingerprint, output_hashes, write_state
 
 
 class GuestBuildCacheTests(unittest.TestCase):
@@ -73,6 +73,39 @@ class GuestBuildCacheTests(unittest.TestCase):
         self.wit.unlink()
         with self.assertRaises(FileNotFoundError):
             self.run_build()
+
+    def test_artifact_fingerprint_is_portable_across_checkout_line_endings(self):
+        self.source.write_bytes(b"first line\nsecond line\n")
+        original = fingerprint(self.root, [self.source], "guest-bundle")
+        self.source.write_bytes(b"first line\r\nsecond line\r\n")
+        self.assertEqual(fingerprint(self.root, [self.source], "guest-bundle"), original)
+
+    def test_shared_artifact_rejects_changed_wit_or_output(self):
+        builder = GuestBuilder(self.root)
+        builder.inputs = lambda: [self.source, self.wit]
+        builder.outputs = lambda: [self.output]
+        self.build()
+        stamp = self.root / "target" / "guest-build" / "bundle.json"
+        write_state(
+            stamp,
+            {
+                "inputs": fingerprint(self.root, builder.inputs(), "guest-bundle"),
+                "outputs": output_hashes(self.root, builder.outputs()),
+            },
+        )
+        builder.verify_bundle()
+        self.output.write_text("wrong artifact")
+        with self.assertRaises(RuntimeError):
+            builder.verify_bundle()
+        self.output.write_text("built-1")
+        self.wit.write_text("different interface")
+        with self.assertRaises(RuntimeError):
+            builder.verify_bundle()
+
+    def test_shared_artifact_requires_a_manifest(self):
+        builder = GuestBuilder(self.root)
+        with self.assertRaises(RuntimeError):
+            builder.verify_bundle()
 
 
 if __name__ == "__main__":

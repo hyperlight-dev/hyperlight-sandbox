@@ -79,7 +79,7 @@ class TestInterruption(unittest.TestCase):
             release.set()
             worker.join(5)
         self.assertFalse(worker.is_alive())
-        self.assertIn(True, attempts)
+        self.assertTrue(attempts)
         self.assertLess(time.monotonic() - start, 3)
         with self.assertRaises(RuntimeError):
             sandbox.run(warmup)

@@ -104,6 +104,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
+        id: rust-toolchain
         with:
           toolchain: nightly, 1.94
           components: rustfmt, clippy
@@ -112,6 +113,19 @@ jobs:
 
       - name: Install just
         run: cargo install --locked just
+
+      # Restore after Rust cache cleanup; save before its post-job cleanup.
+      - name: Cache Windows surrogate
+        if: runner.os == 'Windows'
+        id: windows-surrogate
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: target/debug/build/hls/x86_64-pc-windows-msvc/debug/hyperlight_surrogate.exe
+          key: windows-surrogate-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+
+      - name: Rebuild host when the surrogate cache is missing
+        if: runner.os == 'Windows' && steps.windows-surrogate.outputs.cache-hit != 'true'
+        run: just clean-rust-host-cache
 
       - name: Format check
         run: just fmt-check-rust

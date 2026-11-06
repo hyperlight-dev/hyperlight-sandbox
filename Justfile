@@ -20,6 +20,10 @@ lint: lint-rust wasm::lint js::lint python::lint
 lint-rust:
     cargo clippy -p hyperlight-sandbox --all-targets --features test-utils -- -D warnings
 
+# Rebuild the host when its separately cached Windows surrogate is unavailable.
+clean-rust-host-cache:
+    cargo clean --package hyperlight-host
+
 fmt: fmt-rust python::fmt dotnet::fmt
 
 fmt-rust:

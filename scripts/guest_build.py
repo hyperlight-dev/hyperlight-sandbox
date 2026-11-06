@@ -92,7 +92,9 @@ class GuestBuilder:
             self.root / "rust-toolchain.toml",
         ]
         paths.extend((self.wasm / "wit").rglob("*.wit"))
-        paths.extend((self.wasm / "guests" / "python").glob("*.py"))
+        python = self.wasm / "guests" / "python"
+        paths.extend(python.rglob("*.py"))
+        paths.extend(python.rglob("*.pyi"))
         js = self.wasm / "guests" / "javascript"
         paths.extend(js.glob("*.js"))
         paths.extend([js / "package.json", js / "package-lock.json"])

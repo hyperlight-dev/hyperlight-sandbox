@@ -9,6 +9,6 @@
   "devDependencies": {
     "@bytecodealliance/componentize-js": "^0.23.0",
     "@bytecodealliance/jco": "^1.39.0",
-    "@bytecodealliance/preview2-shim": "^0.25.0"
+    "@bytecodealliance/preview2-shim": "^0.31.0"
   }
 }

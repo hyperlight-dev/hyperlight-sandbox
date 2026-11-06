@@ -121,10 +121,11 @@ impl InterruptHandle {
         Self { inner }
     }
 
-    /// Interrupt a running guest, returning whether it was interrupted.
+    /// Request interruption, returning whether the vCPU was running.
     ///
-    /// This may block until the running vCPU stops. It returns false if the
-    /// guest is not running, including while executing a host callback.
+    /// This may block until the running vCPU stops. A false return during a
+    /// host callback can still leave cancellation pending until it returns.
+    /// A request just before guest entry can be missed; callers can retry.
     pub fn kill(&self) -> bool {
         self.inner.kill()
     }

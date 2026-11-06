@@ -282,7 +282,10 @@ impl WasmComponentSandbox {
 
         match result {
             Ok(wit_result) => {
-                let wit_result = wit_result.context("guest execution failed")?;
+                let wit_result = wit_result.map_err(|error| {
+                    let message = format!("guest execution failed: {error}");
+                    anyhow::Error::from(error).context(message)
+                })?;
                 Ok(ExecutionResult {
                     stdout: wit_result.stdout,
                     stderr: wit_result.stderr,

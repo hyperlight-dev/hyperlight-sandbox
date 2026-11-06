@@ -6,7 +6,7 @@ on:
   pull_request:
   workflow_dispatch:
   schedule:
-    # Keep trusted base-branch caches available to new contributor PRs.
+    # Run CI daily on the default branch at 06:23 UTC to refresh caches for PRs.
     - cron: "23 6 * * *"
 
 concurrency:

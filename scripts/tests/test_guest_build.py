@@ -80,6 +80,25 @@ class GuestBuildCacheTests(unittest.TestCase):
         self.source.write_bytes(b"first line\r\nsecond line\r\n")
         self.assertEqual(fingerprint(self.root, [self.source], "guest-bundle"), original)
 
+    def test_python_support_and_type_stub_changes_rebuild(self):
+        builder = GuestBuilder(self.root)
+        python = builder.wasm / "guests" / "python"
+        support = [
+            python / "componentize_py_async_support" / "futures.py",
+            python / "componentize_py_runtime.pyi",
+            python / "componentize_py_async_support" / "types.pyi",
+        ]
+        for path in [*builder.inputs(), *support]:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("original")
+        cached_build(self.root, "guest", builder.inputs(), [self.output], "compiler-1", self.build)
+        for path in support:
+            with self.subTest(path=path.relative_to(self.root)):
+                calls = self.calls
+                path.write_text("changed")
+                cached_build(self.root, "guest", builder.inputs(), [self.output], "compiler-1", self.build)
+                self.assertEqual(self.calls, calls + 1)
+
     def test_shared_artifact_rejects_changed_wit_or_output(self):
         builder = GuestBuilder(self.root)
         builder.inputs = lambda: [self.source, self.wit]

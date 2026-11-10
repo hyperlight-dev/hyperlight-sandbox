@@ -9,7 +9,7 @@
 use std::path::Path;
 
 use hyperlight_sandbox::{SandboxBuilder, ToolRegistry};
-use hyperlight_wasm_sandbox::Wasm;
+use hyperlight_sandbox_wasm::Wasm;
 use serde::Deserialize;
 
 fn javascript_guest_path() -> String {

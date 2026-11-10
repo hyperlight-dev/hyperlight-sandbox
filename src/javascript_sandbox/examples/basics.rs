@@ -6,8 +6,8 @@
 //! File I/O tests live in filesystem_demo.rs.
 //! Network tests live in network_demo.rs.
 
-use hyperlight_javascript_sandbox::HyperlightJs;
 use hyperlight_sandbox::{SandboxBuilder, ToolRegistry};
+use hyperlight_sandbox_javascript::HyperlightJs;
 use serde::Deserialize;
 
 fn separator(title: &str) {

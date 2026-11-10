@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use hyperlight_sandbox::{DirPerms, FilePerms, SandboxBuilder};
-use hyperlight_wasm_sandbox::Wasm;
+use hyperlight_sandbox_wasm::Wasm;
 
 fn python_guest_path() -> String {
     Path::new(env!("CARGO_MANIFEST_DIR"))

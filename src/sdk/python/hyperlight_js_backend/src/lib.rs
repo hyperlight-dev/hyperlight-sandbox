@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use hyperlight_javascript_sandbox::HyperlightJs;
 use hyperlight_sandbox::{
     DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, FilesystemLimits, HttpMethod,
     MethodFilter, Sandbox, SandboxBuilder, SandboxConfig,
 };
+use hyperlight_sandbox_javascript::HyperlightJs;
 use hyperlight_sandbox_pyo3_common::{
     PyExecutionResult, PyInterruptHandle, build_tool_registry, execution_error,
     parse_filesystem_limits, parse_size, parse_tool_registration,

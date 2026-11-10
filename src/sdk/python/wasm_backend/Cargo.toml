@@ -14,5 +14,5 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3.workspace = true
 hyperlight-sandbox.workspace = true
-hyperlight-wasm-sandbox.workspace = true
+hyperlight-sandbox-wasm.workspace = true
 hyperlight-sandbox-pyo3-common.workspace = true

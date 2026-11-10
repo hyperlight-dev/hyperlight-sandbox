@@ -214,8 +214,8 @@ var response = await chatClient.GetResponseAsync(prompt,
                           │
         ┌─────────────────▼───────────────────┐
         │   hyperlight-sandbox (Rust core)    │
-        │   + hyperlight-wasm-sandbox         │
-        │   + hyperlight-javascript-sandbox   │
+        │   + hyperlight-sandbox-wasm         │
+        │   + hyperlight-sandbox-javascript   │
         └─────────────────────────────────────┘
 ```
 

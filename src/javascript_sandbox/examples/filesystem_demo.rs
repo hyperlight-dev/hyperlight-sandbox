@@ -1,7 +1,7 @@
 //! Filesystem capabilities demo for the JavaScript sandbox.
 
-use hyperlight_javascript_sandbox::HyperlightJs;
 use hyperlight_sandbox::{DirPerms, FilePerms, SandboxBuilder};
+use hyperlight_sandbox_javascript::HyperlightJs;
 
 fn separator(label: &str) {
     println!("\n── {label} ──");

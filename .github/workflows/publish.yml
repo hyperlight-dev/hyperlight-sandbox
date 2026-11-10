@@ -48,8 +48,8 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
         run: |
           cargo publish --locked -p hyperlight-sandbox
-          cargo publish --locked -p hyperlight-wasm-sandbox
-          cargo publish --locked -p hyperlight-javascript-sandbox
+          cargo publish --locked -p hyperlight-sandbox-wasm
+          cargo publish --locked -p hyperlight-sandbox-javascript
 
   # Build all Python packages on Linux for glibc 2.28 and newer.
   build-linux:

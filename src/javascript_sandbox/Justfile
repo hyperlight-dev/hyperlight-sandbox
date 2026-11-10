@@ -49,7 +49,7 @@ examples target=default-target:
 #### TESTS ####
 
 lint:
-    cargo clippy -p hyperlight-javascript-sandbox --all-targets -- -D warnings
+    cargo clippy -p hyperlight-sandbox-javascript --all-targets -- -D warnings
 
 test:
-    cargo test -p hyperlight-javascript-sandbox
+    cargo test -p hyperlight-sandbox-javascript

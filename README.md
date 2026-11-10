@@ -119,7 +119,7 @@ Build your own using the provided [WIT interface](src/wasm_sandbox/wit/hyperligh
 
 ```rust
 use hyperlight_sandbox::{Sandbox, ToolRegistry};
-use hyperlight_wasm_sandbox::Wasm;
+use hyperlight_sandbox_wasm::Wasm;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -160,7 +160,7 @@ See [examples](./src/wasm_sandbox/examples/) for file I/O and network demos.
 Runs JavaScript directly on the [HyperlightJS](https://github.com/hyperlight-dev/hyperlight-js) runtime without going through the Wasm component model. Injects `call_tool`, `read_file`, `write_file`, and `fetch` as globals. Supports snapshots, file I/O, and network allowlists. A simpler runtime path when the workload is JavaScript-only and need a smaller footprint.
 
 ```rust
-use hyperlight_javascript_sandbox::HyperlightJs;
+use hyperlight_sandbox_javascript::HyperlightJs;
 use hyperlight_sandbox::{Sandbox, ToolRegistry};
 use serde::Deserialize;
 
@@ -212,7 +212,7 @@ Rust hosts can override the defaults on the builder:
 
 ```rust
 use hyperlight_sandbox::{FilesystemLimits, SandboxBuilder};
-use hyperlight_wasm_sandbox::Wasm;
+use hyperlight_sandbox_wasm::Wasm;
 
 let limits = FilesystemLimits::new(
     128 * 1024 * 1024,

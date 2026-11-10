@@ -8,7 +8,7 @@ use hyperlight_sandbox_pyo3_common::{
     PyExecutionResult, PyInterruptHandle, build_tool_registry, execution_error,
     parse_filesystem_limits, parse_size, parse_tool_registration,
 };
-use hyperlight_wasm_sandbox::Wasm;
+use hyperlight_sandbox_wasm::Wasm;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 

@@ -24,12 +24,12 @@ use std::ffi::{CStr, CString, c_char};
 use std::ptr::NonNull;
 
 use anyhow::Result;
-use hyperlight_javascript_sandbox::HyperlightJs;
 use hyperlight_sandbox::{
     DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, FilesystemLimits, GuestSandbox,
     HttpMethod, InterruptHandle, Sandbox, SandboxBuilder, SandboxConfig, ToolRegistry, ToolSchema,
 };
-use hyperlight_wasm_sandbox::Wasm;
+use hyperlight_sandbox_javascript::HyperlightJs;
+use hyperlight_sandbox_wasm::Wasm;
 use log::{debug, error};
 
 // ---------------------------------------------------------------------------

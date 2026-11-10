@@ -1,7 +1,7 @@
 //! Network access demo for the HyperlightJS sandbox backend.
 
-use hyperlight_javascript_sandbox::HyperlightJs;
 use hyperlight_sandbox::SandboxBuilder;
+use hyperlight_sandbox_javascript::HyperlightJs;
 
 fn separator(title: &str) {
     println!("\n{}", "═".repeat(60));

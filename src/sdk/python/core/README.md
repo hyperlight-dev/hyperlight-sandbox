@@ -41,6 +41,23 @@ packaged JavaScript Wasm guest package.
 Use `Sandbox(backend="hyperlight-js")` to run the separate HyperlightJS
 backend package.
 
+## macOS
+
+Apple Silicon wheels support macOS 14 and newer. Guest wheels contain native
+ARM64 AOT code; they are separate from the Linux/Windows x86-64 guest wheels.
+
+The Python executable that hosts Hyperlight must have the
+`com.apple.security.hypervisor` entitlement. For a user-owned Python installation:
+
+```bash
+codesign --force --sign - --entitlements scripts/macos-entitlements.plist \
+  "$(uv python find 3.14)"
+```
+
+Do not modify the system Python. Sign the actual executable used by your
+application, then restart Python. The wheelhouse test recipe signs its test
+interpreter automatically.
+
 ## Snapshot Semantics
 
 - `snapshot()` captures guest runtime state.

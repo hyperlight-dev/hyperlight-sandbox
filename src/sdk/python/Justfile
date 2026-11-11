@@ -25,6 +25,7 @@ wasm-wheels := dist-root + "/wasm_backend"
 hyperlight-js-wheels := dist-root + "/hyperlight_js_backend"
 python-guest-dist := dist-root + "/python_guest"
 javascript-guest-dist := dist-root + "/javascript_guest"
+python-runner := if os() == "macos" { repo-root + "/scripts/macos-sign-and-run.sh" } else { "" }
 
 #### BUILD ####
 
@@ -74,8 +75,8 @@ python-dist: python-sync-guest-resources python-sync-env
     cd {{repo-root}}/src/sdk/python/core && uv run --no-sync python -m build --outdir {{core-dist}}
     cd {{repo-root}}/src/sdk/python/wasm_backend && uv run --no-sync maturin build --release --out {{wasm-wheels}} {{manylinux-arg}} {{interpreters}}
     cd {{repo-root}}/src/sdk/python/hyperlight_js_backend && uv run --no-sync maturin build --release --out {{hyperlight-js-wheels}} {{manylinux-arg}} {{interpreters}}
-    cd {{repo-root}}/src/sdk/python/wasm_guests/python_guest && uv run --no-sync python -m build --outdir {{python-guest-dist}}
-    cd {{repo-root}}/src/sdk/python/wasm_guests/javascript_guest && uv run --no-sync python -m build --outdir {{javascript-guest-dist}}
+    uv run --no-sync python {{repo-root}}/scripts/build_guest_wheels.py {{python-root}}/wasm_guests/python_guest {{python-guest-dist}}
+    uv run --no-sync python {{repo-root}}/scripts/build_guest_wheels.py {{python-root}}/wasm_guests/javascript_guest {{javascript-guest-dist}}
 
 # Build only the platform-specific maturin backend wheels.
 # Used by CI to produce Windows wheels without needing guest binaries.
@@ -102,19 +103,22 @@ python-wheelhouse-test python-version="" python-version-arg=(if python-version !
         --find-links={{wasm-wheels}} \
         --find-links={{python-guest-dist}} \
         --with "hyperlight-sandbox[wasm,python_guest]" \
-        python {{repo-root}}/src/sdk/python/tests/wheelhouse_wasm_python.py
+        {{python-runner}} python -I {{repo-root}}/src/sdk/python/tests/wheelhouse_wasm_python.py
     uv run --no-project {{python-version-arg}} --no-index \
         --find-links={{core-dist}} \
         --find-links={{wasm-wheels}} \
         --find-links={{javascript-guest-dist}} \
         --with "hyperlight-sandbox[wasm,javascript_guest]" \
-        python {{repo-root}}/src/sdk/python/tests/wheelhouse_wasm_js.py
+        {{python-runner}} python -I {{repo-root}}/src/sdk/python/tests/wheelhouse_wasm_js.py
     uv run --no-project {{python-version-arg}} --no-index \
         --find-links={{core-dist}} \
         --find-links={{hyperlight-js-wheels}} \
         --find-links={{javascript-guest-dist}} \
         --with "hyperlight-sandbox[hyperlight_js,javascript_guest]" \
-        python {{repo-root}}/src/sdk/python/tests/wheelhouse_js.py
+        {{python-runner}} python -I {{repo-root}}/src/sdk/python/tests/wheelhouse_js.py
+
+# Test every supported interpreter against the installed wheels.
+python-wheelhouse-test-all: (python-wheelhouse-test "3.10") (python-wheelhouse-test "3.11") (python-wheelhouse-test "3.12") (python-wheelhouse-test "3.13") (python-wheelhouse-test "3.14") (python-wheelhouse-test "3.15")
 
 #### EXAMPLES ####
 

@@ -29,11 +29,11 @@ class MacosRunnerTests(unittest.TestCase):
             "EXECUTED": str(self.executed),
         }
 
-    def run_guest(self):
+    def run_guest(self, binary=None):
         config = tomllib.loads((self.repo / ".cargo" / "config.toml").read_text())
         runner = self.repo / config["target"]['cfg(target_os = "macos")']["runner"]
         return subprocess.run(
-            [str(runner), str(self.binary), "argument with spaces", "--flag"],
+            [str(runner), str(binary or self.binary), "argument with spaces", "--flag"],
             cwd=self.repo,
             env=self.env,
             capture_output=True,
@@ -56,6 +56,12 @@ class MacosRunnerTests(unittest.TestCase):
         result = self.run_guest()
         self.assertEqual(result.returncode, 23, result.stderr)
         self.assertFalse(self.executed.exists())
+
+    def test_resolves_host_executable_from_path_before_signing(self):
+        result = self.run_guest(self.binary.name)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.sign_log.read_text().splitlines()[-1], str(self.binary))
+        self.assertEqual(result.stdout.splitlines(), ["argument with spaces", "--flag"])
 
 
 if __name__ == "__main__":

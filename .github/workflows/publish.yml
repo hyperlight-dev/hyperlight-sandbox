@@ -143,11 +143,15 @@ jobs:
           name: python-wheels-windows
           path: dist/pythonsdk/
 
-  # Merge artifacts from both platforms and publish to PyPI.
+  build-macos:
+    if: ${{ !github.event.act && (github.event_name != 'workflow_dispatch' || inputs.publish_target == 'all' || inputs.publish_target == 'python') }}
+    uses: ./.github/workflows/python-macos.yml
+
+  # Merge artifacts from all platforms and publish to PyPI.
   publish:
     if: ${{ !github.event.act && (github.event_name != 'workflow_dispatch' || inputs.publish_target == 'all' || inputs.publish_target == 'python') }}
     name: Publish to PyPI
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     environment:
       name: pypi

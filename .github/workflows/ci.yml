@@ -245,6 +245,9 @@ jobs:
         if: always() && runner.os == 'macOS' && github.event_name == 'pull_request'
         run: just workflows ci-clean
 
+  dotnet-packages-macos:
+    uses: ./.github/workflows/dotnet-macos.yml
+
   dotnet-sdk:
     name: .NET SDK (${{ matrix.os }})
     needs: guest-build

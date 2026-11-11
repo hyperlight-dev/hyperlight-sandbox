@@ -113,4 +113,34 @@ public class PackageInstallationTests
 
         Assert.NotNull(sandbox);
     }
+
+    [Fact]
+    public void GuestPython_InstalledPackageExecutesCode()
+    {
+        using var sandbox = new SandboxBuilder().WithPythonModule().Build();
+        var result = sandbox.Run("print('packaged python')");
+
+        Assert.True(result.Success, result.Stderr);
+        Assert.Equal("packaged python", result.Stdout.Trim());
+    }
+
+    [Fact]
+    public void GuestJavaScript_InstalledPackageExecutesCode()
+    {
+        using var sandbox = new SandboxBuilder().WithJavaScriptModule().Build();
+        var result = sandbox.Run("console.log('packaged wasm javascript');");
+
+        Assert.True(result.Success, result.Stderr);
+        Assert.Equal("packaged wasm javascript", result.Stdout.Trim());
+    }
+
+    [Fact]
+    public void JavaScriptBackend_InstalledPackageExecutesCode()
+    {
+        using var sandbox = new SandboxBuilder().WithBackend(SandboxBackend.JavaScript).Build();
+        var result = sandbox.Run("console.log('packaged javascript');");
+
+        Assert.True(result.Success, result.Stderr);
+        Assert.Equal("packaged javascript", result.Stdout.Trim());
+    }
 }

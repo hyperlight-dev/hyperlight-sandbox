@@ -522,7 +522,6 @@ jobs:
           path: dist/pythonsdk/
 
   python-wheelhouse-build-macos:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/python-macos.yml
 
   # Download merged Linux + Windows wheels and run wheelhouse smoke tests.

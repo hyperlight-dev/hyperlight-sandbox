@@ -13,7 +13,7 @@ jobs:
     runs-on: [self-hosted, macos, arm64, hvf]
     env:
       HYPERLIGHT_GUEST_ARTIFACT: "0"
-      MACOSX_DEPLOYMENT_TARGET: "14.0"
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
       RUST_BACKTRACE: full
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

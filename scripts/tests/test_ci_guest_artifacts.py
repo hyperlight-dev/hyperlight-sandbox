@@ -6,6 +6,42 @@ from pathlib import Path
 
 
 class GuestArtifactWorkflowTests(unittest.TestCase):
+    def test_fork_pull_requests_use_hosted_runners(self):
+        workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
+        jobs = re.split(r"(?m)^  ([\w-]+):\s*$", workflow.read_text(encoding="utf-8").split("jobs:\n", 1)[1])
+        macos_jobs = 0
+        for name, job in zip(jobs[1::2], jobs[2::2], strict=True):
+            if "macos-hvf" not in job:
+                continue
+            macos_jobs += 1
+            with self.subTest(job=name):
+                matrix = job.split("matrix:", 1)[1].split("\n    steps:", 1)[0]
+                self.assertIn("github.event_name != 'pull_request'", matrix)
+                self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", matrix)
+                self.assertIn('|| \'["ubuntu-latest", "windows-latest"]\'', matrix)
+        self.assertGreater(macos_jobs, 0)
+
+    def test_macos_environment_precedes_rust_setup(self):
+        workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
+        jobs = re.split(r"(?m)^  ([\w-]+):\s*$", workflow.read_text(encoding="utf-8").split("jobs:\n", 1)[1])
+        macos_jobs = 0
+        for name, job in zip(jobs[1::2], jobs[2::2], strict=True):
+            if "macos-hvf" not in job:
+                continue
+            macos_jobs += 1
+            with self.subTest(job=name):
+                setup = job.index("name: Set up macOS environment")
+                rust = job.index("- uses: actions-rust-lang/setup-rust-toolchain@")
+                self.assertLess(setup, rust, "Rust setup calls brew before installing the toolchain")
+                step = job[setup:].split("\n      - ", 1)[0]
+                self.assertIn("if: runner.os == 'macOS'", step)
+                self.assertIn('prefix="$HOME/.homebrew"', step)
+                self.assertIn('"$prefix/bin"', step)
+                self.assertIn('"$prefix/sbin"', step)
+                self.assertIn("$HOME/.cargo/bin", step)
+                self.assertIn('"$GITHUB_PATH"', step)
+        self.assertGreater(macos_jobs, 0)
+
     def test_windows_surrogate_cache_follows_rust_cache_restore(self):
         workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
         rust_job = workflow.read_text(encoding="utf-8").split("\n  rust:\n", 1)[1].split("\n  wasm-sandbox:", 1)[0]
@@ -32,7 +68,7 @@ class GuestArtifactWorkflowTests(unittest.TestCase):
         jobs = re.split(r"(?m)^  ([\w-]+):\s*$", workflow.read_text(encoding="utf-8").split("jobs:\n", 1)[1])
         consumers = 0
         for name, job in zip(jobs[1::2], jobs[2::2], strict=True):
-            if 'HYPERLIGHT_GUEST_ARTIFACT: "1"' not in job:
+            if "HYPERLIGHT_GUEST_ARTIFACT:" not in job:
                 continue
             consumers += 1
             with self.subTest(job=name):

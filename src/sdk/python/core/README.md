@@ -43,7 +43,7 @@ backend package.
 
 ## macOS
 
-Apple Silicon wheels support macOS 14 and newer. Guest wheels contain native
+Apple Silicon wheels support macOS 13 and newer. Guest wheels contain native
 ARM64 AOT code; they are separate from the Linux/Windows x86-64 guest wheels.
 
 The Python executable that hosts Hyperlight must have the

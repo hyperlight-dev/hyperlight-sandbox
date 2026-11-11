@@ -15,7 +15,7 @@ def main():
 
     machine = platform.machine().lower()
     if sys.platform == "darwin" and machine in {"arm64", "aarch64"}:
-        platforms = ["macosx_14_0_arm64"]
+        platforms = ["macosx_13_0_arm64"]
     elif sys.platform in {"linux", "win32"} and machine in {"x86_64", "amd64"}:
         # The same x86-64 AOT code runs on Linux and Windows.
         platforms = ["manylinux_2_28_x86_64", "win_amd64"]

@@ -24,8 +24,8 @@ hyperlight-sandbox = { version = "0.9.0", path = "src/hyperlight_sandbox" }
 hyperlight-sandbox-javascript = { version = "0.9.0", path = "src/javascript_sandbox" }
 hyperlight-sandbox-wasm = { version = "0.9.0", path = "src/wasm_sandbox" }
 hyperlight-sandbox-pyo3-common = { path = "src/sdk/python/pyo3_common" }
-hyperlight-common = { version = "0.17.0", default-features = false }
-hyperlight-component-macro = "0.17.0"
-hyperlight-host = { version = "0.17.0", default-features = false, features = ["executable_heap"] }
-hyperlight-wasm = "0.15.0"
+hyperlight-common = { version = "0.18.0", default-features = false }
+hyperlight-component-macro = "0.18.0"
+hyperlight-host = { version = "0.18.0", default-features = false, features = ["executable_heap"] }
+hyperlight-wasm = "0.16.0"
 pyo3 = { version = "0.30", features = ["extension-module"] }

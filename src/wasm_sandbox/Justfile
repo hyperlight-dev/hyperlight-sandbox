@@ -127,6 +127,7 @@ test-build:
     uv run --no-project --python 3.14 python -m unittest discover -s {{repo-root}}/scripts/tests -v
 
 test target=default-target:
+    cargo test --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --test input_capacity -- --nocapture
     cargo test --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --test http_wasm_integration -- --nocapture
     cargo test --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --test filesystem_quota -- --nocapture
 

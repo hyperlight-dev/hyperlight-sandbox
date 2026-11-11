@@ -244,10 +244,12 @@ impl WasmComponentSandbox {
             active_requests: Arc::new(AtomicUsize::new(0)),
         };
 
+        let input_capacity = config.heap_size.min(70_000_000) as usize;
+        // Reserve one buffer for control calls that release retained external data.
+        let h2g_pages = input_capacity.div_ceil(hyperlight_common::vmem::PAGE_SIZE) + 1;
         let mut proto = HyperlightSandboxBuilder::new()
-            .with_h2g_pool_pages(
-                config.heap_size.min(70_000_000) as usize / hyperlight_common::vmem::PAGE_SIZE + 1,
-            )
+            .with_h2g_pool_pages(h2g_pages)
+            .with_h2g_queue_size(h2g_pages)
             .with_guest_heap_size(config.heap_size)
             .with_guest_scratch_size(config.stack_size as usize)
             .build()

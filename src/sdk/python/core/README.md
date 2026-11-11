@@ -41,6 +41,17 @@ packaged JavaScript Wasm guest package.
 Use `Sandbox(backend="hyperlight-js")` to run the separate HyperlightJS
 backend package.
 
+## macOS
+
+Apple Silicon wheels provide developer-only support for macOS 13 and newer.
+Guest wheels contain native
+ARM64 AOT code; they are separate from the Linux/Windows x86-64 guest wheels.
+
+The backend wheels include a signed Rust helper with the
+`com.apple.security.hypervisor` entitlement. The SDK starts it automatically;
+Python is not re-signed or modified. Guest execution uses one helper process per
+active sandbox, with pooled reuse. This path is experimental, not for production.
+
 ## Snapshot Semantics
 
 - `snapshot()` captures guest runtime state.

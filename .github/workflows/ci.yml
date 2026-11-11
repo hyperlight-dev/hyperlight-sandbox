@@ -560,6 +560,9 @@ jobs:
           name: python-wheels-windows
           path: dist/pythonsdk/
 
+  python-wheelhouse-build-macos:
+    uses: ./.github/workflows/python-macos.yml
+
   # Download merged Linux + Windows wheels and run wheelhouse smoke tests.
   python-wheelhouse-test:
     name: Python wheelhouse test (${{ matrix.os }}, py${{ matrix.python }})

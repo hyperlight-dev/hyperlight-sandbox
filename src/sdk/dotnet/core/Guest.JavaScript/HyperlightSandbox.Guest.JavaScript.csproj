@@ -22,39 +22,45 @@
 
   <PropertyGroup>
     <WorkspaceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../../..'))</WorkspaceRoot>
-    <JavaScriptGuestDir>$([System.IO.Path]::Combine('$(WorkspaceRoot)', 'src', 'wasm_sandbox', 'guests', 'javascript'))</JavaScriptGuestDir>
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\NativePlatform.cs" Link="NativePlatform.cs" />
     <ProjectReference Include="..\Api\HyperlightSandbox.Api.csproj" />
   </ItemGroup>
 
   <!--
     Native assets following the NuGet runtimes/{rid}/native/ convention (same as PInvoke).
-    The .aot file is Hyperlight/Cranelift AOT output: architecture-specific but NOT OS-specific,
-    so the same binary serves both linux-x64 and win-x64. Include it under both RID folders so
-    NuGet selects the right entry for each consumer platform from a single package build.
+    AOT code is architecture-specific, not OS-specific. Stage x86-64 and ARM64
+    binaries separately so a merged package cannot label ARM64 code as x86-64.
   -->
   <ItemGroup>
-    <None Include="$(JavaScriptGuestDir)/js-sandbox.aot"
-          Condition="Exists('$(JavaScriptGuestDir)/js-sandbox.aot')">
+    <None Include="$(WorkspaceRoot)/target/dotnet-guests/x86_64/js-sandbox.aot"
+          Condition="Exists('$(WorkspaceRoot)/target/dotnet-guests/x86_64/js-sandbox.aot')">
       <Pack>true</Pack>
       <PackagePath>runtimes/linux-x64/native/</PackagePath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>runtimes/linux-x64/native/js-sandbox.aot</Link>
     </None>
-    <None Include="$(JavaScriptGuestDir)/js-sandbox.aot"
-          Condition="Exists('$(JavaScriptGuestDir)/js-sandbox.aot')">
+    <None Include="$(WorkspaceRoot)/target/dotnet-guests/x86_64/js-sandbox.aot"
+          Condition="Exists('$(WorkspaceRoot)/target/dotnet-guests/x86_64/js-sandbox.aot')">
       <Pack>true</Pack>
       <PackagePath>runtimes/win-x64/native/</PackagePath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>runtimes/win-x64/native/js-sandbox.aot</Link>
     </None>
+    <None Include="$(WorkspaceRoot)/target/dotnet-guests/aarch64/js-sandbox.aot"
+          Condition="Exists('$(WorkspaceRoot)/target/dotnet-guests/aarch64/js-sandbox.aot')">
+      <Pack>true</Pack>
+      <PackagePath>runtimes/osx-arm64/native/</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>runtimes/osx-arm64/native/js-sandbox.aot</Link>
+    </None>
   </ItemGroup>
 
   <Target Name="ValidateJavaScriptGuestResources" BeforeTargets="Pack">
-    <Error Condition="!Exists('$(JavaScriptGuestDir)/js-sandbox.aot')"
-           Text="JavaScript guest AOT binary is missing. Run 'just wasm js-guest-build' before packing Hyperlight.HyperlightSandbox.Guest.JavaScript." />
+    <Error Condition="!Exists('$(WorkspaceRoot)/target/dotnet-guests/x86_64/js-sandbox.aot') And !Exists('$(WorkspaceRoot)/target/dotnet-guests/aarch64/js-sandbox.aot')"
+           Text="Staged JavaScript guest AOT binary is missing. Run 'just dotnet build' before packing Hyperlight.HyperlightSandbox.Guest.JavaScript." />
   </Target>
 
 </Project>

@@ -16,6 +16,15 @@ A .NET 8.0 SDK for running code in secure, sandboxed environments using [hyperli
 
 ## Quick Start
 
+NuGet packages include native assets for Linux x64, Windows x64, and Apple Silicon
+macOS 14 or newer. macOS guest packages contain separate ARM64 AOT binaries.
+
+On macOS, the executable that hosts .NET must have the
+`com.apple.security.hypervisor` entitlement. Sign your application executable with
+`scripts/macos-entitlements.plist` after publishing. For `dotnet MyApp.dll`, sign a
+user-owned `dotnet` executable instead; do not modify a shared system installation.
+The `just dotnet` test and example recipes sign their host automatically.
+
 ```bash
 # Prerequisites
 just dotnet build              # Build the .NET SDK + Rust FFI

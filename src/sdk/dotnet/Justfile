@@ -15,11 +15,14 @@ default-target := "debug"
 rmrf := if os() == "windows" { "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" } else { "rm -rf" }
 mkdirp := if os() == "windows" { "New-Item -ItemType Directory -Force -Path" } else { "mkdir -p" }
 devnull := if os() == "windows" { "$null" } else { "/dev/null" }
+dotnet-runner := if os() == "macos" { repo-root + "/scripts/macos-sign-and-run.sh" } else { "" }
+guest-assets := repo-root + "/target/dotnet-guests/" + arch()
+package-test-cache := repo-root + "/src/sdk/dotnet/core/Tests/HyperlightSandbox.PackageTests/obj/packages"
 
 #### BUILD ####
 
 # Build everything (Rust FFI + .NET solution)
-build target=default-target: (build-rust target) (build-dotnet target) (build-guests target)
+build target=default-target: (build-rust target) (build-guests target) stage-guests (build-dotnet target)
 
 # Build only the Rust FFI crate
 build-rust target=default-target:
@@ -33,6 +36,12 @@ build-dotnet target=default-target:
 build-guests target=default-target:
     cd {{repo-root}} && just -f src/wasm_sandbox/Justfile guest-build {{target}}
     cd {{repo-root}} && just -f src/wasm_sandbox/Justfile js-guest-build
+
+# Keep native AOT guests separate when artifacts from different CPUs are merged.
+stage-guests:
+    {{mkdirp}} {{guest-assets}}
+    cp {{repo-root}}/src/wasm_sandbox/guests/python/python-sandbox.aot {{guest-assets}}/python-sandbox.aot
+    cp {{repo-root}}/src/wasm_sandbox/guests/javascript/js-sandbox.aot {{guest-assets}}/js-sandbox.aot
 
 #### FORMAT ####
 
@@ -83,15 +92,15 @@ test-rust:
 
 # Run .NET xUnit tests
 test-dotnet target=default-target: (build target)
-    dotnet test {{repo-root}}/src/sdk/dotnet/core/HyperlightSandbox.sln --configuration {{ if target == "release" { "Release" } else { "Debug" } }} --no-build
+    {{dotnet-runner}} dotnet test {{repo-root}}/src/sdk/dotnet/core/HyperlightSandbox.sln --configuration {{ if target == "release" { "Release" } else { "Debug" } }} --no-build
 
 #### EXAMPLES ####
 
 # Run the core examples
 examples target=default-target: (build-guests target)
-    dotnet run --project {{repo-root}}/src/sdk/dotnet/core/Examples/BasicExample/BasicExample.csproj
-    dotnet run --project {{repo-root}}/src/sdk/dotnet/core/Examples/ToolRegistrationExample/ToolRegistrationExample.csproj
-    dotnet run --project {{repo-root}}/src/sdk/dotnet/core/Examples/SnapshotExample/SnapshotExample.csproj
+    {{dotnet-runner}} dotnet run {{ if os() == "macos" { "--property:UseAppHost=false" } else { "" } }} --project {{repo-root}}/src/sdk/dotnet/core/Examples/BasicExample/BasicExample.csproj
+    {{dotnet-runner}} dotnet run {{ if os() == "macos" { "--property:UseAppHost=false" } else { "" } }} --project {{repo-root}}/src/sdk/dotnet/core/Examples/ToolRegistrationExample/ToolRegistrationExample.csproj
+    {{dotnet-runner}} dotnet run {{ if os() == "macos" { "--property:UseAppHost=false" } else { "" } }} --project {{repo-root}}/src/sdk/dotnet/core/Examples/SnapshotExample/SnapshotExample.csproj
 
 # Run the top-level agent example (requires GITHUB_TOKEN)
 agent-framework-example:
@@ -145,12 +154,26 @@ publish feed="nuget": (dist "release")
     }; \
     Write-Host "✅ All packages published!"
 
+# Remove only locally built packages so repeated tests cannot reuse an older build.
+[private]
+[unix]
+clear-package-test-cache:
+    rm -rf "{{package-test-cache}}/hyperlight.hyperlightsandbox.api" "{{package-test-cache}}/hyperlight.hyperlightsandbox.pinvoke" "{{package-test-cache}}/hyperlight.hyperlightsandbox.guest.python" "{{package-test-cache}}/hyperlight.hyperlightsandbox.guest.javascript"
+
+[private]
+[windows]
+clear-package-test-cache:
+    foreach ($package in @('api', 'pinvoke', 'guest.python', 'guest.javascript')) { \
+        $path = '{{package-test-cache}}/hyperlight.hyperlightsandbox.' + $package; \
+        if (Test-Path $path) { Remove-Item -Recurse -Force -ErrorAction Stop $path } \
+    }
+
 # Test that NuGet packages can be installed and used
-package-test target="debug": (dist target)
+package-test target="debug": (dist target) clear-package-test-cache
     @echo "Testing NuGet package installation..."
     dotnet restore {{repo-root}}/src/sdk/dotnet/core/Tests/HyperlightSandbox.PackageTests/HyperlightSandbox.PackageTests.csproj --force
     dotnet build {{repo-root}}/src/sdk/dotnet/core/Tests/HyperlightSandbox.PackageTests/HyperlightSandbox.PackageTests.csproj --configuration {{ if target == "release" { "Release" } else { "Debug" } }} --no-restore
-    dotnet test {{repo-root}}/src/sdk/dotnet/core/Tests/HyperlightSandbox.PackageTests/HyperlightSandbox.PackageTests.csproj --configuration {{ if target == "release" { "Release" } else { "Debug" } }} --no-build
+    {{dotnet-runner}} dotnet test {{repo-root}}/src/sdk/dotnet/core/Tests/HyperlightSandbox.PackageTests/HyperlightSandbox.PackageTests.csproj --configuration {{ if target == "release" { "Release" } else { "Debug" } }} --no-build
     @echo "✅ NuGet package installation tests passed!"
 
 #### CLEAN ####

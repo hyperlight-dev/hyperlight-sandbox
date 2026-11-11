@@ -147,10 +147,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(
-          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-          && '["ubuntu-latest", "windows-latest", "macos-hvf"]'
-          || '["ubuntu-latest", "windows-latest"]') }}
+        os: [ubuntu-latest, windows-latest, macos-hvf]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -599,10 +596,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(
-          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-          && '["ubuntu-latest", "windows-latest", "macos-hvf"]'
-          || '["ubuntu-latest", "windows-latest"]') }}
+        os: [ubuntu-latest, windows-latest, macos-hvf]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 

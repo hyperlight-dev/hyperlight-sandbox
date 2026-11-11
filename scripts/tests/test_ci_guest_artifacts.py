@@ -6,19 +6,19 @@ from pathlib import Path
 
 
 class GuestArtifactWorkflowTests(unittest.TestCase):
-    def test_fork_pull_requests_use_hosted_runners(self):
+    def test_fork_pull_requests_include_macos_jobs(self):
         workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
         jobs = re.split(r"(?m)^  ([\w-]+):\s*$", workflow.read_text(encoding="utf-8").split("jobs:\n", 1)[1])
         macos_jobs = 0
         for name, job in zip(jobs[1::2], jobs[2::2], strict=True):
-            if "macos-hvf" not in job:
+            if "macos-hvf" not in job and "-macos.yml" not in job:
                 continue
             macos_jobs += 1
             with self.subTest(job=name):
-                matrix = job.split("matrix:", 1)[1].split("\n    steps:", 1)[0]
-                self.assertIn("github.event_name != 'pull_request'", matrix)
-                self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", matrix)
-                self.assertIn('|| \'["ubuntu-latest", "windows-latest"]\'', matrix)
+                self.assertNotIn("github.event.pull_request.head.repo", job)
+                if "macos-hvf" in job:
+                    matrix = job.split("matrix:", 1)[1].split("\n    steps:", 1)[0]
+                    self.assertIn("os: [ubuntu-latest, windows-latest, macos-hvf]", matrix)
         self.assertGreater(macos_jobs, 0)
 
     def test_macos_environment_precedes_rust_setup(self):

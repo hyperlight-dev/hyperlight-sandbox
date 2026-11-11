@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use hyperlight_sandbox::SandboxBuilder;
+use hyperlight_sandbox::{DEFAULT_STACK_SIZE, SandboxBuilder};
 use hyperlight_sandbox_wasm::Wasm;
 
 #[test]
@@ -10,7 +10,7 @@ fn large_source_runs_without_exhausting_h2g_descriptors() {
     let mut sandbox = SandboxBuilder::new()
         .guest(Wasm)
         .module_path(module_path.display().to_string())
-        .stack_size(64 * 1024 * 1024)
+        .stack_size(DEFAULT_STACK_SIZE.max(64 * 1024 * 1024))
         .build()
         .expect("failed to create sandbox");
 

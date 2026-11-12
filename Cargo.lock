@@ -2111,6 +2111,7 @@ dependencies = [
  "hyperlight-sandbox",
  "hyperlight-sandbox-javascript",
  "hyperlight-sandbox-wasm",
+ "hyperlight-sandbox-worker",
  "libc",
  "log",
  "serde_json",

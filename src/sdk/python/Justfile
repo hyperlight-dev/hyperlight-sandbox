@@ -4,6 +4,7 @@ repo-root := invocation_directory_native()
 python-root := repo-root + "/src/sdk/python"
 export WIT_WORLD := repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm"
 rmrf := if os() == "windows" { "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" } else { "rm -rf" }
+rmf := if os() == "windows" { "Remove-Item -Force -ErrorAction SilentlyContinue" } else { "rm -f" }
 mkdirp := if os() == "windows" { "New-Item -ItemType Directory -Force" } else { "mkdir -p" }
 uv-python-env := "UV_PYTHON"
 python-version-flag := "--python"
@@ -61,7 +62,14 @@ python-clean-backend-artifacts profile="debug":
 python-develop-backend backend profile="debug" python-version="" $UV_PYTHON=(if python-version != "" { python-version } else { env(uv-python-env, "") }) python-version-arg=(if python-version != "" { python-version-flag + " " + python-version } else { "" }) profile-arg=(if profile == "release" { "--release" } else { "" }):
     uv run --directory {{python-root}}/{{backend}} --no-sync {{python-version-arg}} maturin develop {{profile-arg}}
 
-python-install-backends profile="debug" python-version="": (python-clean-backend-artifacts profile) (python-develop-backend "wasm_backend" profile python-version) (python-develop-backend "hyperlight_js_backend" profile python-version)
+# Stage the signed developer helper beside each macOS native module.
+[private]
+python-stage-worker profile="debug":
+    {{ if os() == "macos" { "cd " + repo-root + " && just worker build " + profile } else { "echo No Python process worker needed on this platform" } }}
+    {{ if os() == "macos" { "cp " + repo-root + "/target/" + profile + "/hyperlight-sandbox-worker " + python-root + "/wasm_backend/hyperlight_sandbox_backend_wasm/hyperlight-sandbox-worker" } else { "" } }}
+    {{ if os() == "macos" { "cp " + repo-root + "/target/" + profile + "/hyperlight-sandbox-worker " + python-root + "/hyperlight_js_backend/hyperlight_sandbox_backend_hyperlight_js/hyperlight-sandbox-worker" } else { "" } }}
+
+python-install-backends profile="debug" python-version="": (python-clean-backend-artifacts profile) (python-stage-worker profile) (python-develop-backend "wasm_backend" profile python-version) (python-develop-backend "hyperlight_js_backend" profile python-version)
 
 python-build profile="debug" python-version="": python-sync-guest-resources (python-sync-env python-version) (python-install-backends profile python-version)
 
@@ -69,7 +77,7 @@ build: python-build
 
 #### DIST / PUBLISH ####
 
-python-dist: python-sync-guest-resources python-sync-env
+python-dist: python-sync-guest-resources python-sync-env (python-stage-worker "release")
     -{{rmrf}} {{dist-root}}
     cd {{repo-root}}/src/sdk/python/core && uv run --no-sync python -m build --outdir {{core-dist}}
     cd {{repo-root}}/src/sdk/python/wasm_backend && uv run --no-sync maturin build --release --out {{wasm-wheels}} {{manylinux-arg}} {{interpreters}}
@@ -80,7 +88,7 @@ python-dist: python-sync-guest-resources python-sync-env
 # Build only the platform-specific maturin backend wheels.
 # Used by CI to produce Windows wheels without needing guest binaries.
 # Requires sandbox-world.wasm to exist (run `just wasm guest-compile-wit` first).
-python-dist-backends: python-sync-env
+python-dist-backends: python-sync-env (python-stage-worker "release")
     -{{rmrf}} {{wasm-wheels}}
     -{{rmrf}} {{hyperlight-js-wheels}}
     cd {{repo-root}}/src/sdk/python/wasm_backend && uv run --no-sync maturin build --release --out {{wasm-wheels}} {{manylinux-arg}} {{interpreters}}
@@ -148,6 +156,8 @@ python-wheelhouse-benchmark python-version="3.14":
 clean:
     -{{rmrf}} {{repo-root}}/src/sdk/python/wasm_backend/target
     -{{rmrf}} {{repo-root}}/src/sdk/python/hyperlight_js_backend/target
+    -{{rmf}} "{{python-root}}/wasm_backend/hyperlight_sandbox_backend_wasm/hyperlight-sandbox-worker"
+    -{{rmf}} "{{python-root}}/hyperlight_js_backend/hyperlight_sandbox_backend_hyperlight_js/hyperlight-sandbox-worker"
 
 #### LINT / FORMAT ####
 

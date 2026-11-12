@@ -16,3 +16,6 @@ pyo3.workspace = true
 hyperlight-sandbox.workspace = true
 hyperlight-sandbox-wasm.workspace = true
 hyperlight-sandbox-pyo3-common.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+hyperlight-sandbox-worker.workspace = true

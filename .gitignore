@@ -25,3 +25,6 @@ docs/end-user-overview-slides.html
 .vs/
 *.user
 *.nupkg
+# Generated developer helpers staged for macOS wheels.
+/src/sdk/python/wasm_backend/hyperlight_sandbox_backend_wasm/hyperlight-sandbox-worker
+/src/sdk/python/hyperlight_js_backend/hyperlight_sandbox_backend_hyperlight_js/hyperlight-sandbox-worker

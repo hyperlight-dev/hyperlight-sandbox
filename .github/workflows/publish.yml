@@ -87,7 +87,8 @@ jobs:
 
       - name: Build all Python packages
         run: |
-          export INTERPRETERS="--interpreter $(uv python find 3.10) $(uv python find 3.11) $(uv python find 3.12) $(uv python find 3.13) $(uv python find 3.14) $(uv python find 3.15)"
+          INTERPRETERS="--interpreter $(uv python find 3.10) $(uv python find 3.11) $(uv python find 3.12) $(uv python find 3.13) $(uv python find 3.14) $(uv python find 3.15)"
+          export INTERPRETERS
           just python-dist
 
       - name: Verify manylinux compatibility

@@ -1,0 +1,11 @@
+set windows-shell := ["pwsh", "-NoLogo", "-Command"]
+
+repo-root := invocation_directory_native()
+
+# Install the pinned workflow checker. Requires Go.
+install:
+    go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+# Check all GitHub Actions workflows.
+lint:
+    cd "{{repo-root}}" && actionlint

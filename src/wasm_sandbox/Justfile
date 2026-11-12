@@ -4,6 +4,7 @@ default-target := "debug"
 repo-root := invocation_directory_native()
 export WIT_WORLD := repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm"
 rmrf := if os() == "windows" { "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" } else { "rm -rf" }
+hyperlight-runtime-target := arch() + "-hyperlight-none"
 
 ensure-tools:
     uv run --no-project --python 3.14 python {{repo-root}}/scripts/guest_build.py tools
@@ -54,7 +55,7 @@ _clean-stale-wasm:
     #!/usr/bin/env bash
     for profile in debug release; do
         if compgen -G "{{repo-root}}/target/$profile/build/hyperlight-wasm-*" > /dev/null && \
-           [ ! -f "{{repo-root}}/target/hyperlight-wasm-runtime/x86_64-hyperlight-none/$profile/hyperlight-wasm-runtime" ]; then
+           [ ! -f "{{repo-root}}/target/hyperlight-wasm-runtime/{{hyperlight-runtime-target}}/$profile/hyperlight-wasm-runtime" ]; then
             echo "Cleaning stale hyperlight-wasm $profile build artifacts..."
             rm -rf {{repo-root}}/target/hyperlight-wasm-runtime {{repo-root}}/target/hls \
                    {{repo-root}}/target/*/build/hyperlight-wasm-* {{repo-root}}/target/*/.fingerprint/hyperlight-wasm-* \
@@ -70,7 +71,7 @@ _clean-stale-wasm:
 _clean-stale-wasm:
     foreach ($profile in @('debug', 'release')) { \
         $bp = '{{repo-root}}/target/' + $profile + '/build'; \
-        $rp = '{{repo-root}}/target/hyperlight-wasm-runtime/x86_64-hyperlight-none/' + $profile + '/hyperlight-wasm-runtime'; \
+        $rp = '{{repo-root}}/target/hyperlight-wasm-runtime/{{hyperlight-runtime-target}}/' + $profile + '/hyperlight-wasm-runtime'; \
         if ((Get-ChildItem -Path $bp -Filter 'hyperlight-wasm-*' -ErrorAction SilentlyContinue) -and \
             -not (Test-Path $rp)) { \
             Write-Host ('Cleaning stale hyperlight-wasm ' + $profile + ' build artifacts...'); \
@@ -126,6 +127,7 @@ test-build:
     uv run --no-project --python 3.14 python -m unittest discover -s {{repo-root}}/scripts/tests -v
 
 test target=default-target:
+    cargo test --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --test input_capacity -- --nocapture
     cargo test --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --test http_wasm_integration -- --nocapture
     cargo test --manifest-path {{repo-root}}/src/wasm_sandbox/Cargo.toml --profile={{ if target == "debug" {"dev"} else { target } }} --test filesystem_quota -- --nocapture
 

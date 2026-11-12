@@ -3,7 +3,8 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use hyperlight_js::{
-    LoadedJSSandbox, SandboxBuilder as JsSandboxBuilder, Script, Snapshot as JsSnapshot,
+    HostFunctionModule, LoadedJSSandbox, SandboxBuilder as JsSandboxBuilder, Script,
+    Snapshot as JsSnapshot,
 };
 use hyperlight_sandbox::runtime::BlockOn;
 use hyperlight_sandbox::{
@@ -184,14 +185,13 @@ impl JsGuestSandbox {
             }
         };
 
-        let mut proto = JsSandboxBuilder::new()
+        let proto = JsSandboxBuilder::new()
             .with_guest_heap_size(config.heap_size)
             .with_guest_scratch_size(config.stack_size as usize)
             .with_host_print_fn(print_fn.into())
+            .with_host_function_modules([Self::host_functions(host_state)])
             .build()
             .context("failed to build Hyperlight JS sandbox")?;
-
-        Self::register_host_functions(&mut proto, host_state)?;
 
         let mut sandbox = proto
             .load_runtime()
@@ -211,155 +211,139 @@ impl JsGuestSandbox {
         })
     }
 
-    fn register_host_functions(
-        proto: &mut hyperlight_js::ProtoJSSandbox,
-        state: HostState,
-    ) -> Result<()> {
+    fn host_functions(state: HostState) -> HostFunctionModule {
+        let mut host = HostFunctionModule::new("host");
         let tool_state = state.clone();
-        proto
-            .register(
-                "host",
-                "dispatch",
-                move |name: String, args_json: String| -> String {
-                    let args: serde_json::Value = match serde_json::from_str(&args_json) {
-                        Ok(args) => args,
-                        Err(error) => return json_error(error),
-                    };
-                    match tool_state.tools.dispatch(&name, args) {
-                        Ok(value) => json_response(value),
-                        Err(error) => json_error(error),
-                    }
-                },
-            )
-            .context("failed to register JS tool dispatch")?;
-
-        let read_state = state.clone();
-        proto
-            .register("host", "read_file", move |path: String| -> String {
-                let Ok(files) = read_state.files.lock() else {
-                    return json_error("filesystem mutex poisoned");
+        host.register(
+            "dispatch",
+            move |name: String, args_json: String| -> String {
+                let args: serde_json::Value = match serde_json::from_str(&args_json) {
+                    Ok(args) => args,
+                    Err(error) => return json_error(error),
                 };
-                match files.read_guest_file(&path) {
-                    Ok(data) => json_response(serde_json::json!(data)),
+                match tool_state.tools.dispatch(&name, args) {
+                    Ok(value) => json_response(value),
                     Err(error) => json_error(error),
                 }
-            })
-            .context("failed to register JS file reader")?;
+            },
+        );
+
+        let read_state = state.clone();
+        host.register("read_file", move |path: String| -> String {
+            let Ok(files) = read_state.files.lock() else {
+                return json_error("filesystem mutex poisoned");
+            };
+            match files.read_guest_file(&path) {
+                Ok(data) => json_response(serde_json::json!(data)),
+                Err(error) => json_error(error),
+            }
+        });
 
         let write_text_state = state.clone();
-        proto
-            .register(
-                "host",
-                "write_file_text",
-                move |path: String, text: String| -> String {
-                    let Ok(mut files) = write_text_state.files.lock() else {
-                        return json_error("filesystem mutex poisoned");
-                    };
-                    if let Err(error) = files.write_output_path(&path, text.into_bytes()) {
-                        return json_error(error);
-                    }
-                    json_response(serde_json::json!({ "ok": true }))
-                },
-            )
-            .context("failed to register JS text file writer")?;
+        host.register(
+            "write_file_text",
+            move |path: String, text: String| -> String {
+                let Ok(mut files) = write_text_state.files.lock() else {
+                    return json_error("filesystem mutex poisoned");
+                };
+                if let Err(error) = files.write_output_path(&path, text.into_bytes()) {
+                    return json_error(error);
+                }
+                json_response(serde_json::json!({ "ok": true }))
+            },
+        );
 
         let write_bytes_state = state.clone();
-        proto
-            .register(
-                "host",
-                "write_file_bytes",
-                move |path: String, bytes_json: String| -> String {
-                    let bytes: Vec<u8> = match serde_json::from_str(&bytes_json) {
-                        Ok(b) => b,
-                        Err(error) => return json_error(error),
-                    };
-                    let Ok(mut files) = write_bytes_state.files.lock() else {
-                        return json_error("filesystem mutex poisoned");
-                    };
-                    if let Err(error) = files.write_output_path(&path, bytes) {
-                        return json_error(error);
-                    }
-                    json_response(serde_json::json!({ "ok": true }))
-                },
-            )
-            .context("failed to register JS bytes file writer")?;
+        host.register(
+            "write_file_bytes",
+            move |path: String, bytes_json: String| -> String {
+                let bytes: Vec<u8> = match serde_json::from_str(&bytes_json) {
+                    Ok(b) => b,
+                    Err(error) => return json_error(error),
+                };
+                let Ok(mut files) = write_bytes_state.files.lock() else {
+                    return json_error("filesystem mutex poisoned");
+                };
+                if let Err(error) = files.write_output_path(&path, bytes) {
+                    return json_error(error);
+                }
+                json_response(serde_json::json!({ "ok": true }))
+            },
+        );
 
         let http_state = state;
-        proto
-            .register(
-                "host",
-                "fetch",
-                move |url: String, options_json: String| -> String {
-                    let options: FetchOptions = match serde_json::from_str(&options_json) {
-                        Ok(opts) => opts,
-                        Err(error) => return json_error(error),
-                    };
+        host.register(
+            "fetch",
+            move |url: String, options_json: String| -> String {
+                let options: FetchOptions = match serde_json::from_str(&options_json) {
+                    Ok(opts) => opts,
+                    Err(error) => return json_error(error),
+                };
 
-                    let parsed_url = match url::Url::parse(&url) {
-                        Ok(u) => u,
-                        Err(error) => return json_error(format!("invalid URL: {error}")),
-                    };
-                    let method: hyperlight_sandbox::HttpMethod = match options.method.parse() {
-                        Ok(m) => m,
-                        Err(error) => return json_error(error),
-                    };
+                let parsed_url = match url::Url::parse(&url) {
+                    Ok(u) => u,
+                    Err(error) => return json_error(format!("invalid URL: {error}")),
+                };
+                let method: hyperlight_sandbox::HttpMethod = match options.method.parse() {
+                    Ok(m) => m,
+                    Err(error) => return json_error(error),
+                };
 
-                    {
-                        let Ok(network) = http_state.network.lock() else {
-                            return json_response(serde_json::json!({
-                                "status": 500,
-                                "headers": {},
-                                "body": "network mutex poisoned",
-                            }));
-                        };
-                        if !network.is_allowed(&parsed_url, &method) {
-                            return json_response(serde_json::json!({
-                                "status": 403,
-                                "headers": {},
-                                "body": format!("HTTP request denied for {} {}", method, parsed_url),
-                            }));
-                        }
+                {
+                    let Ok(network) = http_state.network.lock() else {
+                        return json_response(serde_json::json!({
+                            "status": 500,
+                            "headers": {},
+                            "body": "network mutex poisoned",
+                        }));
+                    };
+                    if !network.is_allowed(&parsed_url, &method) {
+                        return json_response(serde_json::json!({
+                            "status": 403,
+                            "headers": {},
+                            "body": format!("HTTP request denied for {} {}", method, parsed_url),
+                        }));
                     }
+                }
 
-                    if options.headers.len() > sandbox_http::MAX_RESPONSE_HEADER_COUNT {
-                        return json_error("too many request headers");
+                if options.headers.len() > sandbox_http::MAX_RESPONSE_HEADER_COUNT {
+                    return json_error("too many request headers");
+                }
+
+                let http_req = sandbox_http::HttpRequest {
+                    url: parsed_url,
+                    method: method.to_string(),
+                    headers: options.headers.into_iter().collect(),
+                    body: sandbox_http::HttpRequest::body_from_bytes(
+                        options.body.map(|b| b.into_bytes()),
+                    ),
+                };
+
+                let resp = match sandbox_http::send_http_request(http_req).block_on() {
+                    Ok(r) => r,
+                    Err(error) => {
+                        return json_response(serde_json::json!({
+                            "status": 502,
+                            "headers": {},
+                            "body": format!("{error}"),
+                        }));
                     }
+                };
 
-                    let http_req = sandbox_http::HttpRequest {
-                        url: parsed_url,
-                        method: method.to_string(),
-                        headers: options.headers.into_iter().collect(),
-                        body: sandbox_http::HttpRequest::body_from_bytes(
-                            options.body.map(|b| b.into_bytes()),
-                        ),
-                    };
+                let body = match String::from_utf8(resp.body) {
+                    Ok(body) => body,
+                    Err(error) => String::from_utf8_lossy(&error.into_bytes()).into_owned(),
+                };
 
-                    let resp = match sandbox_http::send_http_request(http_req).block_on() {
-                        Ok(r) => r,
-                        Err(error) => {
-                            return json_response(serde_json::json!({
-                                "status": 502,
-                                "headers": {},
-                                "body": format!("{error}"),
-                            }));
-                        }
-                    };
+                json_response(serde_json::json!({
+                    "status": resp.status,
+                    "headers": resp.headers,
+                    "body": body,
+                }))
+            },
+        );
 
-                    let body = match String::from_utf8(resp.body) {
-                        Ok(body) => body,
-                        Err(error) => String::from_utf8_lossy(&error.into_bytes()).into_owned(),
-                    };
-
-                    json_response(serde_json::json!({
-                        "status": resp.status,
-                        "headers": resp.headers,
-                        "body": body,
-                    }))
-                },
-            )
-            .context("failed to register JS HTTP bridge")?;
-
-        Ok(())
+        host
     }
 
     fn run_impl(&mut self, code: &str) -> Result<ExecutionResult> {
@@ -422,7 +406,7 @@ impl JsGuestSandbox {
 }
 
 impl GuestSandbox for JsGuestSandbox {
-    type SnapshotData = JsSnapshot;
+    type SnapshotData = JsSnapshot<LoadedJSSandbox>;
 
     fn interrupt_handle(&self) -> Result<InterruptHandle> {
         let handle = self.sandbox.interrupt_handle();
@@ -433,17 +417,17 @@ impl GuestSandbox for JsGuestSandbox {
         self.run_impl(code)
     }
 
-    fn snapshot(&mut self) -> Result<Snapshot<JsSnapshot>> {
+    fn snapshot(&mut self) -> Result<Snapshot<Self::SnapshotData>> {
         let runtime = self
             .sandbox
             .snapshot()
             .map_err(|e| anyhow::anyhow!("snapshot failed: {e}"))?;
-        Ok(Snapshot::new("hyperlight-js", runtime))
+        Ok(Snapshot::new("hyperlight-js", Arc::new(runtime)))
     }
 
-    fn restore(&mut self, snapshot: &Snapshot<JsSnapshot>) -> Result<()> {
+    fn restore(&mut self, snapshot: &Snapshot<Self::SnapshotData>) -> Result<()> {
         self.sandbox
-            .restore(snapshot.snapshot().clone())
+            .restore(snapshot.snapshot().as_ref().clone())
             .map_err(|e| anyhow::anyhow!("restore failed: {e}"))
     }
 }

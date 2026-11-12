@@ -1,0 +1,31 @@
+use std::path::Path;
+
+use hyperlight_sandbox::{DEFAULT_STACK_SIZE, SandboxBuilder};
+use hyperlight_sandbox_wasm::Wasm;
+
+#[test]
+fn large_source_runs_without_exhausting_h2g_descriptors() {
+    let module_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("guests/python/python-sandbox.aot");
+    let mut sandbox = SandboxBuilder::new()
+        .guest(Wasm)
+        .module_path(module_path.display().to_string())
+        .stack_size(DEFAULT_STACK_SIZE.max(64 * 1024 * 1024))
+        .build()
+        .expect("failed to create sandbox");
+
+    for source_size in [256 * 1024, 1024 * 1024] {
+        let suffix = "\nprint('large source accepted')\n";
+        let code = format!("#{}{}", "x".repeat(source_size - 1 - suffix.len()), suffix);
+        let result = sandbox
+            .run(&code)
+            .unwrap_or_else(|error| panic!("{source_size}-byte source failed: {error:#}"));
+
+        assert_eq!(
+            result.exit_code, 0,
+            "{source_size}-byte source failed: {}",
+            result.stderr
+        );
+        assert_eq!(result.stdout.trim(), "large source accepted");
+    }
+}

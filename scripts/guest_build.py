@@ -10,7 +10,7 @@ import subprocess
 from pathlib import Path
 
 WASM_TOOLS_VERSION = "1.252.0"
-AOT_VERSION = "0.15.0"
+AOT_VERSION = "0.16.0"
 
 
 def digest(path):

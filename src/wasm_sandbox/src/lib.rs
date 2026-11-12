@@ -244,8 +244,12 @@ impl WasmComponentSandbox {
             active_requests: Arc::new(AtomicUsize::new(0)),
         };
 
+        let input_capacity = config.heap_size.min(70_000_000) as usize;
+        // Reserve one buffer for control calls that release retained external data.
+        let h2g_pages = input_capacity.div_ceil(hyperlight_common::vmem::PAGE_SIZE) + 1;
         let mut proto = HyperlightSandboxBuilder::new()
-            .with_guest_input_buffer_size(config.heap_size.min(70_000_000) as usize)
+            .with_h2g_pool_pages(h2g_pages)
+            .with_h2g_queue_size(h2g_pages)
             .with_guest_heap_size(config.heap_size)
             .with_guest_scratch_size(config.stack_size as usize)
             .build()
@@ -317,7 +321,7 @@ impl WasmComponentSandbox {
 }
 
 impl GuestSandbox for WasmComponentSandbox {
-    type SnapshotData = WasmSnapshot;
+    type SnapshotData = WasmSnapshot<LoadedWasmSandbox>;
 
     fn interrupt_handle(&self) -> Result<InterruptHandle> {
         let handle = self.sandbox.sb.interrupt_handle()?;
@@ -328,19 +332,19 @@ impl GuestSandbox for WasmComponentSandbox {
         self.run_impl(code)
     }
 
-    fn snapshot(&mut self) -> Result<Snapshot<WasmSnapshot>> {
+    fn snapshot(&mut self) -> Result<Snapshot<Self::SnapshotData>> {
         let runtime = self
             .sandbox
             .sb
             .snapshot()
             .map_err(|e| anyhow::anyhow!("snapshot failed: {e}"))?;
-        Ok(Snapshot::new("wasm-component", runtime))
+        Ok(Snapshot::new("wasm-component", Arc::new(runtime)))
     }
 
-    fn restore(&mut self, snapshot: &Snapshot<WasmSnapshot>) -> Result<()> {
+    fn restore(&mut self, snapshot: &Snapshot<Self::SnapshotData>) -> Result<()> {
         self.sandbox
             .sb
-            .restore(snapshot.snapshot().clone())
+            .restore(snapshot.snapshot().as_ref().clone())
             .map_err(|e| anyhow::anyhow!("restore failed: {e}"))
     }
 }

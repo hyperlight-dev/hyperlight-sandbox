@@ -232,6 +232,12 @@ jobs:
       - name: Integration tests
         run: just wasm test
 
+      - name: Developer process worker
+        if: runner.os != 'Windows'
+        run: |
+          just worker lint
+          just worker test
+
       - name: Run examples
         run: just wasm examples
 

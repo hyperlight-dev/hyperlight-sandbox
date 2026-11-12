@@ -330,16 +330,32 @@ jobs:
 
   python-sdk:
     name: Python SDK (${{ matrix.os }})
+    timeout-minutes: ${{ fromJSON(vars.BUILD_TEST_JOB_TIMEOUT || '45') }}
     needs: guest-build
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'macos-hvf' && fromJSON('["self-hosted", "macos", "arm64", "hvf"]') || matrix.os }}
     env:
       UV_PYTHON: "3.14"
-      HYPERLIGHT_GUEST_ARTIFACT: "1"
+      HYPERLIGHT_GUEST_ARTIFACT: ${{ matrix.os != 'macos-hvf' && '1' || '0' }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-hvf]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Verify Apple Silicon runner
+        if: matrix.os == 'macos-hvf'
+        run: test "$(uname -m)" = "arm64"
+
+      - name: Set up macOS environment
+        if: runner.os == 'macOS'
+        run: |
+          prefix="$HOME/.homebrew"
+          if [ ! -x "$prefix/bin/brew" ]; then
+            git clone --depth=1 https://github.com/Homebrew/brew.git "$prefix"
+          fi
+          printf '%s\n' "$prefix/bin" "$prefix/sbin" "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
         with:
           components: clippy
@@ -352,8 +368,13 @@ jobs:
             target/hls
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        if: runner.os != 'macOS'
         with:
           name: guest-bundle
+
+      - name: Select fresh Python install directory
+        if: runner.os == 'macOS'
+        run: echo "UV_PYTHON_INSTALL_DIR=$RUNNER_TEMP/hyperlight-python-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
 
@@ -376,6 +397,18 @@ jobs:
       - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
         run: choco install llvm -y
+
+      - name: Install LLVM (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_UPGRADE: "1"
+        run: |
+          brew install llvm
+          llvm_bin="$(brew --prefix llvm)/bin"
+          "$llvm_bin/clang" --version
+          echo "$llvm_bin" >> "$GITHUB_PATH"
+          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> "$GITHUB_ENV"
 
       - name: Enable KVM
         if: runner.os == 'Linux' && !env.ACT

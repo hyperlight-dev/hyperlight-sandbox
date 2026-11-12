@@ -130,10 +130,18 @@ impl RemoteError {
 }
 
 pub(crate) fn write_frame(writer: &mut impl Write, message: &Message) -> Result<()> {
+    write_frame_with_limit(writer, message, MAX_FRAME)
+}
+
+fn write_frame_with_limit(
+    writer: &mut impl Write,
+    message: &Message,
+    maximum: usize,
+) -> Result<()> {
     let bytes = postcard::to_stdvec(message).context("encode worker message")?;
     ensure!(
-        bytes.len() <= MAX_FRAME,
-        "worker message exceeds {MAX_FRAME} bytes"
+        bytes.len() <= maximum,
+        "worker message exceeds {maximum} bytes"
     );
     writer.write_all(&(bytes.len() as u32).to_le_bytes())?;
     writer.write_all(&bytes)?;
@@ -190,7 +198,65 @@ mod tests {
         let expected = format!("{error:#}");
         let restored = RemoteError::from_error(error).into_error();
         assert!(restored.downcast_ref::<std::io::Error>().is_some());
+        assert_eq!(
+            restored.downcast_ref::<std::io::Error>().unwrap().kind(),
+            std::io::ErrorKind::NotADirectory
+        );
         assert_eq!(format!("{restored:#}"), expected);
+    }
+
+    #[test]
+    fn remote_io_errors_preserve_os_codes() {
+        for code in [libc::ENOENT, libc::EACCES, libc::ENOTDIR] {
+            let original = std::io::Error::from_raw_os_error(code);
+            let kind = original.kind();
+            let restored = RemoteError::from_error(
+                anyhow::Error::new(original).context("open input directory"),
+            )
+            .into_error();
+            let io = restored.downcast_ref::<std::io::Error>().unwrap();
+            assert_eq!(io.kind(), kind);
+            assert_eq!(io.raw_os_error(), Some(code));
+        }
+    }
+
+    #[test]
+    fn oversized_responses_report_the_request_error_without_closing_transport() {
+        let mut frame = Vec::new();
+        write_frame_with_limit(
+            &mut frame,
+            &Message::Response {
+                id: 41,
+                result: Ok(Response::Files(vec!["x".repeat(4096)])),
+            },
+            512,
+        )
+        .unwrap();
+        write_frame_with_limit(
+            &mut frame,
+            &Message::Response {
+                id: 42,
+                result: Ok(Response::Ack),
+            },
+            512,
+        )
+        .unwrap();
+        let mut reader = frame.as_slice();
+        let Message::Response {
+            id: 41,
+            result: Err(error),
+        } = read_frame(&mut reader).unwrap()
+        else {
+            panic!("expected an explicit frame-size error for the original request");
+        };
+        assert!(error.into_error().to_string().contains("exceeds 512 bytes"));
+        assert!(matches!(
+            read_frame(&mut reader).unwrap(),
+            Message::Response {
+                id: 42,
+                result: Ok(Response::Ack)
+            }
+        ));
     }
 
     #[test]

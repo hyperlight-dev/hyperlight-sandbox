@@ -69,19 +69,113 @@ fn invalid_input_directory_preserves_io_error() {
     );
 }
 
+fn run_in_isolated_process(name: &str) -> bool {
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+
+    if std::env::var("HYPERLIGHT_WORKER_PROCESS_TEST").as_deref() == Ok(name) {
+        return false;
+    }
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", name, "--nocapture"])
+        .env("HYPERLIGHT_WORKER_PROCESS_TEST", name)
+        .process_group(0)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while child.try_wait().unwrap().is_none() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    if child.try_wait().unwrap().is_none() {
+        child.kill().unwrap();
+    }
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "isolated {name} failed: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    true
+}
+
+#[test]
+fn worker_starts_with_closed_standard_streams() {
+    if run_in_isolated_process("worker_starts_with_closed_standard_streams") {
+        return;
+    }
+    let stdin = unsafe { libc::fcntl(0, libc::F_DUPFD_CLOEXEC, 3) };
+    let stdout = unsafe { libc::fcntl(1, libc::F_DUPFD_CLOEXEC, 3) };
+    assert!(stdin >= 3 && stdout >= 3);
+    unsafe {
+        libc::close(0);
+        libc::close(1);
+    }
+    let result = Pool::new(
+        worker_path(),
+        PoolConfig {
+            initial: 1,
+            maximum: 1,
+        },
+    );
+    unsafe {
+        assert!(libc::dup2(stdin, 0) >= 0);
+        assert!(libc::dup2(stdout, 1) >= 0);
+        libc::close(stdin);
+        libc::close(stdout);
+    }
+    result.unwrap();
+}
+
+#[test]
+fn application_sigint_does_not_kill_workers() {
+    if run_in_isolated_process("application_sigint_does_not_kill_workers") {
+        return;
+    }
+    extern "C" fn handle_interrupt(_: libc::c_int) {}
+    unsafe {
+        assert_ne!(
+            libc::signal(
+                libc::SIGINT,
+                handle_interrupt as *const () as libc::sighandler_t
+            ),
+            libc::SIG_ERR
+        );
+    }
+    let mut sandbox = SandboxBuilder::new()
+        .pool(pool(1))
+        .guest(HyperlightJs)
+        .build()
+        .unwrap();
+    assert_eq!(unsafe { libc::kill(0, libc::SIGINT) }, 0);
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(
+        sandbox.run("console.log('alive');").unwrap().stdout.trim(),
+        "alive"
+    );
+}
+
 #[test]
 fn disconnect_stops_guest_and_worker() {
-    assert_worker_stops_after_disconnect(false);
+    assert_worker_stops_after_disconnect(false, false);
 }
 
 #[test]
 fn disconnect_after_guest_started_stops_worker() {
-    assert_worker_stops_after_disconnect(true);
+    assert_worker_stops_after_disconnect(true, false);
 }
 
-fn assert_worker_stops_after_disconnect(wait_for_guest: bool) {
+#[test]
+fn disconnect_stops_worker_blocked_in_native_file_read() {
+    assert_worker_stops_after_disconnect(true, true);
+}
+
+fn assert_worker_stops_after_disconnect(wait_for_guest: bool, blocked_read: bool) {
     use std::net::Shutdown;
     use std::os::fd::AsRawFd;
+    use std::os::unix::fs::OpenOptionsExt;
     use std::os::unix::net::UnixStream;
     use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
@@ -92,6 +186,14 @@ fn assert_worker_stops_after_disconnect(wait_for_guest: bool) {
     let output = root.path().join("output");
     std::fs::create_dir(&output).unwrap();
     let started = output.join("started");
+    let input = root.path().join("input");
+    std::fs::create_dir(&input).unwrap();
+    let fifo = input.join("blocked");
+    if blocked_read {
+        use std::os::unix::ffi::OsStrExt;
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+    }
     let (mut stream, child_socket) = UnixStream::pair().unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(30)))
@@ -113,6 +215,7 @@ fn assert_worker_stops_after_disconnect(wait_for_guest: bool) {
     }
     let mut child = command.spawn().unwrap();
     drop(child_socket);
+    let mut _fifo_writer = None;
     let result = (|| -> anyhow::Result<()> {
         write_frame(
             &mut stream,
@@ -146,7 +249,7 @@ fn assert_worker_stops_after_disconnect(wait_for_guest: bool) {
                     module_path: config.module_path,
                     heap_size: config.heap_size,
                     stack_size: config.stack_size,
-                    input_dir: None,
+                    input_dir: Some(input),
                     output_dir: Some((
                         output,
                         (hyperlight_sandbox::DirPerms::READ | hyperlight_sandbox::DirPerms::MUTATE)
@@ -177,7 +280,9 @@ fn assert_worker_stops_after_disconnect(wait_for_guest: bool) {
                 id: 3,
                 generation: 1,
                 request: Request::Call(
-                    if wait_for_guest {
+                    if blocked_read {
+                        "write_file('/output/started', 'ready'); read_file('/input/blocked');"
+                    } else if wait_for_guest {
                         "write_file('/output/started', 'ready'); while (true) {}"
                     } else {
                         "while (true) {}"
@@ -195,12 +300,38 @@ fn assert_worker_stops_after_disconnect(wait_for_guest: bool) {
                 );
                 std::thread::sleep(Duration::from_millis(10));
             }
+            if blocked_read {
+                let deadline = Instant::now() + Duration::from_secs(10);
+                loop {
+                    match std::fs::OpenOptions::new()
+                        .write(true)
+                        .custom_flags(libc::O_NONBLOCK)
+                        .open(&fifo)
+                    {
+                        Ok(writer) => {
+                            _fifo_writer = Some(writer);
+                            break;
+                        }
+                        Err(error) if error.raw_os_error() == Some(libc::ENXIO) => {
+                            anyhow::ensure!(
+                                Instant::now() < deadline,
+                                "guest did not open the FIFO"
+                            );
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(error) => return Err(error.into()),
+                    }
+                }
+            }
         }
         stream.shutdown(Shutdown::Both)?;
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
             if let Some(status) = child.try_wait()? {
-                anyhow::ensure!(status.success(), "worker shutdown failed: {status}");
+                anyhow::ensure!(
+                    blocked_read || status.success(),
+                    "worker shutdown failed: {status}"
+                );
                 return Ok(());
             }
             std::thread::sleep(Duration::from_millis(10));

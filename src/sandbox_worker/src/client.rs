@@ -1174,4 +1174,85 @@ mod tests {
         assert!(replacement.healthy.load(Ordering::Acquire));
         pool.release(replacement);
     }
+
+    #[test]
+    fn failed_workers_are_reaped_while_still_owned() {
+        let pool = Pool::new(
+            helper_path(),
+            PoolConfig {
+                initial: 1,
+                maximum: 1,
+            },
+        )
+        .unwrap();
+        let connection = pool.checkout().unwrap();
+        let pid = {
+            let mut child = connection.child.lock().unwrap();
+            child.kill().unwrap();
+            child.id() as libc::pid_t
+        };
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        let reaped = loop {
+            if unsafe { libc::kill(pid, 0) } < 0 {
+                break std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
+            }
+            if std::time::Instant::now() >= deadline {
+                break false;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        pool.shutdown();
+        pool.release(connection);
+        assert!(
+            reaped,
+            "failed worker remained a zombie while its connection was owned"
+        );
+    }
+
+    #[test]
+    fn argument_limits_are_enforced_before_forwarding_callbacks() {
+        for limit in [64, 1024 * 1024] {
+            let mut tools = ToolRegistry::new();
+            tools.set_max_args_size(limit);
+            tools.register_unvalidated("tool", Ok);
+            let sandbox = SandboxBuilder::new()
+                .pool(
+                    Pool::new(
+                        helper_path(),
+                        PoolConfig {
+                            initial: 1,
+                            maximum: 1,
+                        },
+                    )
+                    .unwrap(),
+                )
+                .with_tools(tools)
+                .guest(HyperlightJs)
+                .build()
+                .unwrap();
+            let (_, response) = sandbox
+                .connection()
+                .start_request(
+                    sandbox.generation,
+                    Request::Call(format!(
+                        "call_tool('tool', {{value: 'x'.repeat({limit})}});"
+                    )),
+                )
+                .unwrap();
+            let rejected = match response.recv_timeout(Duration::from_secs(10)).unwrap() {
+                RequestEvent::Response(Ok(Response::Execution(result))) => {
+                    result.stderr.contains("argument payload too large")
+                }
+                RequestEvent::Response(Err(error)) => {
+                    format!("{error:#}").contains("argument payload too large")
+                }
+                _ => false,
+            };
+            sandbox.connection().terminate();
+            assert!(
+                rejected,
+                "oversized arguments crossed into the application process"
+            );
+        }
+    }
 }

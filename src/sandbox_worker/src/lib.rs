@@ -2,9 +2,14 @@
 //! This is an internal SDK interface, not a stable remote protocol.
 
 #[cfg(unix)]
+mod client;
+#[cfg(unix)]
 mod protocol;
 #[cfg(unix)]
 mod server;
+
+#[cfg(unix)]
+pub use client::{InterruptHandle, Pool, PoolConfig, Sandbox, SandboxBuilder, Snapshot};
 
 /// Run the packaged worker. Only the private binary entry point calls this.
 #[cfg(unix)]

@@ -122,6 +122,11 @@ pub struct ToolRegistry {
 const DEFAULT_MAX_ARGS_SIZE: usize = 1024 * 1024;
 
 impl ToolRegistry {
+    /// Names registered for dispatch, without exposing their callbacks.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.tools.keys().map(String::as_str)
+    }
+
     pub fn new() -> Self {
         Self {
             tools: HashMap::new(),

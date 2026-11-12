@@ -114,6 +114,19 @@ impl RemoteError {
             contexts,
         }
     }
+
+    pub fn into_error(self) -> anyhow::Error {
+        let mut error = match self.kind {
+            ErrorKind::Cancelled => anyhow::Error::new(HyperlightError::ExecutionCanceledByHost()),
+            ErrorKind::Poisoned => anyhow::Error::new(HyperlightError::PoisonedSandbox),
+            ErrorKind::Io => anyhow::Error::new(std::io::Error::other(self.message)),
+            ErrorKind::Other => anyhow::anyhow!(self.message),
+        };
+        for context in self.contexts.into_iter().rev() {
+            error = error.context(context);
+        }
+        error
+    }
 }
 
 pub(crate) fn write_frame(writer: &mut impl Write, message: &Message) -> Result<()> {
@@ -151,6 +164,34 @@ pub(crate) fn read_frame(reader: &mut impl Read) -> Result<Message> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_errors_preserve_typed_roots_and_context_once() {
+        for root in [
+            HyperlightError::ExecutionCanceledByHost(),
+            HyperlightError::PoisonedSandbox,
+        ] {
+            let error = anyhow::Error::new(root).context("run guest");
+            let expected = format!("{error:#}");
+            let restored = RemoteError::from_error(error).into_error();
+            assert!(restored.downcast_ref::<HyperlightError>().is_some());
+            assert_eq!(format!("{restored:#}"), expected);
+        }
+    }
+
+    #[test]
+    fn remote_io_errors_preserve_classification_and_context() {
+        let error = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::NotADirectory,
+            "input path is not a directory",
+        ))
+        .context("open input directory")
+        .context("create sandbox");
+        let expected = format!("{error:#}");
+        let restored = RemoteError::from_error(error).into_error();
+        assert!(restored.downcast_ref::<std::io::Error>().is_some());
+        assert_eq!(format!("{restored:#}"), expected);
+    }
 
     #[test]
     fn frames_reject_oversized_truncated_and_trailing_data() {

@@ -1,0 +1,22 @@
+set windows-shell := ["pwsh", "-NoLogo", "-Command"]
+
+repo-root := invocation_directory_native()
+export WIT_WORLD := repo-root + "/src/wasm_sandbox/wit/sandbox-world.wasm"
+
+# Build the developer helper; sign only this executable on macOS.
+build target="debug":
+    {{ if os() != "windows" { "cd " + repo-root + " && just wasm guest-compile-wit" } else { "echo SDK process worker requires Unix" } }}
+    {{ if os() != "windows" { "cd " + repo-root + " && cargo build -p hyperlight-sandbox-worker --profile=" + if target == "debug" { "dev" } else { target } } else { "" } }}
+    {{ if os() == "macos" { "codesign --force --sign - --entitlements " + repo-root + "/scripts/macos-entitlements.plist " + repo-root + "/target/" + target + "/hyperlight-sandbox-worker" } else { "" } }}
+    {{ if os() == "macos" { "mkdir -p " + repo-root + "/target/" + target + "/macos-worker && cp " + repo-root + "/target/" + target + "/hyperlight-sandbox-worker " + repo-root + "/target/" + target + "/macos-worker/hyperlight-sandbox-worker" } else { "" } }}
+
+# Exercise framing, process lifecycle, callbacks, snapshots and interruption.
+# Cargo can replace its binary during testing; use the signed macOS staging copy.
+test: build
+    cd "{{repo-root}}" && just wasm guest-build
+    cd "{{repo-root}}" && {{ if os() == "macos" { "HYPERLIGHT_SANDBOX_WORKER_PATH=\"" + repo-root + "/target/debug/macos-worker/hyperlight-sandbox-worker\" " } else { "" } }}cargo test -p hyperlight-sandbox-worker
+
+# Check the private process boundary and worker implementation.
+lint:
+    cd "{{repo-root}}" && just wasm guest-compile-wit
+    cd "{{repo-root}}" && cargo clippy -p hyperlight-sandbox-worker --all-targets -- -D warnings

@@ -122,6 +122,11 @@ pub struct ToolRegistry {
 const DEFAULT_MAX_ARGS_SIZE: usize = 1024 * 1024;
 
 impl ToolRegistry {
+    /// Names registered for dispatch, without exposing their callbacks.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.tools.keys().map(String::as_str)
+    }
+
     pub fn new() -> Self {
         Self {
             tools: HashMap::new(),
@@ -133,6 +138,11 @@ impl ToolRegistry {
     /// Set to 0 to disable the limit.
     pub fn set_max_args_size(&mut self, max_bytes: usize) {
         self.max_args_size = max_bytes;
+    }
+
+    /// Maximum serialized argument size, or zero when the limit is disabled.
+    pub fn max_args_size(&self) -> usize {
+        self.max_args_size
     }
 
     /// Register a tool handler that explicitly opts out of argument validation.

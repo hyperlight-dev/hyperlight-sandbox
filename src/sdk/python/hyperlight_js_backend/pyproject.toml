@@ -28,3 +28,4 @@ classifiers = [
 python-source = "."
 features = ["pyo3/extension-module"]
 module-name = "hyperlight_sandbox_backend_hyperlight_js._native_js"
+include = [{ path = "hyperlight_sandbox_backend_hyperlight_js/hyperlight-sandbox-worker", format = "wheel" }]

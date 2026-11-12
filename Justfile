@@ -4,6 +4,7 @@ mod wasm 'src/wasm_sandbox/Justfile'
 mod js 'src/javascript_sandbox/Justfile'
 mod python 'src/sdk/python/Justfile'
 mod dotnet 'src/sdk/dotnet/Justfile'
+mod worker 'src/sandbox_worker/Justfile'
 mod examples_mod 'examples/Justfile'
 
 default-target := "debug"
@@ -13,9 +14,9 @@ clean: wasm::clean python::clean dotnet::clean
 
 #### BUILD TARGETS ####
 
-build target=default-target: (wasm::build target) (js::build target) python::build (dotnet::build target)
+build target=default-target: (wasm::build target) (js::build target) (worker::build target) python::build (dotnet::build target)
 
-lint: lint-rust wasm::lint js::lint python::lint
+lint: lint-rust wasm::lint js::lint worker::lint python::lint
 
 lint-rust:
     cargo clippy -p hyperlight-sandbox --all-targets --features test-utils -- -D warnings
@@ -36,7 +37,7 @@ fmt-check-rust:
 
 #### TESTS ####
 
-test: wasm::test-build wasm::js-guest-test wasm::guest-build wasm::js-guest-build python::build python::python-test test-rust wasm::test dotnet::test-rust dotnet::test
+test: wasm::test-build wasm::js-guest-test wasm::guest-build wasm::js-guest-build python::build python::python-test test-rust wasm::test worker::test dotnet::test-rust dotnet::test
 
 fuzz seconds="60": (python::python-fuzz seconds)
 

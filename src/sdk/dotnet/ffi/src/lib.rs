@@ -25,11 +25,15 @@ use std::ptr::NonNull;
 
 use anyhow::Result;
 use hyperlight_sandbox::{
-    DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, FilesystemLimits, GuestSandbox,
-    HttpMethod, InterruptHandle, Sandbox, SandboxBuilder, SandboxConfig, ToolRegistry, ToolSchema,
+    DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, FilesystemLimits, HttpMethod,
+    SandboxConfig, ToolRegistry, ToolSchema,
 };
+#[cfg(not(target_os = "macos"))]
+use hyperlight_sandbox::{GuestSandbox, InterruptHandle, Sandbox, SandboxBuilder};
 use hyperlight_sandbox_javascript::HyperlightJs;
 use hyperlight_sandbox_wasm::Wasm;
+#[cfg(target_os = "macos")]
+use hyperlight_sandbox_worker::{InterruptHandle, Sandbox, SandboxBuilder};
 use log::{debug, error};
 
 // ---------------------------------------------------------------------------
@@ -170,11 +174,17 @@ pub type ToolCallbackFn = unsafe extern "C" fn(args_json: *const c_char) -> *mut
 
 /// Type aliases for the concrete sandbox types.
 type WasmSandboxInner = Sandbox<Wasm>;
+#[cfg(target_os = "macos")]
+type WasmSnapshotInner = hyperlight_sandbox_worker::Snapshot<Wasm>;
+#[cfg(not(target_os = "macos"))]
 type WasmSnapshotInner = hyperlight_sandbox::Snapshot<
     <<Wasm as hyperlight_sandbox::Guest>::Sandbox as GuestSandbox>::SnapshotData,
 >;
 
 type JsSandboxInner = Sandbox<HyperlightJs>;
+#[cfg(target_os = "macos")]
+type JsSnapshotInner = hyperlight_sandbox_worker::Snapshot<HyperlightJs>;
+#[cfg(not(target_os = "macos"))]
 type JsSnapshotInner = hyperlight_sandbox::Snapshot<
     <<HyperlightJs as hyperlight_sandbox::Guest>::Sandbox as GuestSandbox>::SnapshotData,
 >;

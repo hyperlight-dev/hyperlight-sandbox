@@ -7,6 +7,7 @@ members = [
 	"src/sdk/python/wasm_backend",
 	"src/sdk/python/hyperlight_js_backend",
 	"src/sdk/dotnet/ffi",
+	"src/sandbox_worker",
 ]
 resolver = "2"
 
@@ -24,6 +25,7 @@ hyperlight-sandbox = { version = "0.9.0", path = "src/hyperlight_sandbox" }
 hyperlight-sandbox-javascript = { version = "0.9.0", path = "src/javascript_sandbox" }
 hyperlight-sandbox-wasm = { version = "0.9.0", path = "src/wasm_sandbox" }
 hyperlight-sandbox-pyo3-common = { path = "src/sdk/python/pyo3_common" }
+hyperlight-sandbox-worker = { path = "src/sandbox_worker" }
 hyperlight-common = { version = "0.18.0", default-features = false }
 hyperlight-component-macro = "0.18.0"
 hyperlight-host = { version = "0.18.0", default-features = false, features = ["executable_heap"] }

@@ -1,6 +1,8 @@
-use hyperlight_sandbox::{
-    ArgType, FilesystemLimits, HyperlightError, InterruptHandle, ToolRegistry, ToolSchema,
-};
+#[cfg(not(target_os = "macos"))]
+use hyperlight_sandbox::InterruptHandle;
+use hyperlight_sandbox::{ArgType, FilesystemLimits, HyperlightError, ToolRegistry, ToolSchema};
+#[cfg(target_os = "macos")]
+use hyperlight_sandbox_worker::InterruptHandle;
 use pyo3::exceptions::{PyInterruptedError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyModule};

@@ -2,17 +2,24 @@ use std::collections::HashMap;
 
 use hyperlight_sandbox::{
     DEFAULT_HEAP_SIZE, DEFAULT_STACK_SIZE, DirPerms, FilePerms, FilesystemLimits, HttpMethod,
-    MethodFilter, Sandbox, SandboxBuilder, SandboxConfig,
+    MethodFilter, SandboxConfig,
 };
+#[cfg(not(target_os = "macos"))]
+use hyperlight_sandbox::{Sandbox, SandboxBuilder};
 use hyperlight_sandbox_javascript::HyperlightJs;
 use hyperlight_sandbox_pyo3_common::{
     PyExecutionResult, PyInterruptHandle, build_tool_registry, execution_error,
     parse_filesystem_limits, parse_size, parse_tool_registration,
 };
+#[cfg(target_os = "macos")]
+use hyperlight_sandbox_worker::{Sandbox, SandboxBuilder};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
 type JsSandboxInner = Sandbox<HyperlightJs>;
+#[cfg(target_os = "macos")]
+type JsSnapshotInner = hyperlight_sandbox_worker::Snapshot<HyperlightJs>;
+#[cfg(not(target_os = "macos"))]
 type JsSnapshotInner = hyperlight_sandbox::Snapshot<<
     <HyperlightJs as hyperlight_sandbox::Guest>::Sandbox as hyperlight_sandbox::GuestSandbox
 >::SnapshotData>;

@@ -5,7 +5,7 @@ use anyhow::{Context, Result, bail, ensure};
 use hyperlight_sandbox::{ExecutionResult, HyperlightError};
 use serde::{Deserialize, Serialize};
 
-pub(crate) const VERSION: u32 = 2;
+pub(crate) const VERSION: u32 = 3;
 pub(crate) const BUILD: &str = env!("SANDBOX_WORKER_BUILD");
 const MAX_FRAME: usize = 256 * 1024 * 1024;
 
@@ -26,6 +26,7 @@ pub(crate) struct Options {
     pub temp_output: bool,
     pub limits: Option<(u64, u64, usize)>,
     pub tools: Vec<String>,
+    pub max_args_size: usize,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -87,8 +88,51 @@ pub(crate) enum Message {
 pub(crate) enum ErrorKind {
     Cancelled,
     Poisoned,
-    Io,
+    Io {
+        kind: IoErrorKind,
+        raw_os_error: Option<i32>,
+    },
     Other,
+}
+
+macro_rules! io_error_kinds {
+    ($($kind:ident),+ $(,)?) => {
+        #[derive(Serialize, Deserialize)]
+        pub(crate) enum IoErrorKind {
+            $($kind,)+
+            Other,
+        }
+
+        impl From<std::io::ErrorKind> for IoErrorKind {
+            fn from(kind: std::io::ErrorKind) -> Self {
+                match kind {
+                    $(std::io::ErrorKind::$kind => Self::$kind,)+
+                    _ => Self::Other,
+                }
+            }
+        }
+
+        impl From<IoErrorKind> for std::io::ErrorKind {
+            fn from(kind: IoErrorKind) -> Self {
+                match kind {
+                    $(IoErrorKind::$kind => Self::$kind,)+
+                    IoErrorKind::Other => Self::Other,
+                }
+            }
+        }
+    };
+}
+
+io_error_kinds! {
+    NotFound, PermissionDenied, ConnectionRefused, ConnectionReset,
+    HostUnreachable, NetworkUnreachable, ConnectionAborted, NotConnected,
+    AddrInUse, AddrNotAvailable, NetworkDown, BrokenPipe, AlreadyExists,
+    WouldBlock, NotADirectory, IsADirectory, DirectoryNotEmpty,
+    ReadOnlyFilesystem, StaleNetworkFileHandle, InvalidInput, InvalidData,
+    TimedOut, WriteZero, StorageFull, NotSeekable, QuotaExceeded, FileTooLarge,
+    ResourceBusy, ExecutableFileBusy, Deadlock, CrossesDevices, TooManyLinks,
+    InvalidFilename, ArgumentListTooLong, Interrupted, Unsupported,
+    UnexpectedEof, OutOfMemory,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -103,8 +147,13 @@ impl RemoteError {
         let kind = match error.downcast_ref::<HyperlightError>() {
             Some(HyperlightError::ExecutionCanceledByHost()) => ErrorKind::Cancelled,
             Some(HyperlightError::PoisonedSandbox) => ErrorKind::Poisoned,
-            _ if error.downcast_ref::<std::io::Error>().is_some() => ErrorKind::Io,
-            _ => ErrorKind::Other,
+            _ => match error.downcast_ref::<std::io::Error>() {
+                Some(io) => ErrorKind::Io {
+                    kind: io.kind().into(),
+                    raw_os_error: io.raw_os_error(),
+                },
+                None => ErrorKind::Other,
+            },
         };
         let mut contexts: Vec<_> = error.chain().map(ToString::to_string).collect();
         let message = contexts.pop().expect("anyhow errors have a root cause");
@@ -119,7 +168,10 @@ impl RemoteError {
         let mut error = match self.kind {
             ErrorKind::Cancelled => anyhow::Error::new(HyperlightError::ExecutionCanceledByHost()),
             ErrorKind::Poisoned => anyhow::Error::new(HyperlightError::PoisonedSandbox),
-            ErrorKind::Io => anyhow::Error::new(std::io::Error::other(self.message)),
+            ErrorKind::Io { kind, raw_os_error } => anyhow::Error::new(match raw_os_error {
+                Some(code) => std::io::Error::from_raw_os_error(code),
+                None => std::io::Error::new(kind.into(), self.message),
+            }),
             ErrorKind::Other => anyhow::anyhow!(self.message),
         };
         for context in self.contexts.into_iter().rev() {
@@ -138,7 +190,18 @@ fn write_frame_with_limit(
     message: &Message,
     maximum: usize,
 ) -> Result<()> {
-    let bytes = postcard::to_stdvec(message).context("encode worker message")?;
+    let mut bytes = postcard::to_stdvec(message).context("encode worker message")?;
+    if bytes.len() > maximum
+        && let Message::Response { id, .. } = message
+    {
+        bytes = postcard::to_stdvec(&Message::Response {
+            id: *id,
+            result: Err(RemoteError::from_error(anyhow::anyhow!(
+                "worker message exceeds {maximum} bytes"
+            ))),
+        })
+        .context("encode worker frame-size error")?;
+    }
     ensure!(
         bytes.len() <= maximum,
         "worker message exceeds {maximum} bytes"

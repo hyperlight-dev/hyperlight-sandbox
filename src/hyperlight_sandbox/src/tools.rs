@@ -140,6 +140,11 @@ impl ToolRegistry {
         self.max_args_size = max_bytes;
     }
 
+    /// Maximum serialized argument size, or zero when the limit is disabled.
+    pub fn max_args_size(&self) -> usize {
+        self.max_args_size
+    }
+
     /// Register a tool handler that explicitly opts out of argument validation.
     /// Use this only for tools that handle raw JSON and validate internally.
     pub fn register_unvalidated<F>(&mut self, name: &str, handler: F)

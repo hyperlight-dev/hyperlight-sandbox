@@ -223,8 +223,7 @@ pub(crate) fn serve() -> Result<()> {
                             "worker already owns a sandbox"
                         );
                         let mut tools = ToolRegistry::new();
-                        // The application's registry remains authoritative for validation.
-                        tools.set_max_args_size(0);
+                        tools.set_max_args_size(options.max_args_size);
                         for name in &options.tools {
                             let name = name.clone();
                             let writer = worker_writer.clone();

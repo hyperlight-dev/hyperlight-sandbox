@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::ffi::CStr;
 use std::marker::PhantomData;
 use std::net::Shutdown;
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
@@ -55,14 +55,20 @@ struct Connection {
 impl Connection {
     fn spawn(path: &Path, root: &Path) -> Result<Arc<Self>> {
         let (reader, child_socket) = UnixStream::pair()?;
-        let fd = child_socket.as_raw_fd();
+        let fd = unsafe { libc::fcntl(child_socket.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 3) };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error()).context("duplicate worker socket");
+        }
+        let worker_socket = unsafe { OwnedFd::from_raw_fd(fd) };
+        drop(child_socket);
         let mut command = Command::new(path);
         command
             .arg("--sdk-worker")
             .arg(root)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::inherit());
+            .stderr(Stdio::inherit())
+            .process_group(0);
         // Only async-signal-safe descriptor operations run between fork and exec.
         unsafe {
             command.pre_exec(move || {
@@ -78,7 +84,7 @@ impl Connection {
                 path.display()
             )
         })?;
-        drop(child_socket);
+        drop(worker_socket);
         let connection = Arc::new(Self {
             writer: Mutex::new(reader.try_clone()?),
             child: Mutex::new(child),
@@ -290,6 +296,7 @@ impl Connection {
             if let Err(error) = result {
                 connection.fail(&format!("sandbox worker connection failed: {error:#}"));
                 let _ = reader.shutdown(Shutdown::Both);
+                connection.terminate();
                 return;
             }
         }
@@ -618,6 +625,7 @@ impl Default for SandboxBuilder {
     fn default() -> Self {
         let config = SandboxConfig::default();
         let limits = FilesystemLimits::default();
+        let tools = ToolRegistry::new();
         Self {
             options: Options {
                 backend: Backend::Wasm,
@@ -633,8 +641,9 @@ impl Default for SandboxBuilder {
                     limits.max_file_count().unwrap(),
                 )),
                 tools: Vec::new(),
+                max_args_size: tools.max_args_size(),
             },
-            tools: ToolRegistry::new(),
+            tools,
             pool: None,
             guest: PhantomData,
         }
@@ -738,6 +747,7 @@ impl<G: GuestBackend> SandboxBuilder<G> {
         let connection = pool.checkout()?;
         let generation = GENERATION.fetch_add(1, Ordering::Relaxed);
         self.options.tools = self.tools.names().map(str::to_owned).collect();
+        self.options.max_args_size = self.tools.max_args_size();
         *connection
             .tools
             .lock()
@@ -1239,19 +1249,27 @@ mod tests {
                     )),
                 )
                 .unwrap();
-            let rejected = match response.recv_timeout(Duration::from_secs(10)).unwrap() {
-                RequestEvent::Response(Ok(Response::Execution(result))) => {
-                    result.stderr.contains("argument payload too large")
+            let (rejected, detail) = match response.recv_timeout(Duration::from_secs(10)).unwrap() {
+                RequestEvent::Response(Ok(Response::Execution(result))) => (
+                    result.exit_code != 0,
+                    format!(
+                        "exit {}: {}{}",
+                        result.exit_code, result.stdout, result.stderr
+                    ),
+                ),
+                RequestEvent::Response(Err(error)) => (
+                    sandbox.connection().healthy.load(Ordering::Acquire),
+                    format!("{error:#}"),
+                ),
+                RequestEvent::HostCall { args, .. } => {
+                    (false, format!("forwarded {} bytes", args.len()))
                 }
-                RequestEvent::Response(Err(error)) => {
-                    format!("{error:#}").contains("argument payload too large")
-                }
-                _ => false,
+                _ => (false, "unexpected response".into()),
             };
             sandbox.connection().terminate();
             assert!(
                 rejected,
-                "oversized arguments crossed into the application process"
+                "oversized arguments were not rejected in the worker: {detail}"
             );
         }
     }

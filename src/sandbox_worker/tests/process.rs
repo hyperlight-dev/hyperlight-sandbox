@@ -261,6 +261,7 @@ fn assert_worker_stops_after_disconnect(wait_for_guest: bool, blocked_read: bool
                     temp_output: false,
                     limits: None,
                     tools: Vec::new(),
+                    max_args_size: ToolRegistry::new().max_args_size(),
                 }),
             },
         )?;

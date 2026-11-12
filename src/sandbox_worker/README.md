@@ -27,5 +27,8 @@ Snapshots keep their private files alive across restores and source-sandbox
 destruction. Worker failure fails pending work; it does not replay guest code.
 Frames are limited to 256 MiB and oversized messages fail explicitly.
 
+Do not fork a process after it creates a worker pool. Use spawn or exec to start
+child processes. Inherited pools and sandbox handles are not supported.
+
 The Rust builder and protocol are private SDK plumbing. Replace this crate with
 upstream support when it covers Wasm/HyperlightJS and the SDK semantics.

@@ -5,7 +5,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail, ensure};
 use hyperlight_sandbox::{
@@ -149,7 +149,12 @@ fn finish_worker(
     worker: std::thread::JoinHandle<()>,
     mut interrupt: impl FnMut() -> Result<()>,
 ) -> Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(2);
     while !worker.is_finished() {
+        ensure!(
+            Instant::now() < deadline,
+            "sandbox worker did not stop after disconnect; terminating process"
+        );
         interrupt()?;
         std::thread::sleep(Duration::from_millis(10));
     }

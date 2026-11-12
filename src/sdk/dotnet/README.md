@@ -16,14 +16,6 @@ A .NET 8.0 SDK for running code in secure, sandboxed environments using [hyperli
 
 ## Quick Start
 
-NuGet packages include native assets for Linux x64, Windows x64, and Apple Silicon
-macOS 13 or newer. macOS guest packages contain separate ARM64 AOT binaries.
-
-macOS support is experimental and developer-only. The native package includes a
-signed Rust helper with the `com.apple.security.hypervisor` entitlement. The SDK
-starts it automatically; neither `dotnet` nor your application is re-signed or
-modified. Each active sandbox uses a helper process, with pooled reuse.
-
 ```bash
 # Prerequisites
 just dotnet build              # Build the .NET SDK + Rust FFI
@@ -192,6 +184,12 @@ var session = await client.CreateSessionAsync(new SessionConfig
 var response = await chatClient.GetResponseAsync(prompt,
     new ChatOptions { Tools = [executeCode] });
 ```
+
+## macOS
+
+Apple Silicon NuGet packages provide developer-only support for macOS 13 and newer.
+The native package includes a signed Rust helper with the
+`com.apple.security.hypervisor` entitlement. This path is experimental, not for production.
 
 ## Architecture
 

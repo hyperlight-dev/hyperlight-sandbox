@@ -369,7 +369,7 @@ impl Pool {
                 .tempdir()?,
         );
         #[cfg(target_os = "macos")]
-        let path = Self::extract_helper(&path, root.path())?;
+        Self::prepare_helper(&path)?;
         let mut idle = Vec::new();
         for _ in 0..config.initial {
             idle.push(Connection::spawn(&path, root.path())?);
@@ -388,33 +388,29 @@ impl Pool {
     }
 
     #[cfg(target_os = "macos")]
-    fn extract_helper(source: &Path, directory: &Path) -> Result<PathBuf> {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
+    fn prepare_helper(path: &Path) -> Result<()> {
+        use std::os::unix::fs::PermissionsExt;
 
-        use sha2::{Digest, Sha256};
-
-        // NuGet extraction need not preserve executable permissions. Copy only our
-        // signed helper into a private directory; never modify the installed host.
-        let bytes = std::fs::read(source)?;
-        let hash = format!("{:x}", Sha256::digest(&bytes));
-        let path = directory.join(format!("hyperlight-sandbox-worker-{hash}"));
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o700)
-            .open(&path)?;
-        file.write_all(&bytes)?;
-        drop(file);
         let status = Command::new("/usr/bin/codesign")
             .args(["--verify", "--strict"])
-            .arg(&path)
+            .arg(path)
             .status()?;
         ensure!(
             status.success(),
             "packaged sandbox helper signature is invalid; rebuild or reinstall the SDK"
         );
-        Ok(path)
+        // NuGet extraction need not preserve executable permissions.
+        let mut permissions = std::fs::metadata(path)?.permissions();
+        if permissions.mode() & 0o100 == 0 {
+            permissions.set_mode(permissions.mode() | 0o100);
+            std::fs::set_permissions(path, permissions).with_context(|| {
+                format!(
+                    "make installed sandbox worker executable at {}",
+                    path.display()
+                )
+            })?;
+        }
+        Ok(())
     }
 
     fn checkout(&self) -> Result<Arc<Connection>> {

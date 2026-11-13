@@ -209,10 +209,8 @@ public class ToolRegistrationTests
         try
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
-            var finished = await Task.WhenAny(completed.Task, Task.Delay(TimeSpan.FromSeconds(5)))
+            var result = await completed.Task.WaitAsync(TimeSpan.FromSeconds(5))
                 .ConfigureAwait(false);
-            Assert.True(finished == completed.Task, "Run blocked on the caller's synchronization context.");
-            var result = await completed.Task.ConfigureAwait(false);
             Assert.True(result.Success, result.Stderr);
             Assert.Contains(throws ? "async tool failed" : "42", result.Stdout, StringComparison.Ordinal);
             Assert.Equal(thread.ManagedThreadId, handlerThread);

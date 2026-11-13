@@ -1,0 +1,23 @@
+set windows-shell := ["pwsh", "-NoLogo", "-Command"]
+
+repo-root := invocation_directory_native()
+
+# Install the pinned workflow checker. Requires Go.
+install:
+    go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+# Check all GitHub Actions workflows.
+lint:
+    cd "{{repo-root}}" && actionlint
+
+# Remove checkout build files after macOS PR jobs; main keeps its cache-save inputs.
+[unix]
+ci-clean:
+    test "${GITHUB_ACTIONS:-}" = true
+    test "${GITHUB_EVENT_NAME:-}" = pull_request
+    test "${RUNNER_OS:-}" = macOS
+    test "{{repo-root}}" = "${GITHUB_WORKSPACE:-}"
+    test ! -L "{{repo-root}}/target"
+    test ! -L "{{repo-root}}/src/sdk/dotnet/ffi/target"
+    cargo clean --manifest-path "{{repo-root}}/Cargo.toml" --target-dir "{{repo-root}}/target"
+    cargo clean --manifest-path "{{repo-root}}/src/sdk/dotnet/ffi/Cargo.toml" --target-dir "{{repo-root}}/src/sdk/dotnet/ffi/target"

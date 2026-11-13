@@ -5,6 +5,7 @@ mod js 'src/javascript_sandbox/Justfile'
 mod python 'src/sdk/python/Justfile'
 mod dotnet 'src/sdk/dotnet/Justfile'
 mod worker 'src/sandbox_worker/Justfile'
+mod workflows '.github/Justfile'
 mod examples_mod 'examples/Justfile'
 
 default-target := "debug"

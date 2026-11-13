@@ -87,7 +87,8 @@ jobs:
 
       - name: Build all Python packages
         run: |
-          export INTERPRETERS="--interpreter $(uv python find 3.10) $(uv python find 3.11) $(uv python find 3.12) $(uv python find 3.13) $(uv python find 3.14) $(uv python find 3.15)"
+          INTERPRETERS="--interpreter $(uv python find 3.10) $(uv python find 3.11) $(uv python find 3.12) $(uv python find 3.13) $(uv python find 3.14) $(uv python find 3.15)"
+          export INTERPRETERS
           just python-dist
 
       - name: Verify manylinux compatibility
@@ -143,11 +144,15 @@ jobs:
           name: python-wheels-windows
           path: dist/pythonsdk/
 
-  # Merge artifacts from both platforms and publish to PyPI.
+  build-macos:
+    if: ${{ !github.event.act && (github.event_name != 'workflow_dispatch' || inputs.publish_target == 'all' || inputs.publish_target == 'python') }}
+    uses: ./.github/workflows/python-macos.yml
+
+  # Merge artifacts from all platforms and publish to PyPI.
   publish:
     if: ${{ !github.event.act && (github.event_name != 'workflow_dispatch' || inputs.publish_target == 'all' || inputs.publish_target == 'python') }}
     name: Publish to PyPI
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     environment:
       name: pypi

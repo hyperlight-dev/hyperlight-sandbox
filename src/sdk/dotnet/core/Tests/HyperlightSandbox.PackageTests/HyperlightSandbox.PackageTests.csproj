@@ -13,6 +13,7 @@
 
     <!-- Use local nuget.config to find packages from dist/ -->
     <RestoreConfigFile>$(MSBuildProjectDirectory)/nuget.config</RestoreConfigFile>
+    <RestorePackagesPath>$(MSBuildProjectDirectory)/obj/packages</RestorePackagesPath>
   </PropertyGroup>
 
   <ItemGroup>

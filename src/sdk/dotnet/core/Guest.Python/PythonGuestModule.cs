@@ -35,9 +35,7 @@ public static class PythonGuestModule
         string assemblyDir = Path.GetDirectoryName(
             typeof(PythonGuestModule).Assembly.Location) ?? AppContext.BaseDirectory;
 
-        // The .aot binary is built on Windows but works on both linux-x64 and win-x64.
-        // Probe the OS-appropriate RID path first (matches SafeNativeMethods.DllImportResolver).
-        string rid = OperatingSystem.IsWindows() ? "win-x64" : "linux-x64";
+        string rid = NativePlatform.RuntimeIdentifier;
         string nativePath = Path.Join(assemblyDir, "runtimes", rid, "native", fileName);
         if (File.Exists(nativePath))
         {

@@ -21,10 +21,8 @@
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
 
-  <!-- Rust source files — MSBuild uses these timestamps to decide when to rebuild -->
   <ItemGroup>
-    <RustFiles Include="..\..\ffi\src\*.rs" />
-    <RustFiles Include="..\..\ffi\Cargo.toml" />
+    <Compile Include="..\NativePlatform.cs" Link="NativePlatform.cs" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -34,15 +32,13 @@
     <WorkspaceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../../..'))</WorkspaceRoot>
   </PropertyGroup>
 
-  <!-- Build the Rust FFI crate when its sources are newer than the output -->
   <Target Name="BuildDeveloperWorker" BeforeTargets="BeforeBuild"
           Condition="$([MSBuild]::IsOSPlatform('OSX'))">
     <Exec Command="just worker build $(RustProfile)" WorkingDirectory="$(WorkspaceRoot)" />
   </Target>
 
-  <Target Name="BuildRust" BeforeTargets="BeforeBuild"
-          Inputs="@(RustFiles)"
-          Outputs="$(WorkspaceRoot)\target\$(RustProfile)\libhyperlight_sandbox_dotnet_ffi.so;$(WorkspaceRoot)\target\$(RustProfile)\hyperlight_sandbox_dotnet_ffi.dll">
+  <!-- Cargo checks all workspace dependencies before reusing the native library. -->
+  <Target Name="BuildRust" BeforeTargets="BeforeBuild">
     <Message Text="Building Rust FFI library ($(RustProfile))..." Importance="high" />
     <!-- WIT_WORLD must point to the compiled WIT world so hyperlight-component-macro
          generates bindings that match the guest component model ABI. Without this,
@@ -77,6 +73,13 @@
       <PackagePath>runtimes/win-x64/native/</PackagePath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>runtimes/win-x64/native/hyperlight_sandbox_dotnet_ffi.dll</Link>
+    </None>
+    <None Include="$(WorkspaceRoot)\target\$(RustProfile)\libhyperlight_sandbox_dotnet_ffi.dylib"
+          Condition="Exists('$(WorkspaceRoot)\target\$(RustProfile)\libhyperlight_sandbox_dotnet_ffi.dylib')">
+      <Pack>true</Pack>
+      <PackagePath>runtimes/osx-arm64/native/</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>runtimes/osx-arm64/native/libhyperlight_sandbox_dotnet_ffi.dylib</Link>
     </None>
   </ItemGroup>
 

@@ -61,10 +61,10 @@ internal static partial class SafeNativeMethods
         // Platform-specific library filename
         string platformLibraryName = OperatingSystem.IsWindows()
             ? $"{libraryName}.dll"
-            : $"lib{libraryName}.so";
+            : OperatingSystem.IsMacOS() ? $"lib{libraryName}.dylib" : $"lib{libraryName}.so";
 
         // Check RID-specific path (NuGet package layout: runtimes/<rid>/native/)
-        string rid = OperatingSystem.IsWindows() ? "win-x64" : "linux-x64";
+        string rid = NativePlatform.RuntimeIdentifier;
         string runtimePath = Path.Join(
             assemblyDirectory, "runtimes", rid, "native", platformLibraryName);
         List<string> searchedPaths = [runtimePath];

@@ -241,6 +241,10 @@ jobs:
       - name: Run examples
         run: just wasm examples
 
+      - name: Clean macOS build files
+        if: always() && runner.os == 'macOS' && github.event_name == 'pull_request'
+        run: just workflows ci-clean
+
   dotnet-sdk:
     name: .NET SDK (${{ matrix.os }})
     needs: guest-build
@@ -441,6 +445,10 @@ jobs:
 
       - name: Fuzz
         run: just fuzz 30
+
+      - name: Clean macOS build files
+        if: always() && runner.os == 'macOS' && github.event_name == 'pull_request'
+        run: just workflows ci-clean
 
       # this is too flaky in github actions to run on PRs
       # copilot fails to repsond in a timely fashion
@@ -719,3 +727,7 @@ jobs:
 
       - name: Run examples
         run: just js examples
+
+      - name: Clean macOS build files
+        if: always() && runner.os == 'macOS' && github.event_name == 'pull_request'
+        run: just workflows ci-clean

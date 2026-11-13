@@ -59,3 +59,6 @@ jobs:
             dist/pythonsdk/python_guest/
             dist/pythonsdk/javascript_guest/
           if-no-files-found: error
+      - name: Clean macOS build files
+        if: always() && github.event_name == 'pull_request'
+        run: just workflows ci-clean

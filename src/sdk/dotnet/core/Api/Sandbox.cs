@@ -222,14 +222,14 @@ public sealed class Sandbox : IDisposable
     /// <para>
     /// The underlying FFI callback is synchronous — the async handler is
     /// blocked on at the interop boundary via <c>GetAwaiter().GetResult()</c>.
-    /// This is safe because FFI callbacks run on threads without a
-    /// <see cref="System.Threading.SynchronizationContext"/>.
+    /// The handler starts on the callback thread without a
+    /// <see cref="System.Threading.SynchronizationContext"/>. The caller's
+    /// context is restored when the handler completes or throws.
     /// </para>
     /// </remarks>
     public void RegisterToolAsync<TArgs, TResult>(string name, Func<TArgs, Task<TResult>> handler)
     {
-        // Wrap the async handler into a sync handler that blocks at the FFI boundary.
-        RegisterTool<TArgs, TResult>(name, args => handler(args).GetAwaiter().GetResult());
+        RegisterTool<TArgs, TResult>(name, args => InvokeAsyncTool(handler, args));
     }
 
     /// <summary>
@@ -289,14 +289,28 @@ public sealed class Sandbox : IDisposable
     /// <para>
     /// The underlying FFI callback is synchronous — the async handler is
     /// blocked on at the interop boundary via <c>GetAwaiter().GetResult()</c>.
-    /// This is safe because FFI callbacks run on threads without a
-    /// <see cref="System.Threading.SynchronizationContext"/>.
+    /// The handler starts on the callback thread without a
+    /// <see cref="System.Threading.SynchronizationContext"/>. The caller's
+    /// context is restored when the handler completes or throws.
     /// </para>
     /// </remarks>
     public void RegisterToolAsync(string name, Func<string, Task<string>> handler)
     {
-        // Wrap the async handler into a sync handler that blocks at the FFI boundary.
-        RegisterTool(name, (string json) => handler(json).GetAwaiter().GetResult());
+        RegisterTool(name, (string json) => InvokeAsyncTool(handler, json));
+    }
+
+    private static TResult InvokeAsyncTool<TArgs, TResult>(Func<TArgs, Task<TResult>> handler, TArgs args)
+    {
+        var context = SynchronizationContext.Current;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(null);
+            return handler(args).GetAwaiter().GetResult();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+        }
     }
 
     // -----------------------------------------------------------------------

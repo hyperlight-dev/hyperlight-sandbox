@@ -102,6 +102,36 @@ fn run_in_isolated_process(name: &str) -> bool {
 }
 
 #[test]
+#[cfg(target_os = "macos")]
+fn staging_helper_does_not_buffer_the_entire_executable() {
+    if run_in_isolated_process("staging_helper_does_not_buffer_the_entire_executable") {
+        return;
+    }
+    let peak_resident_bytes = || {
+        let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+        assert_eq!(
+            unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) },
+            0
+        );
+        unsafe { usage.assume_init() }.ru_maxrss
+    };
+    let before = peak_resident_bytes();
+    let _pool = Pool::new(
+        worker_path(),
+        PoolConfig {
+            initial: 0,
+            maximum: 1,
+        },
+    )
+    .unwrap();
+    let growth = peak_resident_bytes().saturating_sub(before);
+    assert!(
+        growth < 32 * 1024 * 1024,
+        "staging the helper used {growth} additional resident bytes"
+    );
+}
+
+#[test]
 fn worker_starts_with_closed_standard_streams() {
     if run_in_isolated_process("worker_starts_with_closed_standard_streams") {
         return;

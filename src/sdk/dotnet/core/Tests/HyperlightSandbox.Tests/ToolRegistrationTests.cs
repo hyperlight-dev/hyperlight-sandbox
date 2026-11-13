@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Text.Json;
 using HyperlightSandbox.Api;
 using Xunit;
 
@@ -5,9 +8,7 @@ namespace HyperlightSandbox.Tests;
 
 /// <summary>
 /// Tests for tool registration API — both raw JSON and typed variants.
-/// Tests registration validation, schema generation, and error cases.
-/// Full dispatch tests (calling tools from guest) require a real wasm module;
-/// these tests validate the registration path and safety properties.
+/// Tests registration validation, schema generation, error cases, and async dispatch.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1515:Consider making public types internal", Justification = "Test classes must be public for xUnit")]
 public class ToolRegistrationTests
@@ -131,6 +132,120 @@ public class ToolRegistrationTests
         Assert.Throws<ObjectDisposedException>(() =>
             sandbox.RegisterTool<AddArgs, AddResult>("add",
                 args => new AddResult { sum = 0 }));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task RegisterToolAsync_SynchronizationContext_DoesNotBlockRun(
+        bool typed, bool throws)
+    {
+        var context = new QueuedSynchronizationContext();
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource<ExecutionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int handlerThread = 0;
+        SynchronizationContext? handlerContext = context;
+        SynchronizationContext? restoredContext = null;
+        var thread = new Thread(() =>
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            try
+            {
+                using var sandbox = new SandboxBuilder()
+                    .WithBackend(SandboxBackend.JavaScript)
+                    .Build();
+
+                async Task<int> HandleAsync()
+                {
+                    handlerThread = Environment.CurrentManagedThreadId;
+                    handlerContext = SynchronizationContext.Current;
+                    entered.TrySetResult(true);
+                    await Task.Yield();
+                    if (throws)
+                    {
+                        throw new InvalidOperationException("async tool failed");
+                    }
+
+                    return 42;
+                }
+
+                if (typed)
+                {
+                    sandbox.RegisterToolAsync<AddArgs, int>("async_tool", _ => HandleAsync());
+                }
+                else
+                {
+                    sandbox.RegisterToolAsync("async_tool", async _ =>
+                        JsonSerializer.Serialize(await HandleAsync().ConfigureAwait(false)));
+                }
+
+                var result = sandbox.Run("""
+                    try {
+                        console.log(JSON.stringify(call_tool("async_tool", {a: 20, b: 22})));
+                    } catch (error) {
+                        console.log(String(error));
+                    }
+                    """);
+                restoredContext = SynchronizationContext.Current;
+                completed.TrySetResult(result);
+            }
+#pragma warning disable CA1031 // Forward failures from the dedicated thread to the test.
+            catch (Exception error)
+            {
+                completed.TrySetException(error);
+                entered.TrySetResult(true);
+            }
+#pragma warning restore CA1031
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(null);
+            }
+        })
+        { IsBackground = true };
+
+        thread.Start();
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+            var finished = await Task.WhenAny(completed.Task, Task.Delay(TimeSpan.FromSeconds(5)))
+                .ConfigureAwait(false);
+            Assert.True(finished == completed.Task, "Run blocked on the caller's synchronization context.");
+            var result = await completed.Task.ConfigureAwait(false);
+            Assert.True(result.Success, result.Stderr);
+            Assert.Contains(throws ? "async tool failed" : "42", result.Stdout, StringComparison.Ordinal);
+            Assert.Equal(thread.ManagedThreadId, handlerThread);
+            Assert.Null(handlerContext);
+            Assert.Same(context, restoredContext);
+        }
+        finally
+        {
+            // Release captured continuations after a failed assertion so the test leaves no blocked worker.
+            var elapsed = Stopwatch.StartNew();
+            while (thread.IsAlive && elapsed.Elapsed < TimeSpan.FromSeconds(10))
+            {
+                context.Drain();
+                thread.Join(10);
+            }
+
+            Assert.False(thread.IsAlive, "The sandbox thread did not stop during test cleanup.");
+        }
+    }
+
+    private sealed class QueuedSynchronizationContext : SynchronizationContext
+    {
+        private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _callbacks = new();
+
+        public override void Post(SendOrPostCallback d, object? state) => _callbacks.Enqueue((d, state));
+
+        public void Drain()
+        {
+            while (_callbacks.TryDequeue(out var callback))
+            {
+                callback.Callback(callback.State);
+            }
+        }
     }
 
     // -----------------------------------------------------------------------

@@ -734,3 +734,33 @@ jobs:
       - name: Clean macOS build files
         if: always() && runner.os == 'macOS' && github.event_name == 'pull_request'
         run: just workflows ci-clean
+
+  # Use one required check for all CI jobs, including matrices and reusable workflows.
+  report-ci-status:
+    needs:
+      - guest-build
+      - build-recipes
+      - rust
+      - wasm-sandbox
+      - dotnet-packages-macos
+      - dotnet-sdk
+      - python-sdk
+      - python-wheelhouse-build-linux
+      - python-wheelhouse-build-windows
+      - python-wheelhouse-build-macos
+      - python-wheelhouse-test
+      - python-benchmark
+      - javascript-sandbox
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
+        env:
+          JOB_RESULTS: ${{ toJSON(needs.*.result) }}
+        with:
+          script: |
+            const results = JSON.parse(process.env.JOB_RESULTS);
+            if (results.some(result => result === 'failure' || result === 'cancelled')) {
+              core.setFailed('One or more CI jobs failed or were cancelled.');
+            }

@@ -1848,6 +1848,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyperlight-common"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8255ebc8f04272f64137e19f5c42cdcc1c92df56a63df964d258923c553add6"
+dependencies = [
+ "anyhow",
+ "bitflags 2.13.2",
+ "bytemuck",
+ "bytes",
+ "fixedbitset",
+ "flatbuffers",
+ "log",
+ "smallvec",
+ "spin 0.12.0",
+ "thiserror",
+ "tracing-core",
+]
+
+[[package]]
 name = "hyperlight-component-macro"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1888,7 +1907,7 @@ checksum = "7faceeab52cbc0f128e75fa4b0ee9fce17c3c462d7776feca66f41e98bf2a4bb"
 dependencies = [
  "anyhow",
  "flatbuffers",
- "hyperlight-common",
+ "hyperlight-common 0.18.0",
  "itertools 0.15.0",
  "serde_json",
  "tracing",
@@ -1902,7 +1921,7 @@ checksum = "e7eff3c3b94ae4da51f03d535e9a13a4132f5f87694a19514c038a9517cfd750"
 dependencies = [
  "buddy_system_allocator",
  "flatbuffers",
- "hyperlight-common",
+ "hyperlight-common 0.18.0",
  "hyperlight-guest",
  "hyperlight-guest-macro",
  "hyperlight-guest-tracing",
@@ -1931,7 +1950,7 @@ version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a12c240f87acd92e80ea08e9a405e781e4a15b9f38fee5fe261e9ce69b816d3"
 dependencies = [
- "hyperlight-common",
+ "hyperlight-common 0.18.0",
  "spin 0.12.0",
  "tracing",
  "tracing-core",
@@ -1955,7 +1974,7 @@ dependencies = [
  "flatbuffers",
  "goblin",
  "hex",
- "hyperlight-common",
+ "hyperlight-common 0.18.0",
  "kvm-bindings",
  "kvm-ioctls",
  "lazy_static",
@@ -1995,7 +2014,7 @@ dependencies = [
  "cargo-hyperlight",
  "cfg_aliases",
  "fn-traits",
- "hyperlight-common",
+ "hyperlight-common 0.18.0",
  "hyperlight-host",
  "hyperlight-js-common",
  "hyperlight-js-runtime",
@@ -2031,7 +2050,7 @@ dependencies = [
  "hashbrown 0.17.0",
  "hex",
  "hmac",
- "hyperlight-common",
+ "hyperlight-common 0.18.0",
  "hyperlight-guest",
  "hyperlight-guest-bin",
  "hyperlight-js-common",
@@ -2154,7 +2173,7 @@ dependencies = [
  "http",
  "http-body",
  "http-body-util",
- "hyperlight-common",
+ "hyperlight-common 0.19.0",
  "hyperlight-component-macro",
  "hyperlight-host",
  "hyperlight-sandbox",
@@ -2201,7 +2220,7 @@ dependencies = [
  "chrono",
  "env_logger",
  "goblin",
- "hyperlight-common",
+ "hyperlight-common 0.18.0",
  "hyperlight-host",
  "hyperlight-wasm-runtime",
  "junction",
@@ -2241,7 +2260,7 @@ dependencies = [
  "cc",
  "cfg-if",
  "cfg_aliases",
- "hyperlight-common",
+ "hyperlight-common 0.18.0",
  "hyperlight-guest",
  "hyperlight-guest-bin",
  "hyperlight-wasm-macro",

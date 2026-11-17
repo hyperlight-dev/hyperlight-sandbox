@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30  # v2.0.1
         with:
           cache: false
           rustflags: ""
@@ -103,7 +103,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30  # v2.0.1
         id: rust-toolchain
         with:
           toolchain: nightly, 1.94
@@ -164,7 +164,7 @@ jobs:
           fi
           printf '%s\n' "$prefix/bin" "$prefix/sbin" "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30  # v2.0.1
         with:
           components: clippy
           rustflags: ""
@@ -259,7 +259,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30  # v2.0.1
         with:
           toolchain: nightly, 1.94
           components: rustfmt, clippy
@@ -363,7 +363,7 @@ jobs:
           fi
           printf '%s\n' "$prefix/bin" "$prefix/sbin" "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30  # v2.0.1
         with:
           components: clippy
           rustflags: ""
@@ -472,7 +472,7 @@ jobs:
       HYPERLIGHT_GUEST_ARTIFACT: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30  # v2.0.1
         with:
           cache-key: release-${{ hashFiles('src/wasm_sandbox/wit/**/*.wit') }}
           cache-save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -535,7 +535,7 @@ jobs:
       HYPERLIGHT_GUEST_ARTIFACT: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30  # v2.0.1
         with:
           cache-key: release-${{ hashFiles('src/wasm_sandbox/wit/**/*.wit') }}
           cache-save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -667,7 +667,7 @@ jobs:
           fi
           printf '%s\n' "$prefix/bin" "$prefix/sbin" "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f  # v2.0.0
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30  # v2.0.1
         with:
           components: clippy
           rustflags: ""

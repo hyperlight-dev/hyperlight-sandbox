@@ -28,6 +28,6 @@ hyperlight-sandbox-pyo3-common = { path = "src/sdk/python/pyo3_common" }
 hyperlight-sandbox-worker = { path = "src/sandbox_worker" }
 hyperlight-common = { version = "0.18.0", default-features = false }
 hyperlight-component-macro = "0.18.0"
-hyperlight-host = { version = "0.18.0", default-features = false, features = ["executable_heap"] }
+hyperlight-host = { version = "0.19.0", default-features = false, features = ["executable_heap"] }
 hyperlight-wasm = "0.16.0"
 pyo3 = { version = "0.30", features = ["extension-module"] }
